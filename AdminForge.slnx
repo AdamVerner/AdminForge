@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/examples/">
+    <Project Path="examples/TodoApp/TodoApp.csproj" />
+  </Folder>
+  <Folder Name="/src/">
+    <Project Path="src/AdminForge/AdminForge.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/AdminForge.IntegrationTests/AdminForge.IntegrationTests.csproj" />
+    <Project Path="tests/AdminForge.UnitTests/AdminForge.UnitTests.csproj" />
+  </Folder>
+</Solution>
