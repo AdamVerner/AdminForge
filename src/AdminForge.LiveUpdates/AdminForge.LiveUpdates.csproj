@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>AdminForge.LiveUpdates</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../AdminForge.Core/AdminForge.Core.csproj" />
+  </ItemGroup>
+</Project>

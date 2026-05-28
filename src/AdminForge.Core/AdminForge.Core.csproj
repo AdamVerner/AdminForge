@@ -1,0 +1,5 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>AdminForge.Core</RootNamespace>
+  </PropertyGroup>
+</Project>

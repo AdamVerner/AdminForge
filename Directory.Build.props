@@ -6,6 +6,7 @@
     <LangVersion>latest</LangVersion>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <AnalysisLevel>latest</AnalysisLevel>
+    <IsPackable>false</IsPackable>
   </PropertyGroup>
 
   <!-- NuGet package metadata (applies to packable projects only) -->

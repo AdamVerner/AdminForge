@@ -1,5 +1,4 @@
 <Project Sdk="Microsoft.NET.Sdk">
-
   <PropertyGroup>
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
@@ -15,10 +14,10 @@
 
   <ItemGroup>
     <ProjectReference Include="../../src/AdminForge/AdminForge.csproj" />
+    <ProjectReference Include="../../examples/TodoApp/TodoApp.csproj" />
   </ItemGroup>
 
   <ItemGroup>
     <Using Include="Xunit" />
   </ItemGroup>
-
 </Project>

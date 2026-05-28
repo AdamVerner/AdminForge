@@ -4,6 +4,11 @@
   </Folder>
   <Folder Name="/src/">
     <Project Path="src/AdminForge/AdminForge.csproj" />
+    <Project Path="src/AdminForge.Core/AdminForge.Core.csproj" />
+    <Project Path="src/AdminForge.DataAccess.EfCore/AdminForge.DataAccess.EfCore.csproj" />
+    <Project Path="src/AdminForge.LiveUpdates/AdminForge.LiveUpdates.csproj" />
+    <Project Path="src/AdminForge.UI.Blazor/AdminForge.UI.Blazor.csproj" />
+    <Project Path="src/AdminForge.Middleware/AdminForge.Middleware.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/AdminForge.IntegrationTests/AdminForge.IntegrationTests.csproj" />

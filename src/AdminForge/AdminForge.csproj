@@ -1,5 +1,4 @@
 <Project Sdk="Microsoft.NET.Sdk">
-
   <PropertyGroup>
     <PackageId>AdminForge</PackageId>
     <Version>0.0.1</Version>
@@ -11,8 +10,15 @@
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="../AdminForge.Core/AdminForge.Core.csproj" />
+    <ProjectReference Include="../AdminForge.DataAccess.EfCore/AdminForge.DataAccess.EfCore.csproj" />
+    <ProjectReference Include="../AdminForge.LiveUpdates/AdminForge.LiveUpdates.csproj" />
+    <ProjectReference Include="../AdminForge.UI.Blazor/AdminForge.UI.Blazor.csproj" />
+    <ProjectReference Include="../AdminForge.Middleware/AdminForge.Middleware.csproj" />
+  </ItemGroup>
+
   <ItemGroup Condition="'$(IsPackable)' == 'true'">
     <None Include="../../README.md" Pack="true" PackagePath="/" />
   </ItemGroup>
-
 </Project>

@@ -483,4 +483,9 @@ $RECYCLE.BIN/
 
 
 # local settings
-*.local.*
+*.local*
+
+# SQLite databases (TodoApp example, tests)
+*.db
+*.db-shm
+*.db-wal
