@@ -1,0 +1,56 @@
+@page "/admin/entities/{EntityName}/{Key}/edit"
+@inject IAdminUIBridge Bridge
+@inject NavigationManager Nav
+@inject ISnackbar Snackbar
+
+<PageTitle>Edit @(Entity?.Label ?? EntityName)</PageTitle>
+
+@if (Entity is null)
+{
+    <MudAlert Severity="Severity.Error">Unknown entity '@EntityName'.</MudAlert>
+}
+else if (_edit is null)
+{
+    <MudProgressCircular Indeterminate="true" />
+}
+else
+{
+    <MudText Typo="Typo.h4" Class="mb-4">Edit @Entity.Label — @_edit.Key</MudText>
+    <EntityForm Entity="@Entity" Model="@_edit" OnSubmit="HandleSubmit" OnCancel="@Cancel" SubmitLabel="Save" />
+}
+
+@code {
+    [Parameter] public string EntityName { get; set; } = string.Empty;
+    [Parameter] public string Key { get; set; } = string.Empty;
+
+    private EntityMeta? Entity;
+    private EntityEditVM? _edit;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        Entity = Bridge.FindEntityByRouteName(EntityName);
+        if (Entity is null) return;
+        _edit = await Bridge.LoadForEditAsync(Entity, Uri.UnescapeDataString(Key));
+    }
+
+    private async Task HandleSubmit()
+    {
+        if (Entity is null || _edit is null) return;
+        try
+        {
+            await Bridge.UpdateAsync(Entity, _edit);
+            Snackbar.Add("Saved.", MudBlazor.Severity.Success);
+            Nav.NavigateTo($"/admin/entities/{Entity.RouteName}/{Uri.EscapeDataString(_edit.Key!)}");
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Save failed: {ex.Message}", MudBlazor.Severity.Error);
+        }
+    }
+
+    private void Cancel()
+    {
+        if (Entity is null) return;
+        Nav.NavigateTo($"/admin/entities/{Entity.RouteName}");
+    }
+}

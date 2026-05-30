@@ -1,0 +1,36 @@
+@page "/admin/dashboards/{RouteName}"
+@inject IAdminUIBridge Bridge
+
+<PageTitle>@(_dashboard?.Title ?? RouteName)</PageTitle>
+
+@if (_meta is null)
+{
+    <MudAlert Severity="Severity.Error">Unknown dashboard '@RouteName'.</MudAlert>
+}
+else if (_dashboard is null)
+{
+    <MudProgressCircular Indeterminate="true" />
+}
+else
+{
+    <MudText Typo="Typo.h4" Class="mb-4">@_dashboard.Title</MudText>
+    <WidgetGrid Dashboard="@_dashboard" />
+}
+
+@code {
+    [Parameter] public string RouteName { get; set; } = string.Empty;
+
+    private DashboardMeta? _meta;
+    private DashboardVM? _dashboard;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _meta = Bridge.FindDashboardByRouteName(RouteName);
+        if (_meta is null)
+        {
+            _dashboard = null;
+            return;
+        }
+        _dashboard = await Bridge.LoadDashboardAsync(_meta);
+    }
+}

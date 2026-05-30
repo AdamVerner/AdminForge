@@ -1,0 +1,32 @@
+@* Single-value stat card. Renders the title above a large value display. *@
+
+<MudPaper Class="pa-4" Elevation="2" Style="height:100%">
+    <MudText Typo="Typo.subtitle2" Color="Color.Secondary">@VM.Title</MudText>
+    @if (VM.Error is not null)
+    {
+        <MudAlert Severity="Severity.Error" Dense="true">@VM.Error</MudAlert>
+    }
+    else
+    {
+        <MudStack Row="true" AlignItems="AlignItems.Baseline" Spacing="1" Class="mt-2">
+            <MudText Typo="Typo.h3">@FormatValue(VM.Value)</MudText>
+            @if (!string.IsNullOrEmpty(VM.Suffix))
+            {
+                <MudText Typo="Typo.subtitle1" Color="Color.Secondary">@VM.Suffix</MudText>
+            }
+        </MudStack>
+    }
+</MudPaper>
+
+@code {
+    [Parameter, EditorRequired] public StatCardVM VM { get; set; } = default!;
+
+    private static string FormatValue(object? value)
+    {
+        if (value is null) return "—";
+        if (value is double d) return d.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+        if (value is float f) return f.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+        if (value is decimal m) return m.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+        return value.ToString() ?? "—";
+    }
+}

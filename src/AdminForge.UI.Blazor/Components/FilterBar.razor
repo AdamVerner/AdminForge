@@ -1,0 +1,83 @@
+<MudExpansionPanels Class="mb-4">
+    <MudExpansionPanel Text="Filters">
+        <MudGrid>
+            @foreach (var col in FilterableColumns)
+            {
+                <MudItem xs="12" sm="6" md="4">
+                    @{
+                        _local.TryGetValue(col.PropertyName, out var cur);
+                        var underlying = Nullable.GetUnderlyingType(col.ClrType) ?? col.ClrType;
+                    }
+                    @if (col.Kind == ColumnKind.Enum && col.EnumType is not null)
+                    {
+                        var names = Enum.GetNames(col.EnumType);
+                        <MudSelect T="string" Label="@col.Label" Value="@(cur?.ToString())"
+                                   ValueChanged="@(v => _local[col.PropertyName] = v)" Clearable="true">
+                            <MudSelectItem T="string" Value="@(null!)">(any)</MudSelectItem>
+                            @foreach (var n in names)
+                            {
+                                <MudSelectItem T="string" Value="@n">@n</MudSelectItem>
+                            }
+                        </MudSelect>
+                    }
+                    else if (underlying == typeof(bool))
+                    {
+                        var sel = cur?.ToString();
+                        <MudSelect T="string" Label="@col.Label" Value="@sel"
+                                   ValueChanged="@(v => _local[col.PropertyName] = v)">
+                            <MudSelectItem T="string" Value="@(null!)">(any)</MudSelectItem>
+                            <MudSelectItem T="string" Value="@("True")">Yes</MudSelectItem>
+                            <MudSelectItem T="string" Value="@("False")">No</MudSelectItem>
+                        </MudSelect>
+                    }
+                    else
+                    {
+                        <MudTextField T="string" Label="@col.Label" Value="@(cur?.ToString())"
+                                      ValueChanged="@(v => _local[col.PropertyName] = v)" Clearable="true" />
+                    }
+                </MudItem>
+            }
+        </MudGrid>
+        <MudStack Row="true" Class="mt-2">
+            <MudButton OnClick="ClearAll">Clear</MudButton>
+            <MudSpacer />
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Apply">Apply</MudButton>
+        </MudStack>
+    </MudExpansionPanel>
+</MudExpansionPanels>
+
+@code {
+    [Parameter, EditorRequired] public EntityMeta Entity { get; set; } = default!;
+    [Parameter] public Dictionary<string, object?> Filters { get; set; } = new();
+    [Parameter] public EventCallback<Dictionary<string, object?>> OnApply { get; set; }
+
+    private Dictionary<string, object?> _local = new();
+
+    protected override void OnParametersSet()
+    {
+        _local = new Dictionary<string, object?>(Filters);
+    }
+
+    private IEnumerable<ColumnMeta> FilterableColumns =>
+        Entity.Columns.Where(c =>
+            c.Kind is ColumnKind.Scalar or ColumnKind.Enum
+            && !c.HiddenInList
+            && !c.IsPrimaryKey
+            && !c.IsForeignKey
+        );
+
+    private async Task Apply()
+    {
+        // Strip nulls / empty strings.
+        var cleaned = _local
+            .Where(kvp => kvp.Value is not null && !(kvp.Value is string s && string.IsNullOrWhiteSpace(s)))
+            .ToDictionary(k => k.Key, k => k.Value);
+        await OnApply.InvokeAsync(cleaned);
+    }
+
+    private async Task ClearAll()
+    {
+        _local = new();
+        await OnApply.InvokeAsync(new());
+    }
+}

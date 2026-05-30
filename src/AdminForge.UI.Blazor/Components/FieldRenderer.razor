@@ -1,0 +1,98 @@
+@code {
+    [Parameter, EditorRequired] public ColumnMeta Column { get; set; } = default!;
+    [Parameter, EditorRequired] public EntityEditVM Model { get; set; } = default!;
+    [Parameter] public EntityMeta? Entity { get; set; }
+    [Parameter] public Dictionary<string, string?> Errors { get; set; } = new();
+
+    private Type? ResolveFkRelatedType()
+    {
+        if (Entity is null || Column.ForeignKeyNavigation is null) return null;
+        var navCol = Entity.Columns.FirstOrDefault(
+            c => c.PropertyName == Column.ForeignKeyNavigation
+                 && c.Kind == ColumnKind.NavigationReference
+        );
+        return navCol?.RelatedEntityType;
+    }
+}
+
+@{
+    Model.Values.TryGetValue(Column.PropertyName, out var current);
+    var error = Errors.TryGetValue(Column.PropertyName, out var err) ? err : null;
+    var label = Column.Label + (Column.IsRequired ? " *" : "");
+    var underlying = Nullable.GetUnderlyingType(Column.ClrType) ?? Column.ClrType;
+}
+
+@{
+    var fkRelated = Column.IsForeignKey ? ResolveFkRelatedType() : null;
+}
+
+<div class="mb-3">
+    @if (fkRelated is not null)
+    {
+        var currentKey = current is null ? null : Convert.ToString(current, System.Globalization.CultureInfo.InvariantCulture);
+        <NavigationPropertySelect RelatedEntityType="@fkRelated"
+                                  Label="@label"
+                                  HelperText="@Column.Description"
+                                  Value="@currentKey"
+                                  ValueChanged="@(v => Model.Values[Column.PropertyName] = v)" />
+    }
+    else if (Column.Kind == ColumnKind.Enum && Column.EnumType is not null)
+    {
+        var selected = current?.ToString();
+        var values = Enum.GetNames(Column.EnumType);
+        <MudSelect T="string" Label="@label" Value="@selected"
+                   HelperText="@Column.Description" Error="@(error is not null)" ErrorText="@error"
+                   ValueChanged="@(v => Model.Values[Column.PropertyName] = v)">
+            @if (Column.IsNullable)
+            {
+                <MudSelectItem T="string" Value="@(null!)">(none)</MudSelectItem>
+            }
+            @foreach (var v in values)
+            {
+                <MudSelectItem T="string" Value="@v">@v</MudSelectItem>
+            }
+        </MudSelect>
+    }
+    else if (underlying == typeof(bool))
+    {
+        var b = current is bool bb && bb;
+        <MudCheckBox T="bool" Value="@b" Label="@label"
+                     ValueChanged="@(v => Model.Values[Column.PropertyName] = v)" />
+        @if (!string.IsNullOrEmpty(Column.Description))
+        {
+            <MudText Typo="Typo.caption">@Column.Description</MudText>
+        }
+    }
+    else if (underlying == typeof(DateTime))
+    {
+        var dt = current as DateTime?;
+        <MudDatePicker Label="@label" Date="@dt" HelperText="@Column.Description"
+                       Error="@(error is not null)" ErrorText="@error"
+                       DateChanged="@(d => Model.Values[Column.PropertyName] = d)" />
+    }
+    else if (underlying == typeof(int) || underlying == typeof(long) || underlying == typeof(short))
+    {
+        var n = current is null ? (int?)null : Convert.ToInt32(current);
+        <MudNumericField T="int?" Label="@label" Value="@n" HelperText="@Column.Description"
+                         Error="@(error is not null)" ErrorText="@error"
+                         ValueChanged="@(v => Model.Values[Column.PropertyName] = v)" />
+    }
+    else if (underlying == typeof(double) || underlying == typeof(float) || underlying == typeof(decimal))
+    {
+        var d = current is null ? (double?)null : Convert.ToDouble(current);
+        <MudNumericField T="double?" Label="@label" Value="@d" HelperText="@Column.Description"
+                         Error="@(error is not null)" ErrorText="@error"
+                         ValueChanged="@(v => Model.Values[Column.PropertyName] = v)" />
+    }
+    else
+    {
+        var s = current?.ToString() ?? string.Empty;
+        var lines = (Column.MaxLength ?? 0) > 200 ? 4 : 1;
+        <MudTextField T="string" Label="@label" Value="@s"
+                      HelperText="@Column.Description"
+                      Error="@(error is not null)" ErrorText="@error"
+                      MaxLength="@(Column.MaxLength ?? 0)"
+                      Lines="@lines"
+                      ValueChanged="@(v => Model.Values[Column.PropertyName] = v)" />
+    }
+</div>

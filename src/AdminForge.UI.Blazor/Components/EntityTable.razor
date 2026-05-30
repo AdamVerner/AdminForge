@@ -1,0 +1,103 @@
+@if (Entity is null)
+{
+    <MudText>No entity.</MudText>
+}
+else if (ListVM is null)
+{
+    <MudProgressCircular Indeterminate="true" />
+}
+else if (ListVM.Rows.Count == 0)
+{
+    <MudAlert Severity="Severity.Info">No rows.</MudAlert>
+}
+else
+{
+    <MudTable Items="ListVM.Rows" Hover="true" Dense="true" Striped="true" Elevation="1">
+        <HeaderContent>
+            @foreach (var col in VisibleColumns)
+            {
+                <MudTh>
+                    @if (IsSortable(col))
+                    {
+                        <MudLink Color="Color.Inherit" Underline="Underline.None"
+                                 OnClick="@(() => OnSort.InvokeAsync(col.PropertyName))">
+                            @col.Label@(SortBy == col.PropertyName ? (SortDescending ? " ↓" : " ↑") : "")
+                        </MudLink>
+                    }
+                    else
+                    {
+                        @col.Label
+                    }
+                </MudTh>
+            }
+            <MudTh>Actions</MudTh>
+        </HeaderContent>
+        <RowTemplate Context="row">
+            @foreach (var col in VisibleColumns)
+            {
+                <MudTd DataLabel="@col.Label">
+                    @if (row.Values.TryGetValue(col.PropertyName, out var raw))
+                    {
+                        @RenderCell(raw)
+                    }
+                </MudTd>
+            }
+            <MudTd>
+                <MudIconButton Icon="@Icons.Material.Filled.Visibility" Size="Size.Small"
+                               OnClick="@(() => OnRowClick.InvokeAsync(row))" />
+                <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small"
+                               OnClick="@(() => OnEdit.InvokeAsync(row))" />
+                <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
+                               OnClick="@(() => OnDelete.InvokeAsync(row))" />
+            </MudTd>
+        </RowTemplate>
+    </MudTable>
+}
+
+@code {
+    [Parameter, EditorRequired] public EntityMeta? Entity { get; set; }
+    [Parameter, EditorRequired] public EntityListVM? ListVM { get; set; }
+    [Parameter] public EventCallback<EntityListRowVM> OnRowClick { get; set; }
+    [Parameter] public EventCallback<EntityListRowVM> OnEdit { get; set; }
+    [Parameter] public EventCallback<EntityListRowVM> OnDelete { get; set; }
+    [Parameter] public EventCallback<string> OnSort { get; set; }
+    [Parameter] public string? SortBy { get; set; }
+    [Parameter] public bool SortDescending { get; set; }
+
+    private IEnumerable<ColumnMeta> VisibleColumns =>
+        Entity?.Columns.Where(c => !c.HiddenInList && c.Kind != ColumnKind.NavigationCollection)
+        ?? Enumerable.Empty<ColumnMeta>();
+
+    private bool IsSortable(ColumnMeta col) =>
+        col.Kind is ColumnKind.Scalar or ColumnKind.Enum && !col.IsForeignKey;
+
+    private RenderFragment RenderCell(object? raw) => builder =>
+    {
+        if (raw is null)
+        {
+            builder.AddContent(0, "");
+            return;
+        }
+        if (raw is NavigationRef nr)
+        {
+            builder.AddContent(0, nr.DisplayLabel);
+            return;
+        }
+        if (raw is IReadOnlyList<NavigationRef> navs)
+        {
+            builder.AddContent(0, string.Join(", ", navs.Select(n => n.DisplayLabel)));
+            return;
+        }
+        if (raw is DateTime dt)
+        {
+            builder.AddContent(0, dt.ToString("yyyy-MM-dd HH:mm"));
+            return;
+        }
+        if (raw is bool b)
+        {
+            builder.AddContent(0, b ? "yes" : "no");
+            return;
+        }
+        builder.AddContent(0, raw.ToString());
+    };
+}

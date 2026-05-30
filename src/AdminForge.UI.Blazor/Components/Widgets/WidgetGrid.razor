@@ -1,0 +1,86 @@
+@* Row-based layout container for a dashboard. Iterates the layout rows and
+   places each cell into a MudGrid item sized via xs/sm computed from the row's
+   total width. Falls back to "one widget per full-width row in registration
+   order" when no layout was configured. *@
+
+@if (Dashboard is null)
+{
+    <MudText>No dashboard.</MudText>
+}
+else
+{
+    @foreach (var row in EffectiveRows())
+    {
+        var totalWidth = row.Cells.Any(c => c.FullWidth)
+            ? 12
+            : row.Cells.Sum(c => c.Width);
+        if (totalWidth <= 0)
+        {
+            totalWidth = 1;
+        }
+        <MudGrid Class="mb-4" Spacing="2">
+            @foreach (var cell in row.Cells)
+            {
+                if (!Dashboard.Widgets.TryGetValue(cell.WidgetId, out var widget))
+                {
+                    continue;
+                }
+                int xs = cell.FullWidth
+                    ? 12
+                    : (int)Math.Round(12.0 * cell.Width / totalWidth, MidpointRounding.AwayFromZero);
+                if (xs <= 0) xs = 1;
+                if (xs > 12) xs = 12;
+                <MudItem xs="12" sm="@xs">
+                    @RenderWidget(widget)
+                </MudItem>
+            }
+        </MudGrid>
+    }
+}
+
+@code {
+    [Parameter, EditorRequired] public DashboardVM? Dashboard { get; set; }
+
+    private IEnumerable<LayoutRowMeta> EffectiveRows()
+    {
+        if (Dashboard is null) yield break;
+        if (Dashboard.Layout is not null)
+        {
+            foreach (var r in Dashboard.Layout.Rows) yield return r;
+            yield break;
+        }
+        // Default: one widget per full-width row, in registration order.
+        foreach (var w in Dashboard.Widgets.Values)
+        {
+            yield return new LayoutRowMeta
+            {
+                Cells = new[] { new LayoutCellMeta { WidgetId = w.Id, FullWidth = true } }
+            };
+        }
+    }
+
+    private RenderFragment RenderWidget(WidgetVM widget) => builder =>
+    {
+        switch (widget)
+        {
+            case StatCardVM s:
+                builder.OpenComponent<StatCard>(0);
+                builder.AddAttribute(1, "VM", s);
+                builder.CloseComponent();
+                break;
+            case LineChartVM lc:
+                builder.OpenComponent<LineChart>(0);
+                builder.AddAttribute(1, "VM", lc);
+                builder.CloseComponent();
+                break;
+            case TableWidgetVM tw:
+                builder.OpenComponent<TableWidget>(0);
+                builder.AddAttribute(1, "VM", tw);
+                builder.CloseComponent();
+                break;
+            default:
+                builder.AddContent(0, $"Unknown widget '{widget.Title}'");
+                break;
+        }
+    };
+}

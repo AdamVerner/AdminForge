@@ -1,0 +1,27 @@
+<MudStack Row="true" AlignItems="AlignItems.Center" Class="mt-4">
+    <MudText Typo="Typo.body2">
+        Page @(Page + 1) of @TotalPages (@TotalCount items)
+    </MudText>
+    <MudSpacer />
+    <MudSelect T="int" Value="PageSize" Label="Per page" Dense="true" Style="min-width:100px"
+               ValueChanged="@(v => OnPageSizeChange.InvokeAsync(v))">
+        <MudSelectItem T="int" Value="10">10</MudSelectItem>
+        <MudSelectItem T="int" Value="25">25</MudSelectItem>
+        <MudSelectItem T="int" Value="50">50</MudSelectItem>
+        <MudSelectItem T="int" Value="100">100</MudSelectItem>
+    </MudSelect>
+    <MudIconButton Icon="@Icons.Material.Filled.ChevronLeft" Disabled="@(Page <= 0)"
+                   OnClick="@(() => OnPageChange.InvokeAsync(Page - 1))" />
+    <MudIconButton Icon="@Icons.Material.Filled.ChevronRight" Disabled="@(Page + 1 >= TotalPages)"
+                   OnClick="@(() => OnPageChange.InvokeAsync(Page + 1))" />
+</MudStack>
+
+@code {
+    [Parameter] public int Page { get; set; }
+    [Parameter] public int PageSize { get; set; }
+    [Parameter] public int TotalCount { get; set; }
+    [Parameter] public EventCallback<int> OnPageChange { get; set; }
+    [Parameter] public EventCallback<int> OnPageSizeChange { get; set; }
+
+    private int TotalPages => PageSize <= 0 ? 1 : Math.Max(1, (int)Math.Ceiling((double)TotalCount / PageSize));
+}

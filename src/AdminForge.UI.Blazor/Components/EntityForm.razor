@@ -1,0 +1,82 @@
+@using System.ComponentModel.DataAnnotations
+
+<MudCard>
+    <MudCardContent>
+        <MudForm @ref="_form" Model="Model">
+            @foreach (var column in EditableColumns)
+            {
+                <FieldRenderer Column="@column" Entity="@Entity" Model="@Model" Errors="@_columnErrors" />
+            }
+        </MudForm>
+    </MudCardContent>
+    <MudCardActions>
+        <MudButton OnClick="HandleCancel" Color="Color.Default">Cancel</MudButton>
+        <MudSpacer />
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Submit">@SubmitLabel</MudButton>
+    </MudCardActions>
+</MudCard>
+
+@code {
+    [Parameter, EditorRequired] public EntityMeta Entity { get; set; } = default!;
+    [Parameter, EditorRequired] public EntityEditVM Model { get; set; } = default!;
+    [Parameter] public EventCallback OnSubmit { get; set; }
+    [Parameter] public EventCallback OnCancel { get; set; }
+    [Parameter] public string SubmitLabel { get; set; } = "Save";
+    [Parameter] public bool IsNew { get; set; }
+
+    private MudForm? _form;
+    private Dictionary<string, string?> _columnErrors = new();
+
+    private IEnumerable<ColumnMeta> EditableColumns =>
+        Entity.Columns.Where(c =>
+            !c.HiddenInEdit
+            && c.Kind != ColumnKind.NavigationCollection
+            && c.Kind != ColumnKind.NavigationReference
+            && c.Kind != ColumnKind.Owned
+            && !c.IsGenerated
+            && (IsNew || !c.IsPrimaryKey)
+        );
+
+    private async Task Submit()
+    {
+        _columnErrors = new();
+        bool ok = true;
+        foreach (var column in EditableColumns)
+        {
+            Model.Values.TryGetValue(column.PropertyName, out var value);
+            // Required
+            if (column.IsRequired && (value is null || (value is string s && string.IsNullOrWhiteSpace(s))))
+            {
+                _columnErrors[column.PropertyName] = $"{column.Label} is required.";
+                ok = false;
+                continue;
+            }
+            // MaxLength
+            if (column.MaxLength is int max && value is string ss && ss.Length > max)
+            {
+                _columnErrors[column.PropertyName] = $"{column.Label} must be at most {max} characters.";
+                ok = false;
+                continue;
+            }
+            // Custom validators
+            foreach (var v in column.Validators)
+            {
+                var err = v.Validate(value);
+                if (err is not null)
+                {
+                    _columnErrors[column.PropertyName] = err;
+                    ok = false;
+                    break;
+                }
+            }
+        }
+        if (!ok)
+        {
+            StateHasChanged();
+            return;
+        }
+        await OnSubmit.InvokeAsync();
+    }
+
+    private async Task HandleCancel() => await OnCancel.InvokeAsync();
+}

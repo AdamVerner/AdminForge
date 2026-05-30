@@ -1,0 +1,156 @@
+@page "/admin/entities/{EntityName}"
+@inject IAdminUIBridge Bridge
+@inject NavigationManager Nav
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+
+<PageTitle>@(Entity?.Label ?? EntityName)</PageTitle>
+
+@if (Entity is null)
+{
+    <MudAlert Severity="Severity.Error">Unknown entity '@EntityName'.</MudAlert>
+}
+else
+{
+    <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-4">
+        <MudText Typo="Typo.h4">@Entity.Label</MudText>
+        <MudSpacer />
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+                   OnClick="@(() => Nav.NavigateTo($"/admin/entities/{Entity.RouteName}/new"))">
+            New @Entity.Label
+        </MudButton>
+    </MudStack>
+
+    <FilterBar Entity="@Entity" Filters="_filters" OnApply="ApplyFilters" />
+
+    <EntityTable Entity="@Entity"
+                 ListVM="_listVM"
+                 OnRowClick="OpenRow"
+                 OnEdit="EditRow"
+                 OnDelete="ConfirmDelete"
+                 OnSort="ChangeSort"
+                 SortBy="@_sortBy"
+                 SortDescending="@_sortDescending" />
+
+    <Pagination Page="_page" PageSize="_pageSize" TotalCount="_listVM?.TotalCount ?? 0"
+                OnPageChange="ChangePage" OnPageSizeChange="ChangePageSize" />
+}
+
+@code {
+    [Parameter] public string EntityName { get; set; } = string.Empty;
+
+    private EntityMeta? Entity;
+    private EntityListVM? _listVM;
+    private int _page;
+    private int _pageSize = 25;
+    private string? _sortBy;
+    private bool _sortDescending;
+    private Dictionary<string, object?> _filters = new();
+
+    protected override async Task OnParametersSetAsync()
+    {
+        Entity = Bridge.FindEntityByRouteName(EntityName);
+        if (Entity is null) return;
+        // Reset sort/filter when entity changes.
+        if (_listVM is not null && _listVM.EntityName != Entity.Name)
+        {
+            _page = 0;
+            _sortBy = null;
+            _sortDescending = false;
+            _filters = new();
+        }
+        await Reload();
+    }
+
+    private async Task Reload()
+    {
+        if (Entity is null) return;
+        var query = new ListQuery
+        {
+            Page = _page,
+            PageSize = _pageSize,
+            SortBy = _sortBy,
+            SortDescending = _sortDescending,
+            Filters = _filters,
+        };
+        try
+        {
+            _listVM = await Bridge.ListAsync(Entity, query);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Load failed: {ex.Message}", MudBlazor.Severity.Error);
+        }
+    }
+
+    private async Task ChangePage(int newPage)
+    {
+        _page = newPage;
+        await Reload();
+    }
+
+    private async Task ChangePageSize(int newSize)
+    {
+        _pageSize = newSize;
+        _page = 0;
+        await Reload();
+    }
+
+    private async Task ChangeSort(string column)
+    {
+        if (_sortBy == column)
+        {
+            _sortDescending = !_sortDescending;
+        }
+        else
+        {
+            _sortBy = column;
+            _sortDescending = false;
+        }
+        await Reload();
+    }
+
+    private async Task ApplyFilters(Dictionary<string, object?> filters)
+    {
+        _filters = filters;
+        _page = 0;
+        await Reload();
+    }
+
+    private void OpenRow(EntityListRowVM row)
+    {
+        if (Entity is null) return;
+        Nav.NavigateTo($"/admin/entities/{Entity.RouteName}/{Uri.EscapeDataString(row.Key)}");
+    }
+
+    private void EditRow(EntityListRowVM row)
+    {
+        if (Entity is null) return;
+        Nav.NavigateTo($"/admin/entities/{Entity.RouteName}/{Uri.EscapeDataString(row.Key)}/edit");
+    }
+
+    private async Task ConfirmDelete(EntityListRowVM row)
+    {
+        if (Entity is null) return;
+        var parameters = new DialogParameters
+        {
+            ["ContentText"] = $"Delete this {Entity.Label}? This cannot be undone.",
+            ["ButtonText"] = "Delete",
+            ["Color"] = MudBlazor.Color.Error,
+        };
+        var dialog = await DialogService.ShowAsync<ConfirmDialog>("Confirm delete", parameters);
+        var result = await dialog.Result;
+        if (result is null || result.Canceled) return;
+
+        try
+        {
+            await Bridge.DeleteAsync(Entity, row.Key);
+            Snackbar.Add("Deleted.", MudBlazor.Severity.Success);
+            await Reload();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Delete failed: {ex.Message}", MudBlazor.Severity.Error);
+        }
+    }
+}

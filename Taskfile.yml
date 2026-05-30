@@ -1,0 +1,28 @@
+version: '3'
+
+tasks:
+  build:
+    desc: Build the entire solution
+    cmds:
+      - dotnet build AdminForge.slnx
+
+  test:
+    desc: Run all tests
+    cmds:
+      - dotnet test AdminForge.slnx
+
+  example:todo:
+    desc: Run the TodoApp example
+    cmds:
+      - dotnet run --project examples/TodoApp
+
+  example:todo:seed:
+    desc: Seed the TodoApp SQLite database
+    cmds:
+      - dotnet run --project examples/TodoApp -- seed
+
+  clean:
+    desc: Remove build artifacts
+    cmds:
+      - dotnet clean AdminForge.slnx
+      - find . -type d \( -name bin -o -name obj \) -prune -exec rm -rf {} +

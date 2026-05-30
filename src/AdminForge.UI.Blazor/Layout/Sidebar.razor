@@ -1,0 +1,92 @@
+@inject IAdminUIBridge Bridge
+@inject AdminForgeOptions Options
+
+<MudNavMenu>
+    <MudNavLink Href="@RootHref" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Home">
+        Home
+    </MudNavLink>
+    @foreach (var group in _grouped)
+    {
+        if (group.Key is null)
+        {
+            @foreach (var entry in group.Entries)
+            {
+                <MudNavLink Href="@EntryHref(entry)" Icon="@(IconFor(entry))">
+                    @(entry.Label)
+                </MudNavLink>
+            }
+        }
+        else
+        {
+            <MudNavGroup Title="@group.Key" Expanded="true" Icon="@Icons.Material.Filled.Folder">
+                @foreach (var entry in group.Entries)
+                {
+                    <MudNavLink Href="@EntryHref(entry)" Icon="@(IconFor(entry))">
+                        @(entry.Label)
+                    </MudNavLink>
+                }
+            </MudNavGroup>
+        }
+    }
+</MudNavMenu>
+
+@code {
+    /// <summary>
+    /// Unified sidebar entry — entities and dashboards share the same nav-grouping
+    /// pipeline so they can interleave under user-defined groups.
+    /// </summary>
+    private enum EntryKind { Entity, Dashboard }
+    private record NavEntry(EntryKind Kind, string Label, string Href, NavMeta Nav);
+    private record GroupedNav(string? Key, List<NavEntry> Entries);
+    private List<GroupedNav> _grouped = new();
+
+    protected override void OnInitialized()
+    {
+        var entries = new List<NavEntry>();
+
+        foreach (var e in Bridge.Entities)
+        {
+            if (e.Nav.Hidden || e.IsJoinEntity) continue;
+            entries.Add(new NavEntry(
+                EntryKind.Entity,
+                e.Nav.Label ?? e.Label,
+                EntityHref(e),
+                e.Nav
+            ));
+        }
+
+        foreach (var d in Bridge.Dashboards)
+        {
+            if (d.Nav.Hidden) continue;
+            entries.Add(new NavEntry(
+                EntryKind.Dashboard,
+                d.Nav.Label ?? d.Title,
+                DashboardHref(d),
+                d.Nav
+            ));
+        }
+
+        _grouped = entries
+            .GroupBy(e => e.Nav.Group)
+            .OrderBy(g => g.Key is null ? 0 : 1)  // ungrouped first
+            .ThenBy(g => g.Key, StringComparer.OrdinalIgnoreCase)
+            .Select(g => new GroupedNav(
+                g.Key,
+                g.OrderBy(en => en.Nav.Order ?? int.MaxValue)
+                 .ThenBy(en => en.Label, StringComparer.OrdinalIgnoreCase)
+                 .ToList()
+            ))
+            .ToList();
+    }
+
+    private string RootHref => "/" + Options.RoutePrefix.Trim('/');
+    private string EntityHref(EntityMeta meta) => $"{RootHref}/entities/{meta.RouteName}";
+    private string DashboardHref(DashboardMeta meta) => $"{RootHref}/dashboards/{meta.RouteName}";
+    private string EntryHref(NavEntry entry) => entry.Href;
+
+    private string IconFor(NavEntry entry) => entry.Kind switch
+    {
+        EntryKind.Dashboard => Icons.Material.Filled.Dashboard,
+        _ => Icons.Material.Filled.TableChart,
+    };
+}

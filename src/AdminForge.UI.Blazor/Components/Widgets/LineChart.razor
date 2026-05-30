@@ -1,0 +1,63 @@
+@* Line chart widget. MudBlazor's MudChart needs a flat double[] per series plus
+   string[] labels for the X axis; we project the materialised LineChartVM.Points
+   into those shapes here so the meta side can stay strongly typed. *@
+
+<MudPaper Class="pa-4" Elevation="2" Style="height:100%">
+    <MudText Typo="Typo.subtitle2" Color="Color.Secondary">@VM.Title</MudText>
+    @if (VM.Error is not null)
+    {
+        <MudAlert Severity="Severity.Error" Dense="true">@VM.Error</MudAlert>
+    }
+    else if (VM.Points.Count == 0)
+    {
+        <MudText Typo="Typo.body2" Class="mt-2">No data.</MudText>
+    }
+    else
+    {
+        <MudChart ChartType="ChartType.Line"
+                  ChartSeries="@_series"
+                  ChartLabels="@_xLabels"
+                  Width="100%"
+                  Height="240px"
+                  T="double" />
+        @if (!string.IsNullOrEmpty(VM.YAxisLabel))
+        {
+            <MudText Typo="Typo.caption">@VM.YAxisLabel</MudText>
+        }
+    }
+</MudPaper>
+
+@code {
+    [Parameter, EditorRequired] public LineChartVM VM { get; set; } = default!;
+
+    private List<ChartSeries<double>> _series = new();
+    private string[] _xLabels = Array.Empty<string>();
+
+    protected override void OnParametersSet()
+    {
+        if (VM is null || VM.Points.Count == 0)
+        {
+            _series = new();
+            _xLabels = Array.Empty<string>();
+            return;
+        }
+
+        _series = new List<ChartSeries<double>>
+        {
+            new ChartSeries<double>
+            {
+                Name = VM.YAxisLabel ?? VM.Title,
+                Data = VM.Points.Select(p => p.Y).ToArray(),
+            },
+        };
+        _xLabels = VM.Points.Select(p => FormatX(p.X)).ToArray();
+    }
+
+    private static string FormatX(object? x)
+    {
+        if (x is null) return "";
+        if (x is DateTime dt) return dt.ToString("MM-dd");
+        if (x is DateOnly d) return d.ToString("MM-dd");
+        return x.ToString() ?? "";
+    }
+}

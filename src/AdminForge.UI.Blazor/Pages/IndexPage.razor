@@ -1,0 +1,8 @@
+@page "/admin"
+@inject AdminForgeOptions Options
+@inject IAdminUIBridge Bridge
+
+<PageTitle>@Options.Title</PageTitle>
+
+<MudText Typo="Typo.h4">@Options.Title</MudText>
+<MudText Typo="Typo.body1" Class="mt-2">@Bridge.Entities.Count registered entities. Pick one from the sidebar.</MudText>

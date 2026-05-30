@@ -1,0 +1,104 @@
+@page "/admin/entities/{EntityName}/{Key}"
+@inject IAdminUIBridge Bridge
+@inject NavigationManager Nav
+
+<PageTitle>@(Entity?.Label ?? EntityName)</PageTitle>
+
+@if (Entity is null)
+{
+    <MudAlert Severity="Severity.Error">Unknown entity '@EntityName'.</MudAlert>
+}
+else if (_view is null)
+{
+    <MudProgressCircular Indeterminate="true" />
+}
+else
+{
+    <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-4">
+        <MudText Typo="Typo.h4">@Entity.Label — @_view.Key</MudText>
+        <MudSpacer />
+        <MudButton Variant="Variant.Outlined"
+                   OnClick="@(() => Nav.NavigateTo($"/admin/entities/{Entity.RouteName}"))">
+            Back to list
+        </MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Edit"
+                   OnClick="@(() => Nav.NavigateTo($"/admin/entities/{Entity.RouteName}/{Uri.EscapeDataString(_view.Key)}/edit"))">
+            Edit
+        </MudButton>
+    </MudStack>
+
+    <MudCard>
+        <MudCardContent>
+            @foreach (var column in Entity.Columns)
+            {
+                if (column.Kind == ColumnKind.NavigationCollection) continue;
+                if (!_view.Values.TryGetValue(column.PropertyName, out var raw)) continue;
+
+                <MudStack Row="true" Class="mb-3">
+                    <MudText Typo="Typo.subtitle2" Style="min-width:200px">@column.Label</MudText>
+                    <div>@RenderValue(raw, column)</div>
+                </MudStack>
+            }
+        </MudCardContent>
+    </MudCard>
+}
+
+@code {
+    [Parameter] public string EntityName { get; set; } = string.Empty;
+    [Parameter] public string Key { get; set; } = string.Empty;
+
+    private EntityMeta? Entity;
+    private EntityViewVM? _view;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        Entity = Bridge.FindEntityByRouteName(EntityName);
+        if (Entity is null) return;
+        _view = await Bridge.FindAsync(Entity, Uri.UnescapeDataString(Key));
+    }
+
+    private RenderFragment RenderValue(object? raw, ColumnMeta column) => builder =>
+    {
+        if (raw is null)
+        {
+            builder.AddContent(0, new MarkupString("<em>(null)</em>"));
+            return;
+        }
+        if (raw is NavigationRef navRef)
+        {
+            var meta = Bridge.Entities.FirstOrDefault(e => e.Name == navRef.EntityName);
+            if (meta is not null)
+            {
+                builder.OpenComponent<MudLink>(0);
+                builder.AddAttribute(1, "Href", $"/admin/entities/{meta.RouteName}/{Uri.EscapeDataString(navRef.Key)}");
+                builder.AddAttribute(2, "ChildContent", (RenderFragment)(b => b.AddContent(0, navRef.DisplayLabel)));
+                builder.CloseComponent();
+                return;
+            }
+            builder.AddContent(0, navRef.DisplayLabel);
+            return;
+        }
+        if (raw is IReadOnlyList<NavigationRef> navs)
+        {
+            var idx = 0;
+            foreach (var nr in navs)
+            {
+                if (idx++ > 0) builder.AddContent(100 + idx, ", ");
+                var meta = Bridge.Entities.FirstOrDefault(e => e.Name == nr.EntityName);
+                if (meta is not null)
+                {
+                    builder.OpenComponent<MudLink>(200 + idx);
+                    builder.AddAttribute(201 + idx, "Href", $"/admin/entities/{meta.RouteName}/{Uri.EscapeDataString(nr.Key)}");
+                    builder.AddAttribute(202 + idx, "ChildContent", (RenderFragment)(b => b.AddContent(0, nr.DisplayLabel)));
+                    builder.CloseComponent();
+                }
+                else
+                {
+                    builder.AddContent(300 + idx, nr.DisplayLabel);
+                }
+            }
+            return;
+        }
+        builder.AddContent(0, raw.ToString());
+    };
+}

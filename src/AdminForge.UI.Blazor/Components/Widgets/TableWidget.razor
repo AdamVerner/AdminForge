@@ -1,0 +1,74 @@
+@* Read-only table widget. Renders a slim grid of pre-materialised rows. The
+   entity edit/list flows still live on /admin/entities/{Entity}; this widget
+   shows a snapshot only. *@
+
+<MudPaper Class="pa-4" Elevation="2" Style="height:100%">
+    <MudText Typo="Typo.subtitle2" Color="Color.Secondary">@VM.Title</MudText>
+    @if (VM.Error is not null)
+    {
+        <MudAlert Severity="Severity.Error" Dense="true">@VM.Error</MudAlert>
+    }
+    else if (VM.Rows.Count == 0)
+    {
+        <MudText Typo="Typo.body2" Class="mt-2">No rows.</MudText>
+    }
+    else
+    {
+        <MudTable Items="VM.Rows" Hover="true" Dense="true" Striped="true" Elevation="0" Class="mt-2">
+            <HeaderContent>
+                @foreach (var col in DisplayColumns)
+                {
+                    <MudTh>@(LabelFor(col))</MudTh>
+                }
+            </HeaderContent>
+            <RowTemplate Context="row">
+                @foreach (var col in DisplayColumns)
+                {
+                    <MudTd DataLabel="@LabelFor(col)">@RenderCell(row, col)</MudTd>
+                }
+            </RowTemplate>
+        </MudTable>
+    }
+</MudPaper>
+
+@code {
+    [Parameter, EditorRequired] public TableWidgetVM VM { get; set; } = default!;
+
+    private IEnumerable<string> DisplayColumns => VM.VisibleColumns;
+
+    private string LabelFor(string propName)
+    {
+        var col = VM.EntityMeta.Columns.FirstOrDefault(c => c.PropertyName == propName);
+        return col?.Label ?? propName;
+    }
+
+    private RenderFragment RenderCell(EntityListRowVM row, string col) => builder =>
+    {
+        if (!row.Values.TryGetValue(col, out var raw) || raw is null)
+        {
+            builder.AddContent(0, "");
+            return;
+        }
+        if (raw is NavigationRef nr)
+        {
+            builder.AddContent(0, nr.DisplayLabel);
+            return;
+        }
+        if (raw is IReadOnlyList<NavigationRef> navs)
+        {
+            builder.AddContent(0, string.Join(", ", navs.Select(n => n.DisplayLabel)));
+            return;
+        }
+        if (raw is DateTime dt)
+        {
+            builder.AddContent(0, dt.ToString("yyyy-MM-dd HH:mm"));
+            return;
+        }
+        if (raw is bool b)
+        {
+            builder.AddContent(0, b ? "yes" : "no");
+            return;
+        }
+        builder.AddContent(0, raw.ToString());
+    };
+}

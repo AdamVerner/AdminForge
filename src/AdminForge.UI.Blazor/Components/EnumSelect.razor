@@ -1,0 +1,25 @@
+@* Standalone enum dropdown — currently inlined by FieldRenderer. Kept as a
+   public component for future re-use in dashboards / generic forms (Phase 3+). *@
+@code {
+    [Parameter] public Type? EnumType { get; set; }
+    [Parameter] public string? Value { get; set; }
+    [Parameter] public string Label { get; set; } = string.Empty;
+    [Parameter] public bool Nullable { get; set; }
+    [Parameter] public EventCallback<string?> ValueChanged { get; set; }
+}
+
+@if (EnumType is not null)
+{
+    var names = Enum.GetNames(EnumType);
+    <MudSelect T="string" Label="@Label" Value="@Value"
+               ValueChanged="@(v => ValueChanged.InvokeAsync(v))">
+        @if (Nullable)
+        {
+            <MudSelectItem T="string" Value="@(null!)">(none)</MudSelectItem>
+        }
+        @foreach (var n in names)
+        {
+            <MudSelectItem T="string" Value="@n">@n</MudSelectItem>
+        }
+    </MudSelect>
+}

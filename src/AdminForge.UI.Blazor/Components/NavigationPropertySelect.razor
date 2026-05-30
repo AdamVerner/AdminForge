@@ -1,0 +1,97 @@
+@* Searchable picker for FK / navigation-reference columns.
+
+   Backs the FK scalar value (string-encoded primary key of the related entity).
+   Pre-populates from the current FK value by resolving its NavigationRef once,
+   then debounces user keystrokes through IAdminUIBridge.SearchRelatedAsync. *@
+
+@implements IDisposable
+@inject IAdminUIBridge Bridge
+
+<MudAutocomplete T="NavigationRef"
+                 Label="@Label"
+                 HelperText="@HelperText"
+                 Value="_selected"
+                 ValueChanged="OnValueChanged"
+                 SearchFunc="SearchAsync"
+                 ToStringFunc="DisplayLabel"
+                 ResetValueOnEmptyText="true"
+                 Clearable="true"
+                 DebounceInterval="300"
+                 Variant="Variant.Outlined"
+                 Margin="Margin.Dense" />
+
+@code {
+    /// <summary>CLR type of the related entity to search.</summary>
+    [Parameter] public Type? RelatedEntityType { get; set; }
+
+    /// <summary>String-encoded primary key of the current selection (or null).</summary>
+    [Parameter] public string? Value { get; set; }
+
+    /// <summary>Fires when the user picks a row; argument is the new encoded key (null on clear).</summary>
+    [Parameter] public EventCallback<string?> ValueChanged { get; set; }
+
+    /// <summary>Display label rendered above the input.</summary>
+    [Parameter] public string Label { get; set; } = string.Empty;
+
+    /// <summary>Helper text below the input.</summary>
+    [Parameter] public string? HelperText { get; set; }
+
+    private NavigationRef? _selected;
+    private string? _lastResolvedKey;
+    private readonly CancellationTokenSource _cts = new();
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (RelatedEntityType is null)
+        {
+            _selected = null;
+            return;
+        }
+        if (!string.Equals(Value, _lastResolvedKey, StringComparison.Ordinal))
+        {
+            _lastResolvedKey = Value;
+            if (string.IsNullOrEmpty(Value))
+            {
+                _selected = null;
+            }
+            else
+            {
+                try
+                {
+                    _selected = await Bridge.FindRelatedAsync(RelatedEntityType, Value, _cts.Token);
+                }
+                catch
+                {
+                    _selected = null;
+                }
+            }
+        }
+    }
+
+    private async Task<IEnumerable<NavigationRef>> SearchAsync(string? value, CancellationToken token)
+    {
+        if (RelatedEntityType is null) return Array.Empty<NavigationRef>();
+        try
+        {
+            return await Bridge.SearchRelatedAsync(RelatedEntityType, value, take: 25, token);
+        }
+        catch
+        {
+            return Array.Empty<NavigationRef>();
+        }
+    }
+
+    private static string DisplayLabel(NavigationRef? r) => r?.DisplayLabel ?? string.Empty;
+
+    private async Task OnValueChanged(NavigationRef? r)
+    {
+        _selected = r;
+        _lastResolvedKey = r?.Key;
+        await ValueChanged.InvokeAsync(r?.Key);
+    }
+
+    public void Dispose()
+    {
+        try { _cts.Cancel(); _cts.Dispose(); } catch { /* best-effort */ }
+    }
+}

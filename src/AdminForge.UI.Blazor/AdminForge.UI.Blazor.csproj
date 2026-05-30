@@ -5,10 +5,17 @@
 
   <ItemGroup>
     <ProjectReference Include="../AdminForge.Core/AdminForge.Core.csproj" />
+    <ProjectReference Include="../AdminForge.DataAccess.EfCore/AdminForge.DataAccess.EfCore.csproj" />
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.AspNetCore.Components.Web" />
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <PackageReference Include="MudBlazor" />
+    <!--
+      Ships _framework/blazor.web.js as a static web asset. The Web SDK auto-references it for
+      Blazor host projects, but here the host (TodoApp) is plain Web SDK while the components
+      live in this Razor-SDK library — so we add it explicitly so the asset propagates.
+    -->
+    <PackageReference Include="Microsoft.AspNetCore.App.Internal.Assets" />
   </ItemGroup>
 </Project>
