@@ -13,8 +13,14 @@
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" />
   </ItemGroup>
 
+  <!-- See examples/TodoApp/TodoApp.csproj for why each sub-project is referenced directly. -->
   <ItemGroup>
     <ProjectReference Include="../../src/AdminForge/AdminForge.csproj" />
+    <ProjectReference Include="../../src/AdminForge.Core/AdminForge.Core.csproj" />
+    <ProjectReference Include="../../src/AdminForge.DataAccess.EfCore/AdminForge.DataAccess.EfCore.csproj" />
+    <ProjectReference Include="../../src/AdminForge.LiveUpdates/AdminForge.LiveUpdates.csproj" />
+    <ProjectReference Include="../../src/AdminForge.UI.Blazor/AdminForge.UI.Blazor.csproj" />
+    <ProjectReference Include="../../src/AdminForge.Middleware/AdminForge.Middleware.csproj" />
     <ProjectReference Include="../../examples/TodoApp/TodoApp.csproj" />
   </ItemGroup>
 

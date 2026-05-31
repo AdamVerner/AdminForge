@@ -9,6 +9,27 @@
     <IsPackable>false</IsPackable>
   </PropertyGroup>
 
+  <!--
+    Phase 6: ship XML doc files inside the meta-package so consumers see IntelliSense for
+    AdminForge types. Sub-projects aren't individually packed, but the meta-package's
+    TargetsForTfmSpecificContentInPackage hook copies these .xml outputs into lib/net10.0/
+    alongside the DLLs. CS1591 (missing doc on public member) is suppressed because the
+    surface area still has gaps; we'd rather ship docs for the documented members than
+    block the build on every undecorated public.
+  -->
+  <PropertyGroup Condition="$(MSBuildProjectName.StartsWith('AdminForge'))">
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <!--
+      CS1591: missing XML comment on public type/member
+      CS1573: missing param tag for documented method
+      CS1574/CS1580/CS1581/CS1584: unresolved cref / param refs (we have a few)
+      CS0419: ambiguous cref to an overload set
+      These are documentation-completeness checks, not correctness checks; we ship
+      whatever docs we have rather than block the build on the gaps.
+    -->
+    <NoWarn>$(NoWarn);CS1591;CS1573;CS1574;CS1580;CS1581;CS1584;CS0419</NoWarn>
+  </PropertyGroup>
+
   <!-- NuGet package metadata (applies to packable projects only) -->
   <PropertyGroup>
     <Authors>Adam Verner</Authors>

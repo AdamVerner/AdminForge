@@ -32,16 +32,36 @@
   </ItemGroup>
 
   <!--
-    Sub-project references: PrivateAssets=all because we hand-roll the contents of lib/net10.0/
-    via the AdminForgePackSubAssemblies target. Without PrivateAssets the pack output would
-    list these sub-projects as missing NuGet dependencies.
+    Sub-project references with PrivateAssets="all" so the produced nupkg does NOT list
+    AdminForge.Core, .UI.Blazor, etc. as NuGet dependencies (those package ids don't exist
+    on any feed). Their compiled DLLs are shipped inline under lib/net10.0/ via the
+    AdminForgePackSubAssemblies target below; a NuGet consumer who installs AdminForge
+    will find AdminForge.Core types automatically because that DLL sits next to AdminForge.dll
+    in the package's lib folder.
+
+    SIDE EFFECT: in-solution ProjectReference consumers (TodoApp, integration tests)
+    can no longer see sub-project types via this meta-package alone — PrivateAssets="all"
+    cuts compile-time asset flow. Those consumers reference the sub-projects directly.
+    See examples/TodoApp/TodoApp.csproj and tests/AdminForge.IntegrationTests/*.csproj.
   -->
   <ItemGroup>
     <ProjectReference Include="../AdminForge.Core/AdminForge.Core.csproj" PrivateAssets="all" />
-    <ProjectReference Include="../AdminForge.DataAccess.EfCore/AdminForge.DataAccess.EfCore.csproj" PrivateAssets="all" />
-    <ProjectReference Include="../AdminForge.LiveUpdates/AdminForge.LiveUpdates.csproj" PrivateAssets="all" />
-    <ProjectReference Include="../AdminForge.UI.Blazor/AdminForge.UI.Blazor.csproj" PrivateAssets="all" />
-    <ProjectReference Include="../AdminForge.Middleware/AdminForge.Middleware.csproj" PrivateAssets="all" />
+    <ProjectReference
+      Include="../AdminForge.DataAccess.EfCore/AdminForge.DataAccess.EfCore.csproj"
+      PrivateAssets="all"
+    />
+    <ProjectReference
+      Include="../AdminForge.LiveUpdates/AdminForge.LiveUpdates.csproj"
+      PrivateAssets="all"
+    />
+    <ProjectReference
+      Include="../AdminForge.UI.Blazor/AdminForge.UI.Blazor.csproj"
+      PrivateAssets="all"
+    />
+    <ProjectReference
+      Include="../AdminForge.Middleware/AdminForge.Middleware.csproj"
+      PrivateAssets="all"
+    />
   </ItemGroup>
 
   <!--
@@ -67,8 +87,13 @@
   -->
   <Target Name="AdminForgePackSubAssemblies">
     <ItemGroup>
-      <_AdminForgeLibFiles Include="$(OutputPath)AdminForge*.dll" />
-      <_AdminForgeLibFiles Include="$(OutputPath)AdminForge*.xml" />
+      <!--
+        Glob the SUB-PROJECT assemblies only. The meta-package's own AdminForge.dll/.xml
+        is already added by the standard pack pipeline, so excluding it avoids NU5118
+        duplicate-file errors.
+      -->
+      <_AdminForgeLibFiles Include="$(OutputPath)AdminForge.*.dll" />
+      <_AdminForgeLibFiles Include="$(OutputPath)AdminForge.*.xml" />
       <TfmSpecificPackageFile Include="@(_AdminForgeLibFiles)">
         <PackagePath>lib/$(TargetFramework)/</PackagePath>
       </TfmSpecificPackageFile>
