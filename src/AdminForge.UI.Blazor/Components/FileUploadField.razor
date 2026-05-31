@@ -1,0 +1,75 @@
+@*
+    Pragmatic v1 file upload: in-memory buffering up to Options.MaxSizeBytes.
+    The parent form is handed a FormFileUpload via FileChanged whenever the
+    user picks a file; submitting flushes that into the FormSubmission.
+*@
+
+<MudStack Class="mb-2">
+    <MudText Typo="Typo.subtitle2">@Label</MudText>
+    <InputFile OnChange="@OnFilePickedJs" accept="@AcceptAttribute" />
+    @if (!string.IsNullOrEmpty(HelperText))
+    {
+        <MudText Typo="Typo.caption">@HelperText</MudText>
+    }
+    @if (_picked is not null)
+    {
+        <MudText Typo="Typo.body2">
+            Selected: <strong>@_picked.FileName</strong> (@_picked.Length bytes, @_picked.ContentType)
+        </MudText>
+    }
+    @if (!string.IsNullOrEmpty(_localError))
+    {
+        <MudAlert Severity="Severity.Warning" Class="mt-1">@_localError</MudAlert>
+    }
+    @if (!string.IsNullOrEmpty(Error))
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-1">@Error</MudAlert>
+    }
+</MudStack>
+
+@code {
+    [Parameter] public string Label { get; set; } = "Upload";
+    [Parameter] public string? HelperText { get; set; }
+    [Parameter] public string? Error { get; set; }
+    [Parameter] public FileUploadFieldOptions Options { get; set; } = new();
+    [Parameter] public EventCallback<FormFileUpload?> FileChanged { get; set; }
+
+    private FormFileUpload? _picked;
+    private string? _localError;
+
+    private string? AcceptAttribute =>
+        Options.AcceptedExtensions is { Count: > 0 } exts ? string.Join(",", exts) : null;
+
+    private Task OnFilePickedJs(InputFileChangeEventArgs args)
+    {
+        return OnFilePicked(args.FileCount == 0 ? null : args.File);
+    }
+
+    private async Task OnFilePicked(IBrowserFile? file)
+    {
+        _localError = null;
+        if (file is null)
+        {
+            _picked = null;
+            await FileChanged.InvokeAsync(null);
+            return;
+        }
+
+        var max = Options.MaxSizeBytes ?? long.MaxValue;
+        if (file.Size > max)
+        {
+            _localError = $"File exceeds maximum size of {max} bytes.";
+            _picked = null;
+            await FileChanged.InvokeAsync(null);
+            return;
+        }
+
+        // Buffer to memory. Stream limit needs to be raised to accept the file.
+        using var stream = file.OpenReadStream(max);
+        using var ms = new MemoryStream();
+        await stream.CopyToAsync(ms);
+        var bytes = ms.ToArray();
+        _picked = new FormFileUpload(file.Name, file.ContentType ?? "application/octet-stream", bytes);
+        await FileChanged.InvokeAsync(_picked);
+    }
+}

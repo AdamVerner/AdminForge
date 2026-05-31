@@ -1,3 +1,4 @@
+using AdminForge.Core.Configuration;
 using AdminForge.Core.Metadata;
 using AdminForge.Core.ViewModels;
 
@@ -128,6 +129,26 @@ public interface IAdminUIBridge
         string encodedKey,
         string actionName,
         IActionContext context,
+        CancellationToken cancellationToken = default
+    );
+
+    /// <summary>Lightweight nav projection of every registered form.</summary>
+    IReadOnlyList<FormSummary> ListForms();
+
+    /// <summary>Build a fresh form view model for the given route, or null when missing.</summary>
+    FormVM? GetForm(string routeName);
+
+    /// <summary>
+    /// Validate and submit a form. Throws <see cref="FormValidationException"/>
+    /// when validation fails and <see cref="AdminForbiddenException"/> when the
+    /// authorization policy denies the submission. On success the handler runs
+    /// in a fresh DI scope and an <see cref="AuditAction.FormSubmit"/> event is
+    /// emitted.
+    /// </summary>
+    Task SubmitFormAsync(
+        string routeName,
+        FormSubmission submission,
+        IActionContext? context,
         CancellationToken cancellationToken = default
     );
 }

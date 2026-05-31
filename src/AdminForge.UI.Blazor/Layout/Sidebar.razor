@@ -35,7 +35,7 @@
     /// Unified sidebar entry — entities and dashboards share the same nav-grouping
     /// pipeline so they can interleave under user-defined groups.
     /// </summary>
-    private enum EntryKind { Entity, Dashboard }
+    private enum EntryKind { Entity, Dashboard, Form }
     private record NavEntry(EntryKind Kind, string Label, string Href, NavMeta Nav);
     private record GroupedNav(string? Key, List<NavEntry> Entries);
     private List<GroupedNav> _grouped = new();
@@ -66,6 +66,17 @@
             ));
         }
 
+        foreach (var f in Bridge.Forms)
+        {
+            if (f.Nav.Hidden) continue;
+            entries.Add(new NavEntry(
+                EntryKind.Form,
+                f.Nav.Label ?? f.Title,
+                FormHref(f),
+                f.Nav
+            ));
+        }
+
         _grouped = entries
             .GroupBy(e => e.Nav.Group)
             .OrderBy(g => g.Key is null ? 0 : 1)  // ungrouped first
@@ -82,11 +93,13 @@
     private string RootHref => "/" + Options.RoutePrefix.Trim('/');
     private string EntityHref(EntityMeta meta) => $"{RootHref}/entities/{meta.RouteName}";
     private string DashboardHref(DashboardMeta meta) => $"{RootHref}/dashboards/{meta.RouteName}";
+    private string FormHref(FormMeta meta) => $"{RootHref}/forms/{meta.RouteName}";
     private string EntryHref(NavEntry entry) => entry.Href;
 
     private string IconFor(NavEntry entry) => entry.Kind switch
     {
         EntryKind.Dashboard => Icons.Material.Filled.Dashboard,
+        EntryKind.Form => Icons.Material.Filled.Description,
         _ => Icons.Material.Filled.TableChart,
     };
 }

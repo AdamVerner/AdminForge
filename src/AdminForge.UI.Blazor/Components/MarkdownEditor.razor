@@ -1,0 +1,74 @@
+@*
+    Pragmatic v1 markdown editor: a multi-line textarea on the left and a
+    naive preview on the right. We deliberately avoid pulling a markdown
+    parsing library — the preview renders headings, bold/italic, code, and
+    line breaks with hand-rolled HTML escaping. Consumers wanting fidelity
+    can wire a renderer post-Phase 4.
+*@
+
+<MudStack Row="true" Spacing="2">
+    <MudTextField T="string" Label="@Label" Value="@Value"
+                  HelperText="@HelperText"
+                  Error="@(Error is not null)" ErrorText="@Error"
+                  Lines="8" Class="flex-grow-1"
+                  Style="min-width: 240px"
+                  ValueChanged="@OnChanged" />
+    <MudPaper Class="pa-3 flex-grow-1" Style="min-width: 240px; max-height: 220px; overflow:auto;">
+        <MudText Typo="Typo.caption">Preview</MudText>
+        @((MarkupString)RenderMarkdown(Value ?? string.Empty))
+    </MudPaper>
+</MudStack>
+
+@code {
+    [Parameter] public string Label { get; set; } = string.Empty;
+    [Parameter] public string? HelperText { get; set; }
+    [Parameter] public string? Error { get; set; }
+    [Parameter] public string Value { get; set; } = string.Empty;
+    [Parameter] public EventCallback<string> ValueChanged { get; set; }
+
+    private Task OnChanged(string v) => ValueChanged.InvokeAsync(v);
+
+    private static string RenderMarkdown(string md)
+    {
+        if (string.IsNullOrEmpty(md)) return "<em>(empty)</em>";
+
+        // HTML-escape first, then re-introduce a tiny markdown subset.
+        var escaped = System.Net.WebUtility.HtmlEncode(md);
+
+        // Headings (#, ##, ###) — must be at start of line.
+        escaped = System.Text.RegularExpressions.Regex.Replace(
+            escaped,
+            @"(?m)^###\s+(.+)$",
+            "<h3>$1</h3>");
+        escaped = System.Text.RegularExpressions.Regex.Replace(
+            escaped,
+            @"(?m)^##\s+(.+)$",
+            "<h2>$1</h2>");
+        escaped = System.Text.RegularExpressions.Regex.Replace(
+            escaped,
+            @"(?m)^#\s+(.+)$",
+            "<h1>$1</h1>");
+
+        // Inline code `x`
+        escaped = System.Text.RegularExpressions.Regex.Replace(
+            escaped,
+            @"`([^`]+)`",
+            "<code>$1</code>");
+
+        // Bold **x**
+        escaped = System.Text.RegularExpressions.Regex.Replace(
+            escaped,
+            @"\*\*([^*]+)\*\*",
+            "<strong>$1</strong>");
+
+        // Italic *x*
+        escaped = System.Text.RegularExpressions.Regex.Replace(
+            escaped,
+            @"\*([^*]+)\*",
+            "<em>$1</em>");
+
+        // Newlines → <br>.
+        escaped = escaped.Replace("\r\n", "\n").Replace("\n", "<br/>");
+        return escaped;
+    }
+}

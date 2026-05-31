@@ -301,6 +301,302 @@ public sealed class BlazorUIBridge : IAdminUIBridge
         }
     }
 
+    public IReadOnlyList<FormSummary> ListForms()
+    {
+        var summaries = new List<FormSummary>(_options.Forms.Count);
+        foreach (var f in _options.Forms)
+            summaries.Add(new FormSummary(f.RouteName, f.Title, f.Nav));
+        return summaries;
+    }
+
+    public FormVM? GetForm(string routeName)
+    {
+        if (string.IsNullOrWhiteSpace(routeName))
+            return null;
+        var meta = _options.Forms.FirstOrDefault(f =>
+            string.Equals(f.RouteName, routeName, StringComparison.OrdinalIgnoreCase)
+        );
+        if (meta is null)
+            return null;
+        var values = new Dictionary<string, object?>(StringComparer.Ordinal);
+        foreach (var field in meta.Fields)
+        {
+            values[field.Name] = field.Kind switch
+            {
+                FieldKind.Bool => false,
+                _ => null,
+            };
+        }
+        return new FormVM
+        {
+            RouteName = meta.RouteName,
+            Title = meta.Title,
+            Description = meta.Description,
+            Fields = meta.Fields.AsReadOnly(),
+            Values = values,
+        };
+    }
+
+    public async Task SubmitFormAsync(
+        string routeName,
+        FormSubmission submission,
+        IActionContext? context,
+        CancellationToken cancellationToken = default
+    )
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(routeName);
+        ArgumentNullException.ThrowIfNull(submission);
+
+        var meta =
+            _options.Forms.FirstOrDefault(f =>
+                string.Equals(f.RouteName, routeName, StringComparison.OrdinalIgnoreCase)
+            ) ?? throw new InvalidOperationException($"Form '{routeName}' is not registered.");
+        if (meta.Submit is null)
+            throw new InvalidOperationException(
+                $"Form '{routeName}' has no registered submit handler."
+            );
+
+        // Authorize before validating — denial should short-circuit work.
+        var entityNameForAuthz = $"Form:{routeName}";
+        var user = _userAccessor.GetUser();
+        var authorized = await _authzPolicy
+            .IsAuthorizedAsync(
+                entityNameForAuthz,
+                AdminAction.FormSubmit,
+                user,
+                instance: null,
+                actionName: routeName,
+                cancellationToken
+            )
+            .ConfigureAwait(false);
+        if (!authorized)
+            throw new AdminForbiddenException(entityNameForAuthz, AdminAction.FormSubmit);
+
+        // Validate (Required + per-field validators).
+        var errors = ValidateSubmission(meta, submission);
+        if (errors.Count > 0)
+            throw new FormValidationException(routeName, errors);
+
+        // Invoke handler in a fresh DI scope.
+        using (var scope = _serviceProvider.CreateScope())
+        {
+            var actionContext = context ?? new NullActionContext();
+            await meta.Submit(scope.ServiceProvider, submission, actionContext)
+                .ConfigureAwait(false);
+        }
+
+        // Audit.
+        if (_options.AuditSink is not null)
+        {
+            var changes = new Dictionary<string, AuditValueChange>(StringComparer.Ordinal);
+            foreach (var field in meta.Fields)
+            {
+                if (field.Kind == FieldKind.FileUpload)
+                {
+                    submission.Files.TryGetValue(field.Name, out var file);
+                    if (file is null)
+                    {
+                        changes[field.Name] = new AuditValueChange(null, null);
+                    }
+                    else
+                    {
+                        var summary = new Dictionary<string, object?>(StringComparer.Ordinal)
+                        {
+                            ["FileName"] = file.FileName,
+                            ["ContentType"] = file.ContentType,
+                            ["Length"] = file.Length,
+                        };
+                        changes[field.Name] = new AuditValueChange(null, summary);
+                    }
+                }
+                else
+                {
+                    submission.Values.TryGetValue(field.Name, out var v);
+                    changes[field.Name] = new AuditValueChange(null, v);
+                }
+            }
+            await _options
+                .AuditSink.RecordAsync(
+                    new AuditEvent
+                    {
+                        EntityType = $"Form:{routeName}",
+                        Action = AuditAction.FormSubmit,
+                        EntityId = null,
+                        ChangedValues = changes,
+                        User = _userAccessor.GetUserId(),
+                    },
+                    cancellationToken
+                )
+                .ConfigureAwait(false);
+        }
+    }
+
+    private static Dictionary<string, string> ValidateSubmission(
+        FormMeta meta,
+        FormSubmission submission
+    )
+    {
+        var errors = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var field in meta.Fields)
+        {
+            // Required check.
+            if (field.Required)
+            {
+                bool missing;
+                if (field.Kind == FieldKind.FileUpload)
+                {
+                    missing =
+                        !submission.Files.TryGetValue(field.Name, out var file) || file is null;
+                }
+                else
+                {
+                    submission.Values.TryGetValue(field.Name, out var v);
+                    missing = v is null || (v is string s && string.IsNullOrWhiteSpace(s));
+                }
+                if (missing)
+                {
+                    errors[field.Name] = $"{field.Label} is required.";
+                    continue;
+                }
+            }
+
+            // Type-specific options.
+            if (
+                field.Kind == FieldKind.Text
+                && field.Options is TextFieldOptions txt
+                && txt.MaxLength is int maxLen
+            )
+            {
+                submission.Values.TryGetValue(field.Name, out var v);
+                if (v is string s && s.Length > maxLen)
+                {
+                    errors[field.Name] = $"{field.Label} must be at most {maxLen} characters.";
+                    continue;
+                }
+            }
+            else if (field.Kind == FieldKind.Number && field.Options is NumberFieldOptions num)
+            {
+                submission.Values.TryGetValue(field.Name, out var v);
+                if (v is not null && TryToLong(v, out var l))
+                {
+                    if (num.Min is long min && l < min)
+                    {
+                        errors[field.Name] = $"{field.Label} must be >= {min}.";
+                        continue;
+                    }
+                    if (num.Max is long max && l > max)
+                    {
+                        errors[field.Name] = $"{field.Label} must be <= {max}.";
+                        continue;
+                    }
+                }
+            }
+            else if (field.Kind == FieldKind.Float && field.Options is FloatFieldOptions flt)
+            {
+                submission.Values.TryGetValue(field.Name, out var v);
+                if (v is not null && TryToDouble(v, out var d))
+                {
+                    if (flt.Min is double min && d < min)
+                    {
+                        errors[field.Name] = $"{field.Label} must be >= {min}.";
+                        continue;
+                    }
+                    if (flt.Max is double max && d > max)
+                    {
+                        errors[field.Name] = $"{field.Label} must be <= {max}.";
+                        continue;
+                    }
+                }
+            }
+            else if (
+                field.Kind == FieldKind.FileUpload
+                && field.Options is FileUploadFieldOptions fu
+            )
+            {
+                if (submission.Files.TryGetValue(field.Name, out var file) && file is not null)
+                {
+                    if (fu.MaxSizeBytes is long cap && file.Length > cap)
+                    {
+                        errors[field.Name] = $"{field.Label} exceeds maximum size of {cap} bytes.";
+                        continue;
+                    }
+                    if (fu.AcceptedExtensions is { Count: > 0 } accepted)
+                    {
+                        var ext = System.IO.Path.GetExtension(file.FileName).ToLowerInvariant();
+                        if (!accepted.Contains(ext))
+                        {
+                            errors[field.Name] = $"{field.Label} extension '{ext}' is not allowed.";
+                            continue;
+                        }
+                    }
+                }
+            }
+
+            // User-supplied validators.
+            object? candidate = null;
+            if (field.Kind == FieldKind.FileUpload)
+            {
+                submission.Files.TryGetValue(field.Name, out var file);
+                candidate = file;
+            }
+            else
+            {
+                submission.Values.TryGetValue(field.Name, out candidate);
+            }
+            foreach (var v in field.Validators)
+            {
+                var err = v.Validate(candidate);
+                if (err is not null)
+                {
+                    errors[field.Name] = err;
+                    break;
+                }
+            }
+        }
+        return errors;
+    }
+
+    private static bool TryToLong(object value, out long result)
+    {
+        try
+        {
+            result = Convert.ToInt64(value, CultureInfo.InvariantCulture);
+            return true;
+        }
+        catch
+        {
+            result = 0;
+            return false;
+        }
+    }
+
+    private static bool TryToDouble(object value, out double result)
+    {
+        try
+        {
+            result = Convert.ToDouble(value, CultureInfo.InvariantCulture);
+            return true;
+        }
+        catch
+        {
+            result = 0;
+            return false;
+        }
+    }
+
+    private sealed class NullActionContext : IActionContext
+    {
+        public Task<bool> ConfirmAsync(string message) => Task.FromResult(true);
+
+        public void ShowSuccess(string message) { }
+
+        public void ShowError(string message) { }
+
+        public void NavigateTo(string url) { }
+
+        public void Refresh() { }
+    }
+
     public async Task<DashboardVM> LoadDashboardAsync(
         DashboardMeta dashboard,
         CancellationToken cancellationToken = default

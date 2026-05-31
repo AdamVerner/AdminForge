@@ -101,6 +101,53 @@ builder.Services.AddAdminForge<AppDbContext>(forge =>
                     c => c.Label("# Todos").From(t => t.Todos.Count).Sortable()
                 )
         )
+        // Phase 4: generic form exercising every supported field kind. The submit
+        // handler just logs + shows a snackbar via the IActionContext; the audit
+        // sink captures the serialised values for inspection.
+        .AddForm(
+            "send-notification",
+            form =>
+                form.WithTitle("Send Notification")
+                    .WithDescription(
+                        "Demonstrates every form field type. Submission is logged to the console audit sink."
+                    )
+                    .Nav(n => n.Group("Tools").Order(1).Label("Send Notification"))
+                    .AddField(f =>
+                        f.Text("Title")
+                            .Label("Title")
+                            .Description("Headline shown in the inbox.")
+                            .Required()
+                    )
+                    .AddField(f =>
+                        f.Text("Body").Label("Body").Multiline().MaxLength(1000).Required()
+                    )
+                    .AddField(f =>
+                        f.Markdown("RichBody").Label("Rich Body").Description("Markdown editor.")
+                    )
+                    .AddField(f => f.Number("Priority").Label("Priority").Min(0).Max(5))
+                    .AddField(f => f.Float("AmplificationFactor").Label("Amplification Factor"))
+                    .AddField(f => f.Bool("Urgent").Label("Mark as urgent"))
+                    .AddField(f =>
+                        f.Date("ScheduledDate")
+                            .Label("Scheduled Date")
+                            .Description("Leave empty for immediate send.")
+                    )
+                    .AddField(f => f.DateTime("ExpiresAt").Label("Expires At"))
+                    .AddField(f =>
+                        f.FileUpload("Attachment")
+                            .Label("Attachment")
+                            .MaxSizeBytes(5 * 1024 * 1024)
+                            .AcceptedExtensions(".pdf", ".png", ".jpg")
+                    )
+                    .OnSubmit(
+                        (sp, submission, ctx) =>
+                        {
+                            var title = submission.Get<string>("Title");
+                            ctx.ShowSuccess($"Queued notification: {title}");
+                            return Task.CompletedTask;
+                        }
+                    )
+        )
         .AddDashboard(
             "operations",
             d =>

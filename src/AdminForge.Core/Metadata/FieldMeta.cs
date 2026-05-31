@@ -1,8 +1,10 @@
 namespace AdminForge.Core.Metadata;
 
 /// <summary>
-/// A single field on a generic form. Phase 1 carries only the shape — the
-/// fluent <c>FormBuilder</c> and rendering land in Phase 4.
+/// A single field on a generic form. Carries display metadata plus the optional
+/// per-field validator and a typed <see cref="Options"/> object whose shape
+/// depends on <see cref="Kind"/> (e.g. <see cref="TextFieldOptions"/> for text
+/// fields, <see cref="NumberFieldOptions"/> for numbers, …).
 /// </summary>
 public sealed class FieldMeta
 {
@@ -23,4 +25,50 @@ public sealed class FieldMeta
 
     /// <summary>User-supplied validators (see <see cref="ColumnValidator"/>).</summary>
     public List<ColumnValidator> Validators { get; } = [];
+
+    /// <summary>
+    /// Kind-specific extra configuration. The concrete type depends on
+    /// <see cref="Kind"/> — see <see cref="TextFieldOptions"/>,
+    /// <see cref="NumberFieldOptions"/>, <see cref="FloatFieldOptions"/>, and
+    /// <see cref="FileUploadFieldOptions"/>. May be null for kinds that need no
+    /// extra options (Bool, Date, DateTime, Markdown).
+    /// </summary>
+    public object? Options { get; set; }
+}
+
+/// <summary>Type-specific options for a <see cref="FieldKind.Text"/> field.</summary>
+public sealed class TextFieldOptions
+{
+    /// <summary>Render as a multi-line text area instead of a single-line input.</summary>
+    public bool Multiline { get; set; }
+
+    /// <summary>Maximum string length; null means no enforced cap.</summary>
+    public int? MaxLength { get; set; }
+}
+
+/// <summary>Type-specific options for a <see cref="FieldKind.Number"/> field.</summary>
+public sealed class NumberFieldOptions
+{
+    public long? Min { get; set; }
+    public long? Max { get; set; }
+}
+
+/// <summary>Type-specific options for a <see cref="FieldKind.Float"/> field.</summary>
+public sealed class FloatFieldOptions
+{
+    public double? Min { get; set; }
+    public double? Max { get; set; }
+}
+
+/// <summary>Type-specific options for a <see cref="FieldKind.FileUpload"/> field.</summary>
+public sealed class FileUploadFieldOptions
+{
+    /// <summary>Cap on the uploaded file size in bytes; null means no enforced cap.</summary>
+    public long? MaxSizeBytes { get; set; }
+
+    /// <summary>
+    /// Whitelist of accepted file extensions (each starts with <c>.</c>, lowercased).
+    /// Null/empty means anything is accepted.
+    /// </summary>
+    public IReadOnlyList<string>? AcceptedExtensions { get; set; }
 }

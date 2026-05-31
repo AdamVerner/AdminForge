@@ -12,4 +12,7 @@ public enum AdminAction
 
     /// <summary>Invocation of a user-registered custom action (<c>AddAction</c>).</summary>
     Custom,
+
+    /// <summary>Submission of a generic form registered via <c>AddForm</c>.</summary>
+    FormSubmit,
 }

@@ -171,6 +171,42 @@ public sealed class AdminForgeBuilder
     }
 
     /// <summary>
+    /// Registers a generic form. The <paramref name="routeName"/> doubles as the
+    /// URL segment (<c>/admin/forms/{routeName}</c>) and as the registry key —
+    /// it must be unique across registered forms. The callback declares fields
+    /// and supplies a submit handler.
+    /// </summary>
+    public AdminForgeBuilder AddForm(string routeName, Action<FormBuilder> configure)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(routeName);
+        ArgumentNullException.ThrowIfNull(configure);
+
+        if (
+            _forms.Any(f =>
+                string.Equals(f.RouteName, routeName, StringComparison.OrdinalIgnoreCase)
+            )
+        )
+        {
+            throw new InvalidOperationException($"Form '{routeName}' is already registered.");
+        }
+
+        var formBuilder = new FormBuilder(routeName);
+        configure(formBuilder);
+        var meta = formBuilder.Build();
+
+        if (meta.Submit is null)
+            throw new InvalidOperationException(
+                $"Form '{routeName}' must register a submit handler via OnSubmit(...)."
+            );
+
+        // Default nav label to the form title when the user didn't supply one.
+        meta.Nav.Label ??= meta.Title;
+
+        _forms.Add(meta);
+        return this;
+    }
+
+    /// <summary>
     /// Registers an audit sink. Every mutating admin action will invoke this sink
     /// before returning a successful response to the user.
     /// </summary>

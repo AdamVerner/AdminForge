@@ -1,0 +1,95 @@
+@page "/admin/forms/{RouteName}"
+@inject IAdminUIBridge Bridge
+@inject NavigationManager Nav
+@inject ISnackbar Snackbar
+@inject IDialogService Dialogs
+
+<PageTitle>@(_form?.Title ?? RouteName)</PageTitle>
+
+@if (_form is null)
+{
+    <MudAlert Severity="Severity.Error">Unknown form '@RouteName'.</MudAlert>
+}
+else
+{
+    <MudText Typo="Typo.h4" Class="mb-2">@_form.Title</MudText>
+    @if (!string.IsNullOrEmpty(_form.Description))
+    {
+        <MudText Typo="Typo.body2" Class="mb-4">@_form.Description</MudText>
+    }
+
+    <MudCard>
+        <MudCardContent>
+            @foreach (var field in _form.Fields)
+            {
+                <FormFieldRenderer Field="@field" Form="@_form"
+                                   FileChanged="@(f => OnFileChanged(field.Name, f))" />
+            }
+        </MudCardContent>
+        <MudCardActions>
+            <MudSpacer />
+            <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                       Disabled="@_submitting" OnClick="Submit">
+                @if (_submitting) { <MudProgressCircular Size="Size.Small" Indeterminate="true" /> }
+                else { <span>Submit</span> }
+            </MudButton>
+        </MudCardActions>
+    </MudCard>
+}
+
+@code {
+    [Parameter] public string RouteName { get; set; } = string.Empty;
+
+    private FormVM? _form;
+    private bool _submitting;
+    private readonly Dictionary<string, FormFileUpload> _files = new(StringComparer.Ordinal);
+
+    protected override void OnParametersSet()
+    {
+        _form = Bridge.GetForm(RouteName);
+        _files.Clear();
+    }
+
+    private void OnFileChanged(string fieldName, FormFileUpload? file)
+    {
+        if (file is null) _files.Remove(fieldName);
+        else _files[fieldName] = file;
+    }
+
+    private async Task Submit()
+    {
+        if (_form is null || _submitting) return;
+        _submitting = true;
+        _form.Errors.Clear();
+        try
+        {
+            var submission = new FormSubmission(
+                new Dictionary<string, object?>(_form.Values, StringComparer.Ordinal),
+                new Dictionary<string, FormFileUpload>(_files, StringComparer.Ordinal)
+            );
+            var ctx = new BlazorActionContext(
+                Snackbar, Nav, Dialogs, refresh: () => Task.CompletedTask);
+            await Bridge.SubmitFormAsync(RouteName, submission, ctx);
+            Snackbar.Add($"Form '{_form.Title}' submitted.", Severity.Success);
+        }
+        catch (FormValidationException fve)
+        {
+            foreach (var (k, v) in fve.Errors)
+                _form.Errors[k] = v;
+            Snackbar.Add("Please correct the highlighted fields.", Severity.Warning);
+        }
+        catch (AdminForbiddenException)
+        {
+            Snackbar.Add("You are not allowed to submit this form.", Severity.Error);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Submission failed: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _submitting = false;
+            StateHasChanged();
+        }
+    }
+}

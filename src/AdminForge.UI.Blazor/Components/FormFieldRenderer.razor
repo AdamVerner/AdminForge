@@ -1,0 +1,130 @@
+@*
+    Dispatches a single FieldMeta to the kind-specific MudBlazor input, binding
+    its value through the parent FormVM's Values dictionary. Errors are
+    surfaced inline via the Errors map populated by SubmitFormAsync.
+*@
+
+@code {
+    [Parameter, EditorRequired] public FieldMeta Field { get; set; } = default!;
+    [Parameter, EditorRequired] public FormVM Form { get; set; } = default!;
+    [Parameter] public EventCallback<FormFileUpload?> FileChanged { get; set; }
+}
+
+@{
+    Form.Values.TryGetValue(Field.Name, out var current);
+    var error = Form.Errors.TryGetValue(Field.Name, out var err) ? err : null;
+    var label = Field.Label + (Field.Required ? " *" : "");
+}
+
+<div class="mb-3">
+    @switch (Field.Kind)
+    {
+        case FieldKind.Text:
+            {
+                var opts = Field.Options as TextFieldOptions ?? new TextFieldOptions();
+                var s = current as string ?? string.Empty;
+                <MudTextField T="string" Label="@label" Value="@s"
+                              HelperText="@Field.Description"
+                              Error="@(error is not null)" ErrorText="@error"
+                              MaxLength="@(opts.MaxLength ?? 0)"
+                              Lines="@(opts.Multiline ? 4 : 1)"
+                              ValueChanged="@(v => Form.Values[Field.Name] = v)" />
+                break;
+            }
+        case FieldKind.Number:
+            {
+                var opts = Field.Options as NumberFieldOptions ?? new NumberFieldOptions();
+                long? n = current is null ? null : Convert.ToInt64(current);
+                <MudNumericField T="long?" Label="@label" Value="@n"
+                                 HelperText="@Field.Description"
+                                 Error="@(error is not null)" ErrorText="@error"
+                                 Min="@(opts.Min ?? long.MinValue)" Max="@(opts.Max ?? long.MaxValue)"
+                                 ValueChanged="@(v => Form.Values[Field.Name] = v)" />
+                break;
+            }
+        case FieldKind.Float:
+            {
+                var opts = Field.Options as FloatFieldOptions ?? new FloatFieldOptions();
+                double? d = current is null ? null : Convert.ToDouble(current);
+                <MudNumericField T="double?" Label="@label" Value="@d"
+                                 HelperText="@Field.Description"
+                                 Error="@(error is not null)" ErrorText="@error"
+                                 Min="@(opts.Min ?? double.MinValue)" Max="@(opts.Max ?? double.MaxValue)"
+                                 ValueChanged="@(v => Form.Values[Field.Name] = v)" />
+                break;
+            }
+        case FieldKind.Bool:
+            {
+                var b = current is bool bb && bb;
+                <MudCheckBox T="bool" Value="@b" Label="@label"
+                             ValueChanged="@(v => Form.Values[Field.Name] = v)" />
+                @if (!string.IsNullOrEmpty(Field.Description))
+                {
+                    <MudText Typo="Typo.caption">@Field.Description</MudText>
+                }
+                break;
+            }
+        case FieldKind.Date:
+            {
+                var dt = current as DateTime?;
+                <MudDatePicker Label="@label" Date="@dt"
+                               HelperText="@Field.Description"
+                               Error="@(error is not null)" ErrorText="@error"
+                               DateChanged="@(d => Form.Values[Field.Name] = d)" />
+                break;
+            }
+        case FieldKind.DateTime:
+            {
+                // MudBlazor's date picker + time picker stacked: simplest pragmatic combo
+                // for v1; a true date+time picker can land later.
+                var dt = current as DateTime?;
+                <MudDatePicker Label="@($"{label} (date)")" Date="@dt"
+                               HelperText="@Field.Description"
+                               Error="@(error is not null)" ErrorText="@error"
+                               DateChanged="@(d => MergeDate(d))" />
+                <MudTimePicker Label="@($"{label} (time)")" Time="@(dt?.TimeOfDay)"
+                               TimeChanged="@(t => MergeTime(t))" />
+                break;
+            }
+        case FieldKind.Markdown:
+            {
+                <MarkdownEditor Label="@label"
+                                HelperText="@Field.Description"
+                                Error="@error"
+                                Value="@(current as string ?? string.Empty)"
+                                ValueChanged="@(v => Form.Values[Field.Name] = v)" />
+                break;
+            }
+        case FieldKind.FileUpload:
+            {
+                var opts = Field.Options as FileUploadFieldOptions ?? new FileUploadFieldOptions();
+                <FileUploadField Label="@label"
+                                 HelperText="@Field.Description"
+                                 Error="@error"
+                                 Options="@opts"
+                                 FileChanged="@(f => FileChanged.InvokeAsync(f))" />
+                break;
+            }
+    }
+</div>
+
+@code {
+    private void MergeDate(DateTime? date)
+    {
+        var prev = Form.Values.TryGetValue(Field.Name, out var v) ? v as DateTime? : null;
+        if (date is null)
+        {
+            Form.Values[Field.Name] = null;
+            return;
+        }
+        var time = prev?.TimeOfDay ?? TimeSpan.Zero;
+        Form.Values[Field.Name] = date.Value.Date + time;
+    }
+
+    private void MergeTime(TimeSpan? time)
+    {
+        var prev = Form.Values.TryGetValue(Field.Name, out var v) ? v as DateTime? : null;
+        var date = prev?.Date ?? DateTime.Today;
+        Form.Values[Field.Name] = date + (time ?? TimeSpan.Zero);
+    }
+}
