@@ -46,10 +46,7 @@ public static class AdminForgeServiceCollectionExtensions
             return builder.Build();
         });
 
-        services.AddScoped(
-            typeof(IAdminDataProvider<>),
-            typeof(HostScopedDataProvider<>)
-        );
+        services.AddScoped(typeof(IAdminDataProvider<>), typeof(HostScopedDataProvider<>));
 
         services.AddSingleton(new HostDbContextMarker(typeof(TDbContext)));
 
@@ -88,27 +85,37 @@ internal sealed class HostScopedDataProvider<TEntity> : IAdminDataProvider<TEnti
         var context = (DbContext)serviceProvider.GetRequiredService(marker.ContextType);
         var options = serviceProvider.GetService<AdminForgeOptions>();
         var userAccessor = serviceProvider.GetService<IUserAccessor>();
-        var providerType = typeof(EfCoreDataProvider<,>).MakeGenericType(marker.ContextType, typeof(TEntity));
-        _inner = (IAdminDataProvider<TEntity>)Activator.CreateInstance(
-            providerType,
-            context,
-            options?.AuditSink,
-            userAccessor
-        )!;
+        var providerType = typeof(EfCoreDataProvider<,>).MakeGenericType(
+            marker.ContextType,
+            typeof(TEntity)
+        );
+        _inner =
+            (IAdminDataProvider<TEntity>)
+                Activator.CreateInstance(providerType, context, options?.AuditSink, userAccessor)!;
     }
 
-    public Task<ListResult<TEntity>> ListAsync(ListQuery query, CancellationToken cancellationToken = default) =>
-        _inner.ListAsync(query, cancellationToken);
+    public Task<ListResult<TEntity>> ListAsync(
+        ListQuery query,
+        CancellationToken cancellationToken = default
+    ) => _inner.ListAsync(query, cancellationToken);
 
-    public Task<TEntity?> FindAsync(object?[] keyValues, CancellationToken cancellationToken = default) =>
-        _inner.FindAsync(keyValues, cancellationToken);
+    public Task<TEntity?> FindAsync(
+        object?[] keyValues,
+        CancellationToken cancellationToken = default
+    ) => _inner.FindAsync(keyValues, cancellationToken);
 
-    public Task<TEntity> CreateAsync(TEntity entity, CancellationToken cancellationToken = default) =>
-        _inner.CreateAsync(entity, cancellationToken);
+    public Task<TEntity> CreateAsync(
+        TEntity entity,
+        CancellationToken cancellationToken = default
+    ) => _inner.CreateAsync(entity, cancellationToken);
 
-    public Task<TEntity> UpdateAsync(TEntity entity, CancellationToken cancellationToken = default) =>
-        _inner.UpdateAsync(entity, cancellationToken);
+    public Task<TEntity> UpdateAsync(
+        TEntity entity,
+        CancellationToken cancellationToken = default
+    ) => _inner.UpdateAsync(entity, cancellationToken);
 
-    public Task<bool> DeleteAsync(object?[] keyValues, CancellationToken cancellationToken = default) =>
-        _inner.DeleteAsync(keyValues, cancellationToken);
+    public Task<bool> DeleteAsync(
+        object?[] keyValues,
+        CancellationToken cancellationToken = default
+    ) => _inner.DeleteAsync(keyValues, cancellationToken);
 }

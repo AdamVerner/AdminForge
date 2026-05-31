@@ -1,3 +1,4 @@
+using System.Linq.Expressions;
 using AdminForge.Core.Metadata;
 
 namespace AdminForge.Core.Configuration;
@@ -50,6 +51,65 @@ public sealed class ColumnBuilder
         ArgumentNullException.ThrowIfNull(predicate);
         ArgumentException.ThrowIfNullOrWhiteSpace(message);
         _meta.Validators.Add(new ColumnValidator(value => predicate(value) ? null : message));
+        return this;
+    }
+
+    /// <summary>
+    /// For a navigation-reference column: override the link label using an
+    /// <c>Expression&lt;Func&lt;TTarget, string&gt;&gt;</c>. The expression's input parameter
+    /// must be assignable from the column's <see cref="ColumnMeta.RelatedEntityType"/>;
+    /// validation happens at <see cref="EntityBuilder{T}"/> build time. The expression is
+    /// compiled lazily; the compiled delegate is mirrored on
+    /// <see cref="ColumnMeta.LinkTextResolver"/>.
+    /// </summary>
+    /// <remarks>
+    /// Non-generic on purpose ("Option A" in the plan): the user passes a typed lambda
+    /// (e.g. <c>(User u) =&gt; $"Owned by {u.DisplayName}"</c>) and we validate the target
+    /// type at runtime so the parent <c>EntityBuilder&lt;T&gt;</c> doesn't have to take an
+    /// extra type parameter per column.
+    /// </remarks>
+    public ColumnBuilder LinkText(LambdaExpression expression)
+    {
+        ArgumentNullException.ThrowIfNull(expression);
+        if (expression.Parameters.Count != 1)
+        {
+            throw new ArgumentException(
+                "LinkText expression must have exactly one parameter (the related entity).",
+                nameof(expression)
+            );
+        }
+        if (expression.ReturnType != typeof(string))
+        {
+            throw new ArgumentException(
+                $"LinkText expression must return string, got {expression.ReturnType}.",
+                nameof(expression)
+            );
+        }
+        if (_meta.Kind != ColumnKind.NavigationReference)
+        {
+            throw new InvalidOperationException(
+                $"LinkText is only valid on navigation-reference columns; '{_meta.PropertyName}' is {_meta.Kind}."
+            );
+        }
+        var targetParamType = expression.Parameters[0].Type;
+        if (
+            _meta.RelatedEntityType is null
+            || !targetParamType.IsAssignableFrom(_meta.RelatedEntityType)
+        )
+        {
+            throw new InvalidOperationException(
+                $"LinkText expression parameter type '{targetParamType}' is not compatible with "
+                    + $"column '{_meta.PropertyName}' related entity type '{_meta.RelatedEntityType}'."
+            );
+        }
+
+        _meta.LinkTextExpression = expression;
+        var compiled = expression.Compile();
+        _meta.LinkTextResolver = instance =>
+        {
+            var result = compiled.DynamicInvoke(instance);
+            return result as string ?? string.Empty;
+        };
         return this;
     }
 }

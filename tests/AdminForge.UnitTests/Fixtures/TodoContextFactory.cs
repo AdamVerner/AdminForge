@@ -28,9 +28,7 @@ internal static class TodoContextFactory
     {
         var connection = new SqliteConnection("DataSource=:memory:");
         connection.Open();
-        var options = new DbContextOptionsBuilder<AppDbContext>()
-            .UseSqlite(connection)
-            .Options;
+        var options = new DbContextOptionsBuilder<AppDbContext>().UseSqlite(connection).Options;
         var context = new AppDbContext(options);
         context.Database.EnsureCreated();
         return (context, connection);
@@ -39,8 +37,18 @@ internal static class TodoContextFactory
     /// <summary>Seeds a minimal but cyclic-ish dataset for provider tests.</summary>
     public static async Task SeedAsync(AppDbContext context)
     {
-        var alice = new User { DisplayName = "Alice", Email = "alice@example.com", Role = UserRole.Admin };
-        var bob = new User { DisplayName = "Bob", Email = "bob@example.com", Role = UserRole.Member };
+        var alice = new User
+        {
+            DisplayName = "Alice",
+            Email = "alice@example.com",
+            Role = UserRole.Admin,
+        };
+        var bob = new User
+        {
+            DisplayName = "Bob",
+            Email = "bob@example.com",
+            Role = UserRole.Member,
+        };
         context.Users.AddRange(alice, bob);
         await context.SaveChangesAsync();
 

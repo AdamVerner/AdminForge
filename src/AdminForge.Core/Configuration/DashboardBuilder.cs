@@ -43,7 +43,11 @@ public sealed class DashboardBuilder
     /// Adds a single-value stat card. <paramref name="fetch"/> is invoked once per
     /// page load (Phase 3) — live updates land in Phase 5.
     /// </summary>
-    public DashboardBuilder AddStatCard(string title, Func<Task<object?>> fetch, string? suffix = null)
+    public DashboardBuilder AddStatCard(
+        string title,
+        Func<Task<object?>> fetch,
+        string? suffix = null
+    )
     {
         ArgumentNullException.ThrowIfNull(fetch);
         return AddStatCard(title, (_, _) => fetch(), suffix);
@@ -84,15 +88,7 @@ public sealed class DashboardBuilder
         Expression<Func<TPoint, object?>> yAxis,
         string? xAxisLabel = null,
         string? yAxisLabel = null
-    ) =>
-        AddLineChart(
-            title,
-            (_, _) => fetch(),
-            xAxis,
-            yAxis,
-            xAxisLabel,
-            yAxisLabel
-        );
+    ) => AddLineChart(title, (_, _) => fetch(), xAxis, yAxis, xAxisLabel, yAxisLabel);
 
     /// <summary>
     /// Adds a line-chart widget with scoped service-provider access.

@@ -48,8 +48,8 @@ public class BridgeAuthorizationTests : IClassFixture<DenyingTodoAppFactory>
             var bridge = scope.ServiceProvider.GetRequiredService<IAdminUIBridge>();
             var todoMeta = bridge.FindEntityByRouteName("Todo")!;
 
-            await Assert.ThrowsAsync<AdminForbiddenException>(
-                () => bridge.DeleteAsync(todoMeta, todoId.ToString())
+            await Assert.ThrowsAsync<AdminForbiddenException>(() =>
+                bridge.DeleteAsync(todoMeta, todoId.ToString())
             );
 
             // Read path still works (the policy denies only mutations).
@@ -85,8 +85,8 @@ public class BridgeAuthorizationTests : IClassFixture<DenyingTodoAppFactory>
             var edit = (await bridge.LoadForEditAsync(todoMeta, todoId.ToString()))!;
             edit.Values["Title"] = "should not stick";
 
-            await Assert.ThrowsAsync<AdminForbiddenException>(
-                () => bridge.UpdateAsync(todoMeta, edit)
+            await Assert.ThrowsAsync<AdminForbiddenException>(() =>
+                bridge.UpdateAsync(todoMeta, edit)
             );
         }
     }
@@ -115,7 +115,14 @@ public class DenyingTodoAppFactory : WebApplicationFactory<Program>
     protected override void Dispose(bool disposing)
     {
         base.Dispose(disposing);
-        try { if (File.Exists(DbPath)) File.Delete(DbPath); } catch { /* best-effort */ }
+        try
+        {
+            if (File.Exists(DbPath))
+                File.Delete(DbPath);
+        }
+        catch
+        { /* best-effort */
+        }
     }
 
     private sealed class DenyMutations : IAdminAuthorizationPolicy
@@ -125,6 +132,7 @@ public class DenyingTodoAppFactory : WebApplicationFactory<Program>
             AdminAction action,
             ClaimsPrincipal user,
             object? instance = null,
+            string? actionName = null,
             CancellationToken cancellationToken = default
         ) => Task.FromResult(action == AdminAction.Read);
     }

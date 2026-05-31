@@ -23,7 +23,9 @@ public class UmbrellaPolicyTests : IClassFixture<DenyAllPolicyTodoAppFactory>
     [Fact]
     public async Task Anonymous_Gets_401_When_Umbrella_Policy_Rejects()
     {
-        var client = _factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+        var client = _factory.CreateClient(
+            new WebApplicationFactoryClientOptions { AllowAutoRedirect = false }
+        );
         var response = await client.GetAsync("/admin");
         // Anonymous principal → 401 per AdminForgeMiddleware behaviour.
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
@@ -67,6 +69,11 @@ public class DenyAllPolicyTodoAppFactory : WebApplicationFactory<Program>
     protected override void Dispose(bool disposing)
     {
         base.Dispose(disposing);
-        try { if (File.Exists(DbPath)) File.Delete(DbPath); } catch { }
+        try
+        {
+            if (File.Exists(DbPath))
+                File.Delete(DbPath);
+        }
+        catch { }
     }
 }

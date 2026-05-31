@@ -48,9 +48,7 @@ public class AdminForgeBuilderTests
     public void Nav_Overrides_Apply_To_Underlying_Meta()
     {
         var builder = new AdminForgeBuilder(Scan());
-        builder.AddTable<Todo>(e =>
-            e.Nav(n => n.Label("Tasks").Group("Work").Order(1))
-        );
+        builder.AddTable<Todo>(e => e.Nav(n => n.Label("Tasks").Group("Work").Order(1)));
 
         var meta = builder.Build().Entities.Single();
         Assert.Equal("Tasks", meta.Nav.Label);
@@ -66,7 +64,10 @@ public class AdminForgeBuilderTests
             e.Column(t => t.Title, c => c.Label("Headline").Description("Short summary"))
         );
 
-        var title = builder.Build().Entities.Single().Columns.Single(c => c.PropertyName == "Title");
+        var title = builder
+            .Build()
+            .Entities.Single()
+            .Columns.Single(c => c.PropertyName == "Title");
         Assert.Equal("Headline", title.Label);
         Assert.Equal("Short summary", title.Description);
     }
@@ -117,7 +118,10 @@ public class AdminForgeBuilderTests
             )
         );
 
-        var title = builder.Build().Entities.Single().Columns.Single(c => c.PropertyName == "Title");
+        var title = builder
+            .Build()
+            .Entities.Single()
+            .Columns.Single(c => c.PropertyName == "Title");
         var validator = Assert.Single(title.Validators);
         Assert.Equal("Title required", validator.Validate(""));
         Assert.Null(validator.Validate("ok"));

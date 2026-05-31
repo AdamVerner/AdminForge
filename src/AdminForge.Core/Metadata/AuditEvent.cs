@@ -10,7 +10,9 @@ public enum AuditAction
     Update,
     Delete,
     FormSubmit,
-    CustomAction,
+
+    /// <summary>Invocation of a user-registered custom entity action (<c>AddAction</c>).</summary>
+    Custom,
 }
 
 /// <summary>

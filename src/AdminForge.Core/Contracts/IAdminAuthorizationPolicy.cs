@@ -20,11 +20,13 @@ public interface IAdminAuthorizationPolicy
     /// <param name="action">Action being attempted.</param>
     /// <param name="user">Authenticated principal; never null (anonymous users are represented as <see cref="ClaimsPrincipal"/> with no identity).</param>
     /// <param name="instance">When available, the resolved entity instance — for row-level checks. Null for list/create.</param>
+    /// <param name="actionName">When <paramref name="action"/> is <see cref="AdminAction.Custom"/>, the user-supplied action name (e.g. <c>"Send Welcome Email"</c>). Null otherwise.</param>
     Task<bool> IsAuthorizedAsync(
         string entityName,
         AdminAction action,
         ClaimsPrincipal user,
         object? instance = null,
+        string? actionName = null,
         CancellationToken cancellationToken = default
     );
 }

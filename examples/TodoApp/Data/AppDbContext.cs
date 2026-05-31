@@ -39,9 +39,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
                 .HasForeignKey(t => t.AssigneeId)
                 .OnDelete(DeleteBehavior.SetNull);
 
-            b.HasMany(t => t.Tags)
-                .WithMany(t => t.Todos)
-                .UsingEntity(j => j.ToTable("TodoTags"));
+            b.HasMany(t => t.Tags).WithMany(t => t.Todos).UsingEntity(j => j.ToTable("TodoTags"));
         });
 
         modelBuilder.Entity<Tag>(b =>

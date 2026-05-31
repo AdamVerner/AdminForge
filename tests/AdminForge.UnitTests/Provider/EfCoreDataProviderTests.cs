@@ -133,7 +133,12 @@ public class EfCoreDataProviderTests
 
         var provider = NewProvider<Todo>(ctx);
         var created = await provider.CreateAsync(
-            new Todo { Title = "New Task", TodoListId = list.Id, Priority = TodoPriority.Normal }
+            new Todo
+            {
+                Title = "New Task",
+                TodoListId = list.Id,
+                Priority = TodoPriority.Normal,
+            }
         );
 
         Assert.NotEqual(0, created.Id);

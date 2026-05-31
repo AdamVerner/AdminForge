@@ -20,17 +20,27 @@ public class AdminAuthorizationPolicyTests
     public async Task Custom_Policy_Can_Deny_By_Action()
     {
         IAdminAuthorizationPolicy policy = new DenyDeletes();
-        Assert.True(await policy.IsAuthorizedAsync("Todo", AdminAction.Read, new ClaimsPrincipal()));
-        Assert.True(await policy.IsAuthorizedAsync("Todo", AdminAction.Update, new ClaimsPrincipal()));
-        Assert.False(await policy.IsAuthorizedAsync("Todo", AdminAction.Delete, new ClaimsPrincipal()));
+        Assert.True(
+            await policy.IsAuthorizedAsync("Todo", AdminAction.Read, new ClaimsPrincipal())
+        );
+        Assert.True(
+            await policy.IsAuthorizedAsync("Todo", AdminAction.Update, new ClaimsPrincipal())
+        );
+        Assert.False(
+            await policy.IsAuthorizedAsync("Todo", AdminAction.Delete, new ClaimsPrincipal())
+        );
     }
 
     [Fact]
     public async Task Custom_Policy_Sees_Entity_And_Instance()
     {
         IAdminAuthorizationPolicy policy = new InstanceAware();
-        Assert.True(await policy.IsAuthorizedAsync("Todo", AdminAction.Update, new ClaimsPrincipal(), "ok"));
-        Assert.False(await policy.IsAuthorizedAsync("Todo", AdminAction.Update, new ClaimsPrincipal(), "bad"));
+        Assert.True(
+            await policy.IsAuthorizedAsync("Todo", AdminAction.Update, new ClaimsPrincipal(), "ok")
+        );
+        Assert.False(
+            await policy.IsAuthorizedAsync("Todo", AdminAction.Update, new ClaimsPrincipal(), "bad")
+        );
     }
 
     private sealed class DenyDeletes : IAdminAuthorizationPolicy
@@ -40,6 +50,7 @@ public class AdminAuthorizationPolicyTests
             AdminAction action,
             ClaimsPrincipal user,
             object? instance = null,
+            string? actionName = null,
             CancellationToken cancellationToken = default
         ) => Task.FromResult(action != AdminAction.Delete);
     }
@@ -51,6 +62,7 @@ public class AdminAuthorizationPolicyTests
             AdminAction action,
             ClaimsPrincipal user,
             object? instance = null,
+            string? actionName = null,
             CancellationToken cancellationToken = default
         ) => Task.FromResult(instance is not string s || s == "ok");
     }

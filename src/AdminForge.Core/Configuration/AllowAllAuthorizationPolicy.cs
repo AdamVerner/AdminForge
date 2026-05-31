@@ -15,6 +15,7 @@ public sealed class AllowAllAuthorizationPolicy : IAdminAuthorizationPolicy
         AdminAction action,
         ClaimsPrincipal user,
         object? instance = null,
+        string? actionName = null,
         CancellationToken cancellationToken = default
     ) => Task.FromResult(true);
 }

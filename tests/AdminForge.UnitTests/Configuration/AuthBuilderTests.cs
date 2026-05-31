@@ -38,11 +38,13 @@ public class AuthBuilderTests
     {
         var fired = false;
         var builder = new AdminForgeBuilder(Scan());
-        builder.WithAuditLog((e, _) =>
-        {
-            fired = true;
-            return Task.CompletedTask;
-        });
+        builder.WithAuditLog(
+            (e, _) =>
+            {
+                fired = true;
+                return Task.CompletedTask;
+            }
+        );
 
         var options = builder.Build();
         Assert.NotNull(options.AuditSink);

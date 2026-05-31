@@ -10,7 +10,10 @@ namespace AdminForge.UnitTests.Authorization;
 
 public class AdminPolicyProviderTests
 {
-    private static AdminPolicyProvider Build(string? umbrella = null, Action<AuthorizationOptions>? configure = null)
+    private static AdminPolicyProvider Build(
+        string? umbrella = null,
+        Action<AuthorizationOptions>? configure = null
+    )
     {
         var authzOptions = new AuthorizationOptions();
         configure?.Invoke(authzOptions);
@@ -35,7 +38,11 @@ public class AdminPolicyProviderTests
         Assert.NotNull(policy);
         // Permissive: an authorization-service evaluation should succeed for any principal.
         var authService = BuildAuthorizationService(provider);
-        var result = await authService.AuthorizeAsync(new ClaimsPrincipal(new ClaimsIdentity()), null, "AdminForge:User:Read");
+        var result = await authService.AuthorizeAsync(
+            new ClaimsPrincipal(new ClaimsIdentity()),
+            null,
+            "AdminForge:User:Read"
+        );
         Assert.True(result.Succeeded);
     }
 
@@ -48,7 +55,11 @@ public class AdminPolicyProviderTests
         var policy = await provider.GetPolicyAsync("AdminForge:User:Delete");
         Assert.NotNull(policy);
         var authService = BuildAuthorizationService(provider);
-        var result = await authService.AuthorizeAsync(new ClaimsPrincipal(new ClaimsIdentity()), null, "AdminForge:User:Delete");
+        var result = await authService.AuthorizeAsync(
+            new ClaimsPrincipal(new ClaimsIdentity()),
+            null,
+            "AdminForge:User:Delete"
+        );
         Assert.False(result.Succeeded);
     }
 
@@ -80,7 +91,9 @@ public class AdminPolicyProviderTests
         Assert.True(authorized.Succeeded);
     }
 
-    private static IAuthorizationService BuildAuthorizationService(IAuthorizationPolicyProvider provider)
+    private static IAuthorizationService BuildAuthorizationService(
+        IAuthorizationPolicyProvider provider
+    )
     {
         var services = new ServiceCollection();
         services.AddLogging();

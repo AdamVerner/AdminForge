@@ -41,6 +41,9 @@ else
             }
         </MudCardContent>
     </MudCard>
+
+    <RelatedLinksSection Links="_view.RelatedLinks" />
+    <EntityActionsBar Entity="@Entity" EncodedKey="@_view.Key" OnInvoked="Refresh" />
 }
 
 @code {
@@ -54,7 +57,14 @@ else
     {
         Entity = Bridge.FindEntityByRouteName(EntityName);
         if (Entity is null) return;
+        await Refresh();
+    }
+
+    private async Task Refresh()
+    {
+        if (Entity is null) return;
         _view = await Bridge.FindAsync(Entity, Uri.UnescapeDataString(Key));
+        StateHasChanged();
     }
 
     private RenderFragment RenderValue(object? raw, ColumnMeta column) => builder =>

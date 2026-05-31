@@ -1,0 +1,48 @@
+@*
+    Renders the auto- and user-registered related-table buttons on an entity view page.
+    Each link encodes its filter dictionary as a `?filter:{col}={value}` query string
+    so EntityListPage can pre-seed FilterBar values on the destination.
+*@
+@inject NavigationManager Nav
+
+@if (Links is { Count: > 0 })
+{
+    <MudCard Class="mb-4">
+        <MudCardContent>
+            <MudText Typo="Typo.h6" Class="mb-2">Related</MudText>
+            <MudStack Row="true" Spacing="2" Wrap="Wrap.Wrap">
+                @foreach (var link in Links)
+                {
+                    <MudButton Variant="Variant.Outlined"
+                               Color="Color.Primary"
+                               OnClick="@(() => Navigate(link))">
+                        @link.Label →
+                    </MudButton>
+                }
+            </MudStack>
+        </MudCardContent>
+    </MudCard>
+}
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<RelatedLinkVM>? Links { get; set; }
+
+    private void Navigate(RelatedLinkVM link)
+    {
+        var url = BuildUrl(link);
+        Nav.NavigateTo(url);
+    }
+
+    internal static string BuildUrl(RelatedLinkVM link)
+    {
+        var path = $"/admin/entities/{link.RouteName}";
+        if (link.Filter.Count == 0) return path;
+        var parts = new List<string>(link.Filter.Count);
+        foreach (var (k, v) in link.Filter)
+        {
+            var raw = v?.ToString() ?? string.Empty;
+            parts.Add($"filter:{Uri.EscapeDataString(k)}={Uri.EscapeDataString(raw)}");
+        }
+        return path + "?" + string.Join('&', parts);
+    }
+}

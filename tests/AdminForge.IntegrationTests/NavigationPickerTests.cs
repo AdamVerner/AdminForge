@@ -26,7 +26,10 @@ public class NavigationPickerTests : IClassFixture<TodoAppFactory>
 
         var results = await bridge.SearchRelatedAsync(typeof(User), "lic", take: 10);
 
-        var alice = Assert.Single(results, r => r.DisplayLabel.Contains("Alice", StringComparison.Ordinal));
+        var alice = Assert.Single(
+            results,
+            r => r.DisplayLabel.Contains("Alice", StringComparison.Ordinal)
+        );
         Assert.NotNull(alice.Key);
         Assert.Equal("User", alice.EntityName);
     }

@@ -19,7 +19,13 @@ namespace AdminForge.Core.Configuration;
 public static class DisplayLabelResolver
 {
     private static readonly string[] PreferredPropertyNames =
-        ["Name", "Title", "Label", "DisplayName", "Email"];
+    [
+        "Name",
+        "Title",
+        "Label",
+        "DisplayName",
+        "Email",
+    ];
 
     // Cache the resolved property selector per entity type so reflection happens once.
     private static readonly ConcurrentDictionary<Type, Func<object, string>> Cache = new();

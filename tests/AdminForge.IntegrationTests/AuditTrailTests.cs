@@ -39,11 +39,9 @@ public class AuditTrailTests : IClassFixture<AuditableTodoAppFactory>
 
         var provider = scope.ServiceProvider.GetRequiredService<IAdminDataProvider<Todo>>();
 
-        var created = await provider.CreateAsync(new Todo
-        {
-            Title = "Walk the dog",
-            TodoListId = list.Id,
-        });
+        var created = await provider.CreateAsync(
+            new Todo { Title = "Walk the dog", TodoListId = list.Id }
+        );
 
         created.Title = "Walk the puppy";
         await provider.UpdateAsync(created);
@@ -100,7 +98,12 @@ public class AuditableTodoAppFactory : WebApplicationFactory<Program>
     protected override void Dispose(bool disposing)
     {
         base.Dispose(disposing);
-        try { if (File.Exists(DbPath)) File.Delete(DbPath); } catch { }
+        try
+        {
+            if (File.Exists(DbPath))
+                File.Delete(DbPath);
+        }
+        catch { }
     }
 }
 
@@ -109,6 +112,7 @@ internal static class ServiceCollectionExtensionsForTests
     public static void RemoveAll<T>(this IServiceCollection services)
     {
         var toRemove = services.Where(s => s.ServiceType == typeof(T)).ToList();
-        foreach (var d in toRemove) services.Remove(d);
+        foreach (var d in toRemove)
+            services.Remove(d);
     }
 }

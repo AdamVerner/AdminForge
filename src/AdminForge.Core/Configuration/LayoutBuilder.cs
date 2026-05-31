@@ -55,7 +55,9 @@ public sealed class RowBuilder
             throw new ArgumentOutOfRangeException(nameof(width), "Width must be positive.");
 
         var widget =
-            _widgets.FirstOrDefault(w => string.Equals(w.Title, widgetTitle, StringComparison.OrdinalIgnoreCase))
+            _widgets.FirstOrDefault(w =>
+                string.Equals(w.Title, widgetTitle, StringComparison.OrdinalIgnoreCase)
+            )
             ?? throw new InvalidOperationException(
                 $"No widget with title '{widgetTitle}' has been registered on this dashboard."
             );

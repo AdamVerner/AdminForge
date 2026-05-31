@@ -92,7 +92,8 @@ public sealed class KeyAccessor
         for (var i = 0; i < parts.Length; i++)
         {
             var raw = Uri.UnescapeDataString(parts[i]);
-            var targetType = Nullable.GetUnderlyingType(_keyProperties[i].ClrType) ?? _keyProperties[i].ClrType;
+            var targetType =
+                Nullable.GetUnderlyingType(_keyProperties[i].ClrType) ?? _keyProperties[i].ClrType;
             values[i] = ConvertValue(raw, targetType);
         }
         return values;

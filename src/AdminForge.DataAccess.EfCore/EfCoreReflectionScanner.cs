@@ -87,7 +87,8 @@ public sealed class EfCoreReflectionScanner
                     ForeignKeyNavigation = fkNav,
                     EnumType = isEnum ? underlying : null,
                     IsGenerated =
-                        property.ValueGenerated != Microsoft.EntityFrameworkCore.Metadata.ValueGenerated.Never,
+                        property.ValueGenerated
+                        != Microsoft.EntityFrameworkCore.Metadata.ValueGenerated.Never,
                     MaxLength = property.GetMaxLength(),
                     IsRequired = !property.IsNullable && !isPk, // PK rendered separately
                 }
@@ -135,7 +136,9 @@ public sealed class EfCoreReflectionScanner
         }
 
         // Detect implicit many-to-many join entities so the renderer can hide them from default nav.
-        var isJoinEntity = entityType.HasSharedClrType && entityType.GetSkipNavigations().Any() == false
+        var isJoinEntity =
+            entityType.HasSharedClrType
+            && entityType.GetSkipNavigations().Any() == false
             && entityType.GetForeignKeys().Count() >= 2
             && entityType.IsImplicitlyCreatedJoinEntity();
 
@@ -145,7 +148,7 @@ public sealed class EfCoreReflectionScanner
             Name = clrType.Name,
             RouteName = clrType.Name,
             Label = Humanize(clrType.Name),
-            Columns = columns.AsReadOnly(),
+            Columns = columns,
             PrimaryKeyPropertyNames = pkPropertyNames,
             IsJoinEntity = isJoinEntity,
         };
@@ -192,7 +195,9 @@ internal static class EntityTypeExtensions
         if (pk is null)
             return false;
         var pkProps = pk.Properties.Select(p => p.Name).ToHashSet(StringComparer.Ordinal);
-        var fkProps = fks.SelectMany(f => f.Properties).Select(p => p.Name).ToHashSet(StringComparer.Ordinal);
+        var fkProps = fks.SelectMany(f => f.Properties)
+            .Select(p => p.Name)
+            .ToHashSet(StringComparer.Ordinal);
         return pkProps.SetEquals(fkProps);
     }
 }

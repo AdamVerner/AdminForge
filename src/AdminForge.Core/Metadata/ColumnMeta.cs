@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using System.Linq.Expressions;
 
 namespace AdminForge.Core.Metadata;
 
@@ -70,6 +71,41 @@ public sealed class ColumnMeta
     /// User-supplied validators. Each returns null on success or an error message on failure.
     /// </summary>
     public List<ColumnValidator> Validators { get; } = [];
+
+    /// <summary>
+    /// True if this column was added via <c>AddColumn&lt;TValue&gt;</c> on the fluent builder
+    /// (i.e. it does not correspond to a real CLR property — the value is computed by
+    /// projecting <see cref="CustomValueSelector"/> through the underlying provider).
+    /// </summary>
+    public bool IsCustom { get; init; }
+
+    /// <summary>
+    /// For custom columns: the user-provided <c>Expression&lt;Func&lt;TEntity, TValue&gt;&gt;</c>
+    /// stored as a <see cref="LambdaExpression"/> so the data provider can translate it
+    /// into a server-side projection.
+    /// </summary>
+    public LambdaExpression? CustomValueSelector { get; init; }
+
+    /// <summary>True if this column participates in <c>ListQuery.SortBy</c>. Default true for scalars; opt-in for custom columns.</summary>
+    public bool IsSortable { get; set; } = true;
+
+    /// <summary>True if this column participates in <c>ListQuery.Filters</c>. Default true for scalars; opt-in for custom columns.</summary>
+    public bool IsFilterable { get; set; } = true;
+
+    /// <summary>
+    /// For navigation-reference columns: optional override producing the link text from
+    /// the related instance. Set via <c>ColumnBuilder.LinkText(...)</c>. When null the
+    /// renderer falls back to the related entity's <c>DisplayLabel</c>.
+    /// </summary>
+    public Func<object, string>? LinkTextResolver { get; set; }
+
+    /// <summary>
+    /// Stored <c>Expression&lt;Func&lt;TTarget, string&gt;&gt;</c> from
+    /// <see cref="Configuration.ColumnBuilder.LinkText"/>. Kept so the renderer can
+    /// reason about (or compile on-demand) the user's intent. The compiled resolver
+    /// is mirrored on <see cref="LinkTextResolver"/>.
+    /// </summary>
+    public LambdaExpression? LinkTextExpression { get; set; }
 }
 
 /// <summary>

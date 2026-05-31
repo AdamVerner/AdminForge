@@ -27,11 +27,7 @@ public class EfCoreDataProvider<TContext, TEntity> : IAdminDataProvider<TEntity>
     public EfCoreDataProvider(TContext context)
         : this(context, auditSink: null, userAccessor: null) { }
 
-    public EfCoreDataProvider(
-        TContext context,
-        IAuditSink? auditSink,
-        IUserAccessor? userAccessor
-    )
+    public EfCoreDataProvider(TContext context, IAuditSink? auditSink, IUserAccessor? userAccessor)
     {
         ArgumentNullException.ThrowIfNull(context);
         _context = context;
@@ -62,20 +58,49 @@ public class EfCoreDataProvider<TContext, TEntity> : IAdminDataProvider<TEntity>
         if (query.Page < 0)
             throw new ArgumentException("Page must be non-negative.", nameof(query));
 
+        // Split native-property filters from custom-column filters before lowering.
+        var nativeFilters = new Dictionary<string, object?>(StringComparer.Ordinal);
+        var customFilters = new Dictionary<string, object?>(StringComparer.Ordinal);
+        foreach (var (key, val) in query.Filters)
+        {
+            if (query.CustomColumns.TryGetValue(key, out var spec) && spec.Filterable)
+                customFilters[key] = val;
+            else
+                nativeFilters[key] = val;
+        }
+
         IQueryable<TEntity> queryable = _context.Set<TEntity>().AsNoTracking();
-        queryable = ApplyFilters(queryable, query.Filters);
+        queryable = ApplyFilters(queryable, nativeFilters);
+        queryable = ApplyCustomFilters(queryable, customFilters, query.CustomColumns);
         queryable = ApplySearch(queryable, query.Search);
 
         var total = await queryable.CountAsync(cancellationToken).ConfigureAwait(false);
 
-        queryable = ApplySort(queryable, query.SortBy, query.SortDescending);
+        // Sort: if SortBy targets a sortable custom column, project via the user's
+        // selector; otherwise fall back to property-based sorting.
+        var isCustomSort =
+            !string.IsNullOrWhiteSpace(query.SortBy)
+            && query.CustomColumns.TryGetValue(query.SortBy!, out var sortSpec)
+            && sortSpec.Sortable;
+        if (isCustomSort)
+        {
+            queryable = ApplyCustomSort(
+                queryable,
+                query.CustomColumns[query.SortBy!].Selector,
+                query.SortDescending
+            );
+        }
+        else
+        {
+            queryable = ApplySort(queryable, query.SortBy, query.SortDescending);
+        }
+
         // Fall back to a stable default sort (first PK property ascending) so the
         // Skip/Take pagination is deterministic across providers.
-        if (string.IsNullOrWhiteSpace(query.SortBy))
+        if (!isCustomSort && string.IsNullOrWhiteSpace(query.SortBy))
         {
-            var pkName = _keyAccessor.KeyProperties.Count > 0
-                ? _keyAccessor.KeyProperties[0].Name
-                : null;
+            var pkName =
+                _keyAccessor.KeyProperties.Count > 0 ? _keyAccessor.KeyProperties[0].Name : null;
             if (pkName is not null)
             {
                 queryable = ApplySort(queryable, pkName, descending: false);
@@ -84,7 +109,188 @@ public class EfCoreDataProvider<TContext, TEntity> : IAdminDataProvider<TEntity>
         queryable = queryable.Skip(query.Page * query.PageSize).Take(query.PageSize);
 
         var items = await queryable.ToListAsync(cancellationToken).ConfigureAwait(false);
-        return new ListResult<TEntity> { Items = items, TotalCount = total };
+
+        // Computed-column projection: pragmatic side-query approach. For each registered
+        // custom column we issue a single query that pairs the entity's encoded primary
+        // key with the projected value across the materialised page rows. This keeps
+        // the SQL trivial (no row-by-row N+1) at the cost of one extra query per custom
+        // column — acceptable for admin pages (small pages, few custom columns) and
+        // sidesteps the complexity of dynamically-built tuple selects.
+        IReadOnlyList<IReadOnlyDictionary<string, object?>> customValues = Array.Empty<
+            IReadOnlyDictionary<string, object?>
+        >();
+        if (query.CustomColumns.Count > 0 && items.Count > 0)
+        {
+            customValues = await ProjectCustomColumns(items, query.CustomColumns, cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        return new ListResult<TEntity>
+        {
+            Items = items,
+            TotalCount = total,
+            CustomValues = customValues,
+        };
+    }
+
+    private async Task<IReadOnlyList<IReadOnlyDictionary<string, object?>>> ProjectCustomColumns(
+        IReadOnlyList<TEntity> pageItems,
+        IReadOnlyDictionary<string, CustomColumnSpec> customColumns,
+        CancellationToken cancellationToken
+    )
+    {
+        // Build a per-row dictionary keyed by the same string encoding the bridge uses
+        // for navigation, so we don't have to re-encode in the bridge.
+        var keysOnPage = pageItems.Select(_keyAccessor.EncodeKey).ToList();
+        var rowDicts = new Dictionary<string, object?>[pageItems.Count];
+        for (var i = 0; i < pageItems.Count; i++)
+            rowDicts[i] = new Dictionary<string, object?>(StringComparer.Ordinal);
+
+        // Build a single PK-set filter; reused across each custom column.
+        // SQLite (and SQL Server) translate this efficiently as `Id IN (...)`.
+        var pkPropName =
+            _keyAccessor.KeyProperties.Count > 0 ? _keyAccessor.KeyProperties[0].Name : null;
+
+        foreach (var (columnName, spec) in customColumns)
+        {
+            // Fetch (key, value) pairs for the current page only.
+            var pairs = await FetchCustomColumnPairs(spec.Selector, pageItems, cancellationToken)
+                .ConfigureAwait(false);
+            for (var i = 0; i < pageItems.Count; i++)
+            {
+                rowDicts[i][columnName] = pairs[i];
+            }
+        }
+        return rowDicts;
+    }
+
+    /// <summary>
+    /// Project <paramref name="selector"/> over the same page of entities, returning
+    /// values in matching order. Implementation: round-trip the PKs of <paramref name="pageItems"/>
+    /// into a single server-side query that selects (PK, projected-value) pairs, then
+    /// re-aligns the result by PK. Falls back to per-row queries when there's no scalar
+    /// PK (composite keys etc.) — admin pages rarely paginate those, so the perf hit is fine.
+    /// </summary>
+    private async Task<object?[]> FetchCustomColumnPairs(
+        LambdaExpression selector,
+        IReadOnlyList<TEntity> pageItems,
+        CancellationToken cancellationToken
+    )
+    {
+        var result = new object?[pageItems.Count];
+
+        var pkProperties = _keyAccessor.KeyProperties;
+        if (pkProperties.Count == 1 && pkProperties[0].PropertyInfo is { } pkInfo)
+        {
+            // Single-property PK fast path.
+            var keys = pageItems
+                .Select(e => pkInfo.GetValue(e))
+                .Where(k => k is not null)
+                .ToArray();
+
+            // Build: q.Where(e => keys.Contains(e.Pk)).Select(e => new { e.Pk, value = selector(e) })
+            var entityParam = Expression.Parameter(typeof(TEntity), "e");
+            var pkAccess = Expression.Property(entityParam, pkInfo);
+
+            // Replace the selector's parameter with our entityParam so we can compose into one lambda.
+            var replacer = new ParameterReplacer(selector.Parameters[0], entityParam);
+            var selectorBody = replacer.Visit(selector.Body)!;
+            // Box to object so the anonymous projection has a stable value column type.
+            var valueAccess = Expression.Convert(selectorBody, typeof(object));
+
+            var tupleCtor = typeof(KeyValuePair<,>)
+                .MakeGenericType(pkInfo.PropertyType, typeof(object))
+                .GetConstructor([pkInfo.PropertyType, typeof(object)])!;
+            var newTuple = Expression.New(tupleCtor, pkAccess, valueAccess);
+
+            var resultType = tupleCtor.DeclaringType!;
+            var lambda = Expression.Lambda(
+                typeof(Func<,>).MakeGenericType(typeof(TEntity), resultType),
+                newTuple,
+                entityParam
+            );
+
+            // Build queryable and apply Where + Select via reflection because the
+            // tuple type is closed over the PK CLR type.
+            var dbSet = _context.Set<TEntity>().AsNoTracking();
+
+            // Where(e => keys.Contains(e.Pk))
+            var containsMethod = typeof(System.Linq.Enumerable)
+                .GetMethods()
+                .First(m =>
+                    m.Name == nameof(System.Linq.Enumerable.Contains)
+                    && m.GetParameters().Length == 2
+                )
+                .MakeGenericMethod(pkInfo.PropertyType);
+
+            // Cast the keys array to the PK's CLR type so Contains type-checks.
+            var typedKeysArray = Array.CreateInstance(pkInfo.PropertyType, keys.Length);
+            for (var i = 0; i < keys.Length; i++)
+                typedKeysArray.SetValue(keys[i], i);
+
+            var keysConstant = Expression.Constant(typedKeysArray, typedKeysArray.GetType());
+            var containsCall = Expression.Call(null, containsMethod, keysConstant, pkAccess);
+            var whereLambda = Expression.Lambda<Func<TEntity, bool>>(containsCall, entityParam);
+            var filtered = dbSet.Where(whereLambda);
+
+            // Materialise via reflection-built Select call.
+            var selectMethod = typeof(Queryable)
+                .GetMethods()
+                .First(m =>
+                    m.Name == nameof(Queryable.Select)
+                    && m.GetParameters().Length == 2
+                    && m.GetParameters()[1]
+                        .ParameterType.GetGenericArguments()[0]
+                        .GetGenericArguments()
+                        .Length == 2
+                )
+                .MakeGenericMethod(typeof(TEntity), resultType);
+
+            var projected = (IQueryable)selectMethod.Invoke(null, [filtered, lambda])!;
+
+            var listed = new List<object>();
+            foreach (var item in projected)
+                listed.Add(item);
+
+            // Index by PK value.
+            var byKey = new Dictionary<object, object?>();
+            foreach (var item in listed)
+            {
+                var k = item.GetType().GetProperty("Key")!.GetValue(item);
+                var v = item.GetType().GetProperty("Value")!.GetValue(item);
+                if (k is not null)
+                    byKey[k] = v;
+            }
+            for (var i = 0; i < pageItems.Count; i++)
+            {
+                var k = pkInfo.GetValue(pageItems[i]);
+                if (k is not null && byKey.TryGetValue(k, out var v))
+                    result[i] = v;
+            }
+            return result;
+        }
+
+        // Fallback: per-row evaluation against the queryable (composite keys, no single PK).
+        var compiled = selector.Compile();
+        for (var i = 0; i < pageItems.Count; i++)
+        {
+            try
+            {
+                result[i] = compiled.DynamicInvoke(pageItems[i]);
+            }
+            catch
+            {
+                result[i] = null;
+            }
+        }
+        return result;
+    }
+
+    private sealed class ParameterReplacer(ParameterExpression from, ParameterExpression to)
+        : ExpressionVisitor
+    {
+        protected override Expression VisitParameter(ParameterExpression node) =>
+            node == from ? to : base.VisitParameter(node);
     }
 
     public async Task<TEntity?> FindAsync(
@@ -93,8 +299,62 @@ public class EfCoreDataProvider<TContext, TEntity> : IAdminDataProvider<TEntity>
     )
     {
         ArgumentNullException.ThrowIfNull(keyValues);
-        // DbSet.FindAsync handles composite keys via the EF model's PK metadata.
-        return await _context.Set<TEntity>().FindAsync(keyValues, cancellationToken).ConfigureAwait(false);
+        // FindAsync alone doesn't eager-load navigation properties, so view pages
+        // (and `LinkText` resolvers that key off the navigation target) would see
+        // null references. Build a Where-by-key query and Include each reference
+        // navigation. We skip collection navs — the related-link section pulls
+        // those via the bridge's own COUNT query.
+        var entityType = _context.Model.FindEntityType(typeof(TEntity));
+        if (entityType is null)
+            return await _context
+                .Set<TEntity>()
+                .FindAsync(keyValues, cancellationToken)
+                .ConfigureAwait(false);
+
+        var keyProperties = _keyAccessor.KeyProperties;
+        if (keyProperties.Count == 0 || keyValues.Length != keyProperties.Count)
+            return await _context
+                .Set<TEntity>()
+                .FindAsync(keyValues, cancellationToken)
+                .ConfigureAwait(false);
+
+        // Build a Where clause: e => e.K1 == k1 && e.K2 == k2 ...
+        var parameter = Expression.Parameter(typeof(TEntity), "e");
+        Expression? predicate = null;
+        for (var i = 0; i < keyProperties.Count; i++)
+        {
+            var info = keyProperties[i].PropertyInfo;
+            if (info is null)
+                return await _context
+                    .Set<TEntity>()
+                    .FindAsync(keyValues, cancellationToken)
+                    .ConfigureAwait(false);
+            var member = Expression.Property(parameter, info);
+            var coerced = keyValues[i];
+            Expression constant =
+                coerced is null
+                && info.PropertyType.IsValueType
+                && Nullable.GetUnderlyingType(info.PropertyType) is null
+                    ? Expression.Default(info.PropertyType)
+                    : Expression.Constant(coerced, info.PropertyType);
+            var eq = Expression.Equal(member, constant);
+            predicate = predicate is null ? eq : Expression.AndAlso(predicate, eq);
+        }
+        if (predicate is null)
+            return await _context
+                .Set<TEntity>()
+                .FindAsync(keyValues, cancellationToken)
+                .ConfigureAwait(false);
+
+        IQueryable<TEntity> queryable = _context.Set<TEntity>().AsNoTracking();
+        foreach (var nav in entityType.GetNavigations())
+        {
+            if (nav.IsCollection)
+                continue; // skip collections (potentially expensive)
+            queryable = queryable.Include(nav.Name);
+        }
+        var lambda = Expression.Lambda<Func<TEntity, bool>>(predicate, parameter);
+        return await queryable.FirstOrDefaultAsync(lambda, cancellationToken).ConfigureAwait(false);
     }
 
     public async Task<TEntity> CreateAsync(
@@ -109,20 +369,22 @@ public class EfCoreDataProvider<TContext, TEntity> : IAdminDataProvider<TEntity>
         if (_auditSink is not null)
         {
             var snapshot = SnapshotScalarValues(entity);
-            await _auditSink.RecordAsync(
-                new AuditEvent
-                {
-                    EntityType = _entityName,
-                    Action = AuditAction.Create,
-                    EntityId = _keyAccessor.EncodeKey(entity),
-                    ChangedValues = snapshot.ToDictionary(
-                        kvp => kvp.Key,
-                        kvp => new AuditValueChange(null, kvp.Value)
-                    ),
-                    User = _userAccessor?.GetUserId(),
-                },
-                cancellationToken
-            ).ConfigureAwait(false);
+            await _auditSink
+                .RecordAsync(
+                    new AuditEvent
+                    {
+                        EntityType = _entityName,
+                        Action = AuditAction.Create,
+                        EntityId = _keyAccessor.EncodeKey(entity),
+                        ChangedValues = snapshot.ToDictionary(
+                            kvp => kvp.Key,
+                            kvp => new AuditValueChange(null, kvp.Value)
+                        ),
+                        User = _userAccessor?.GetUserId(),
+                    },
+                    cancellationToken
+                )
+                .ConfigureAwait(false);
         }
         return entity;
     }
@@ -174,17 +436,19 @@ public class EfCoreDataProvider<TContext, TEntity> : IAdminDataProvider<TEntity>
                     changes[key] = new AuditValueChange(oldVal, newVal);
                 }
             }
-            await _auditSink.RecordAsync(
-                new AuditEvent
-                {
-                    EntityType = _entityName,
-                    Action = AuditAction.Update,
-                    EntityId = _keyAccessor.EncodeKeyValues(keyValues),
-                    ChangedValues = changes,
-                    User = _userAccessor?.GetUserId(),
-                },
-                cancellationToken
-            ).ConfigureAwait(false);
+            await _auditSink
+                .RecordAsync(
+                    new AuditEvent
+                    {
+                        EntityType = _entityName,
+                        Action = AuditAction.Update,
+                        EntityId = _keyAccessor.EncodeKeyValues(keyValues),
+                        ChangedValues = changes,
+                        User = _userAccessor?.GetUserId(),
+                    },
+                    cancellationToken
+                )
+                .ConfigureAwait(false);
         }
         return tracked;
     }
@@ -211,20 +475,22 @@ public class EfCoreDataProvider<TContext, TEntity> : IAdminDataProvider<TEntity>
 
         if (_auditSink is not null && before is not null)
         {
-            await _auditSink.RecordAsync(
-                new AuditEvent
-                {
-                    EntityType = _entityName,
-                    Action = AuditAction.Delete,
-                    EntityId = _keyAccessor.EncodeKeyValues(keyValues),
-                    ChangedValues = before.ToDictionary(
-                        kvp => kvp.Key,
-                        kvp => new AuditValueChange(kvp.Value, null)
-                    ),
-                    User = _userAccessor?.GetUserId(),
-                },
-                cancellationToken
-            ).ConfigureAwait(false);
+            await _auditSink
+                .RecordAsync(
+                    new AuditEvent
+                    {
+                        EntityType = _entityName,
+                        Action = AuditAction.Delete,
+                        EntityId = _keyAccessor.EncodeKeyValues(keyValues),
+                        ChangedValues = before.ToDictionary(
+                            kvp => kvp.Key,
+                            kvp => new AuditValueChange(kvp.Value, null)
+                        ),
+                        User = _userAccessor?.GetUserId(),
+                    },
+                    cancellationToken
+                )
+                .ConfigureAwait(false);
         }
         return true;
     }
@@ -243,6 +509,73 @@ public class EfCoreDataProvider<TContext, TEntity> : IAdminDataProvider<TEntity>
             snap[name] = property.GetValue(entity);
         }
         return snap;
+    }
+
+    private static IQueryable<TEntity> ApplyCustomFilters(
+        IQueryable<TEntity> source,
+        IReadOnlyDictionary<string, object?> customFilters,
+        IReadOnlyDictionary<string, CustomColumnSpec> customColumns
+    )
+    {
+        if (customFilters.Count == 0)
+            return source;
+
+        foreach (var (name, rawValue) in customFilters)
+        {
+            if (!customColumns.TryGetValue(name, out var spec))
+                continue;
+
+            // Build Where(e => spec.Selector(e).Equals(coercedValue)) by inlining
+            // the user's selector into a fresh predicate.
+            var entityParam = Expression.Parameter(typeof(TEntity), "e");
+            var replacer = new ParameterReplacer(spec.Selector.Parameters[0], entityParam);
+            var selectorBody = replacer.Visit(spec.Selector.Body)!;
+
+            var selectorReturnType = spec.Selector.ReturnType;
+            var coerced = CoerceToType(rawValue, selectorReturnType);
+            // Expression.Constant(null, valueType) throws on non-nullable value types;
+            // wrap in default(T) if coerced is null and the type can't hold null.
+            Expression valueExpr;
+            if (
+                coerced is null
+                && selectorReturnType.IsValueType
+                && Nullable.GetUnderlyingType(selectorReturnType) is null
+            )
+            {
+                valueExpr = Expression.Default(selectorReturnType);
+            }
+            else
+            {
+                valueExpr = Expression.Constant(coerced, selectorReturnType);
+            }
+
+            Expression equals = Expression.Equal(selectorBody, valueExpr);
+            var lambda = Expression.Lambda<Func<TEntity, bool>>(equals, entityParam);
+            source = source.Where(lambda);
+        }
+        return source;
+    }
+
+    private static IQueryable<TEntity> ApplyCustomSort(
+        IQueryable<TEntity> source,
+        LambdaExpression selector,
+        bool descending
+    )
+    {
+        var entityParam = Expression.Parameter(typeof(TEntity), "e");
+        var replacer = new ParameterReplacer(selector.Parameters[0], entityParam);
+        var body = replacer.Visit(selector.Body)!;
+        var keySelector = Expression.Lambda(body, entityParam);
+
+        var methodName = descending ? "OrderByDescending" : "OrderBy";
+        var orderCall = Expression.Call(
+            typeof(Queryable),
+            methodName,
+            [typeof(TEntity), selector.ReturnType],
+            source.Expression,
+            Expression.Quote(keySelector)
+        );
+        return source.Provider.CreateQuery<TEntity>(orderCall);
     }
 
     private static IQueryable<TEntity> ApplyFilters(
@@ -270,8 +603,8 @@ public class EfCoreDataProvider<TContext, TEntity> : IAdminDataProvider<TEntity>
         return source;
     }
 
-    private static readonly MethodInfo _efLike = typeof(Microsoft.EntityFrameworkCore.DbFunctionsExtensions)
-        .GetMethod(
+    private static readonly MethodInfo _efLike =
+        typeof(Microsoft.EntityFrameworkCore.DbFunctionsExtensions).GetMethod(
             nameof(Microsoft.EntityFrameworkCore.DbFunctionsExtensions.Like),
             [typeof(Microsoft.EntityFrameworkCore.DbFunctions), typeof(string), typeof(string)]
         )!;

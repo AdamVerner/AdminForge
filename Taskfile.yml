@@ -1,6 +1,12 @@
 version: '3'
 
 tasks:
+
+  format:
+    desc: Format all code
+    cmds:
+      - dotnet tool run csharpier format .
+
   build:
     desc: Build the entire solution
     cmds:

@@ -33,7 +33,8 @@ public sealed class AdminPolicyProvider : IAuthorizationPolicyProvider
 
     public Task<AuthorizationPolicy> GetDefaultPolicyAsync() => _fallback.GetDefaultPolicyAsync();
 
-    public Task<AuthorizationPolicy?> GetFallbackPolicyAsync() => _fallback.GetFallbackPolicyAsync();
+    public Task<AuthorizationPolicy?> GetFallbackPolicyAsync() =>
+        _fallback.GetFallbackPolicyAsync();
 
     public async Task<AuthorizationPolicy?> GetPolicyAsync(string policyName)
     {
@@ -49,7 +50,9 @@ public sealed class AdminPolicyProvider : IAuthorizationPolicyProvider
         var builder = new AuthorizationPolicyBuilder();
         if (!string.IsNullOrWhiteSpace(_options.AuthorizationPolicy))
         {
-            var umbrella = await _fallback.GetPolicyAsync(_options.AuthorizationPolicy).ConfigureAwait(false);
+            var umbrella = await _fallback
+                .GetPolicyAsync(_options.AuthorizationPolicy)
+                .ConfigureAwait(false);
             if (umbrella is not null)
             {
                 builder.Combine(umbrella);

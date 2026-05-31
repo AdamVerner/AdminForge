@@ -37,8 +37,7 @@ public static class AdminForgeEndpointRouteBuilderExtensions
         // Idempotent under .NET 9+: hosts that already call MapStaticAssets get a no-op.
         endpoints.MapStaticAssets();
 
-        var builder = endpoints.MapRazorComponents<App>()
-            .AddInteractiveServerRenderMode();
+        var builder = endpoints.MapRazorComponents<App>().AddInteractiveServerRenderMode();
 
         return builder;
     }
@@ -65,4 +64,3 @@ public static class AdminForgeEndpointRouteBuilderExtensions
         return services;
     }
 }
-

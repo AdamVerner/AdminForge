@@ -1,0 +1,102 @@
+@*
+    Renders user-registered ActionMeta buttons on an entity view page. Each click
+    runs through the bridge's InvokeActionAsync, which handles auth, audit, and
+    the action handler's own ConfirmAsync / ShowSuccess / Refresh calls.
+*@
+@inject IAdminUIBridge Bridge
+@inject ISnackbar Snackbar
+@inject NavigationManager Nav
+@inject IDialogService DialogService
+
+@if (Entity is not null && Entity.Actions.Count > 0)
+{
+    <MudCard Class="mb-4">
+        <MudCardContent>
+            <MudText Typo="Typo.h6" Class="mb-2">Actions</MudText>
+            <MudStack Row="true" Spacing="2" Wrap="Wrap.Wrap">
+                @foreach (var action in Entity.Actions)
+                {
+                    <MudButton Variant="Variant.Filled"
+                               Color="@MapColor(action.Color)"
+                               StartIcon="@(action.Icon is null ? null : MapIcon(action.Icon))"
+                               OnClick="@(() => Invoke(action))">
+                        @action.Name
+                    </MudButton>
+                }
+            </MudStack>
+        </MudCardContent>
+    </MudCard>
+}
+
+@code {
+    [Parameter, EditorRequired] public EntityMeta? Entity { get; set; }
+    [Parameter, EditorRequired] public string EncodedKey { get; set; } = string.Empty;
+    [Parameter] public EventCallback OnInvoked { get; set; }
+
+    private async Task Invoke(ActionMeta action)
+    {
+        if (Entity is null) return;
+
+        // Honour the action's RequireConfirmation upfront so the handler sees only the
+        // confirmed path. Action handlers may still call ConfirmAsync themselves for
+        // additional prompts.
+        if (action.ConfirmationMessage is { } prompt)
+        {
+            var parameters = new DialogParameters
+            {
+                ["ContentText"] = prompt,
+                ["ButtonText"] = "Confirm",
+                ["Color"] = Color.Primary,
+            };
+            var dialog = await DialogService.ShowAsync<ConfirmDialog>(action.Name, parameters);
+            var result = await dialog.Result;
+            if (result is null || result.Canceled) return;
+        }
+
+        var ctx = new BlazorActionContext(
+            Snackbar,
+            Nav,
+            DialogService,
+            async () =>
+            {
+                if (OnInvoked.HasDelegate)
+                    await OnInvoked.InvokeAsync();
+            }
+        );
+        try
+        {
+            await Bridge.InvokeActionAsync(Entity.RouteName, EncodedKey, action.Name, ctx);
+            if (OnInvoked.HasDelegate)
+                await OnInvoked.InvokeAsync();
+        }
+        catch (AdminForbiddenException)
+        {
+            Snackbar.Add("You are not authorised to run this action.", Severity.Error);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Action failed: {ex.Message}", Severity.Error);
+        }
+    }
+
+    // MudBlazor maps colour tokens via the Color enum; keep a small allow-list and
+    // default unknown tokens to Default. Same idea for icons against the Material set.
+    private static Color MapColor(string? token) => token switch
+    {
+        "Primary" => Color.Primary,
+        "Secondary" => Color.Secondary,
+        "Success" => Color.Success,
+        "Warning" => Color.Warning,
+        "Error" => Color.Error,
+        "Info" => Color.Info,
+        _ => Color.Default,
+    };
+
+    private static string MapIcon(string token)
+    {
+        // Allow the consumer to pass a pre-built icon constant (`@Icons.Material.Filled.Send`)
+        // or a short token like "Email" / "Send" — we resolve well-known ones to the Material set.
+        var path = typeof(Icons.Material.Filled).GetField(token)?.GetValue(null) as string;
+        return path ?? token;
+    }
+}

@@ -1,3 +1,5 @@
+using System.Linq.Expressions;
+
 namespace AdminForge.Core.Contracts;
 
 /// <summary>
@@ -61,7 +63,27 @@ public sealed class ListQuery
     /// every string scalar column. Null/empty disables the search.
     /// </summary>
     public string? Search { get; init; }
+
+    /// <summary>
+    /// Optional custom-column projections registered via the fluent builder's
+    /// <c>AddColumn&lt;TValue&gt;(name, ...)</c>. Each entry maps a column name to its
+    /// stored <c>Expression&lt;Func&lt;TEntity, TValue&gt;&gt;</c> selector. The provider
+    /// (i) applies the expression directly when the name matches <see cref="SortBy"/> or
+    /// a key in <see cref="Filters"/>, and (ii) returns the per-row computed value via
+    /// <see cref="ListResult{T}.CustomValues"/>.
+    /// </summary>
+    public IReadOnlyDictionary<string, CustomColumnSpec> CustomColumns { get; init; } =
+        new Dictionary<string, CustomColumnSpec>();
 }
+
+/// <summary>
+/// One custom-column registration handed to the data provider. Carries the user's
+/// stored selector expression and the sort/filter opt-ins.
+/// </summary>
+/// <param name="Selector">User-provided <c>Expression&lt;Func&lt;TEntity, TValue&gt;&gt;</c>.</param>
+/// <param name="Sortable">True if this column can appear in <see cref="ListQuery.SortBy"/>.</param>
+/// <param name="Filterable">True if this column can appear in <see cref="ListQuery.Filters"/>.</param>
+public sealed record CustomColumnSpec(LambdaExpression Selector, bool Sortable, bool Filterable);
 
 /// <summary>
 /// One page of results plus the total count (across all pages) for the same filters.
@@ -70,4 +92,12 @@ public sealed class ListResult<T>
 {
     public required IReadOnlyList<T> Items { get; init; }
     public required int TotalCount { get; init; }
+
+    /// <summary>
+    /// Per-row computed values for any custom columns supplied via
+    /// <see cref="ListQuery.CustomColumns"/>. Outer index matches <see cref="Items"/>;
+    /// inner dictionary keys are the column names. Empty when no custom columns were requested.
+    /// </summary>
+    public IReadOnlyList<IReadOnlyDictionary<string, object?>> CustomValues { get; init; } =
+        Array.Empty<IReadOnlyDictionary<string, object?>>();
 }

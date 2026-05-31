@@ -68,8 +68,12 @@ else
         Entity?.Columns.Where(c => !c.HiddenInList && c.Kind != ColumnKind.NavigationCollection)
         ?? Enumerable.Empty<ColumnMeta>();
 
-    private bool IsSortable(ColumnMeta col) =>
-        col.Kind is ColumnKind.Scalar or ColumnKind.Enum && !col.IsForeignKey;
+    private bool IsSortable(ColumnMeta col)
+    {
+        // Custom columns honour the explicit IsSortable flag set on the builder.
+        if (col.IsCustom) return col.IsSortable;
+        return col.Kind is ColumnKind.Scalar or ColumnKind.Enum && !col.IsForeignKey && col.IsSortable;
+    }
 
     private RenderFragment RenderCell(object? raw) => builder =>
     {

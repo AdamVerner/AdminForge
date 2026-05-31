@@ -24,8 +24,8 @@ public sealed class HttpContextUserAccessor : IUserAccessor
         if (user?.Identity?.IsAuthenticated != true)
             return null;
         return user.FindFirst("sub")?.Value
-               ?? user.FindFirst("nameidentifier")?.Value
-               ?? user.Identity.Name;
+            ?? user.FindFirst("nameidentifier")?.Value
+            ?? user.Identity.Name;
     }
 
     public ClaimsPrincipal GetUser() => _accessor.HttpContext?.User ?? new ClaimsPrincipal();

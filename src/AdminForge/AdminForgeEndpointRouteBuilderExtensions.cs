@@ -17,6 +17,8 @@ public static class AdminForgeEndpointRouteBuilderExtensions
     public static IEndpointConventionBuilder MapAdminForge(this IEndpointRouteBuilder endpoints)
     {
         ArgumentNullException.ThrowIfNull(endpoints);
-        return AdminForge.Middleware.AdminForgeEndpointRouteBuilderExtensions.MapAdminForge(endpoints);
+        return AdminForge.Middleware.AdminForgeEndpointRouteBuilderExtensions.MapAdminForge(
+            endpoints
+        );
     }
 }

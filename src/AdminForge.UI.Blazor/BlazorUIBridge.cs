@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Globalization;
+using System.Linq.Expressions;
 using System.Reflection;
 using System.Security.Claims;
 using AdminForge.Core.Configuration;
@@ -111,7 +112,9 @@ public sealed class BlazorUIBridge : IAdminUIBridge
     {
         await EnsureAuthorizedAsync(entity, AdminAction.Delete, instance: null, cancellationToken)
             .ConfigureAwait(false);
-        return await GetAdapter(entity).DeleteAsync(encodedKey, cancellationToken).ConfigureAwait(false);
+        return await GetAdapter(entity)
+            .DeleteAsync(encodedKey, cancellationToken)
+            .ConfigureAwait(false);
     }
 
     public async Task<IReadOnlyList<NavigationRef>> SearchRelatedAsync(
@@ -122,7 +125,8 @@ public sealed class BlazorUIBridge : IAdminUIBridge
     )
     {
         ArgumentNullException.ThrowIfNull(relatedType);
-        if (take <= 0) take = 25;
+        if (take <= 0)
+            take = 25;
 
         var meta =
             _options.Entities.FirstOrDefault(e => e.ClrType == relatedType)
@@ -156,14 +160,18 @@ public sealed class BlazorUIBridge : IAdminUIBridge
     )
     {
         ArgumentNullException.ThrowIfNull(relatedType);
-        if (string.IsNullOrEmpty(encodedKey)) return null;
+        if (string.IsNullOrEmpty(encodedKey))
+            return null;
         var meta =
             _options.Entities.FirstOrDefault(e => e.ClrType == relatedType)
             ?? throw new InvalidOperationException(
                 $"Related entity '{relatedType.Name}' is not registered."
             );
-        var view = await GetAdapter(meta).FindAsync(encodedKey, cancellationToken).ConfigureAwait(false);
-        if (view is null) return null;
+        var view = await GetAdapter(meta)
+            .FindAsync(encodedKey, cancellationToken)
+            .ConfigureAwait(false);
+        if (view is null)
+            return null;
         var label = ResolveDisplayLabelFromValues(meta, view.Values) ?? encodedKey;
         return new NavigationRef(view.Key, label, meta.Name);
     }
@@ -186,15 +194,26 @@ public sealed class BlazorUIBridge : IAdminUIBridge
         string[] preferred = ["Name", "Title", "Label", "DisplayName", "Email"];
         foreach (var name in preferred)
         {
-            if (values.TryGetValue(name, out var val) && val is string s && !string.IsNullOrWhiteSpace(s))
+            if (
+                values.TryGetValue(name, out var val)
+                && val is string s
+                && !string.IsNullOrWhiteSpace(s)
+            )
                 return s;
         }
         foreach (var col in meta.Columns)
         {
-            if (col.IsPrimaryKey) continue;
-            if (col.Kind != ColumnKind.Scalar) continue;
-            if (col.ClrType != typeof(string)) continue;
-            if (values.TryGetValue(col.PropertyName, out var val) && val is string s && !string.IsNullOrWhiteSpace(s))
+            if (col.IsPrimaryKey)
+                continue;
+            if (col.Kind != ColumnKind.Scalar)
+                continue;
+            if (col.ClrType != typeof(string))
+                continue;
+            if (
+                values.TryGetValue(col.PropertyName, out var val)
+                && val is string s
+                && !string.IsNullOrWhiteSpace(s)
+            )
                 return s;
         }
         return null;
@@ -207,6 +226,79 @@ public sealed class BlazorUIBridge : IAdminUIBridge
         return _options.Dashboards.FirstOrDefault(d =>
             string.Equals(d.RouteName, routeName, StringComparison.OrdinalIgnoreCase)
         );
+    }
+
+    public async Task InvokeActionAsync(
+        string entityRouteName,
+        string encodedKey,
+        string actionName,
+        IActionContext context,
+        CancellationToken cancellationToken = default
+    )
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(entityRouteName);
+        ArgumentException.ThrowIfNullOrWhiteSpace(encodedKey);
+        ArgumentException.ThrowIfNullOrWhiteSpace(actionName);
+        ArgumentNullException.ThrowIfNull(context);
+
+        var entity =
+            FindEntityByRouteName(entityRouteName)
+            ?? throw new InvalidOperationException($"Unknown entity '{entityRouteName}'.");
+        var action =
+            entity.Actions.FirstOrDefault(a =>
+                string.Equals(a.Name, actionName, StringComparison.Ordinal)
+            )
+            ?? throw new InvalidOperationException(
+                $"Action '{actionName}' is not registered on entity '{entity.Name}'."
+            );
+
+        var adapter = GetAdapter(entity);
+        var instance = await adapter
+            .LoadRawAsync(encodedKey, cancellationToken)
+            .ConfigureAwait(false);
+        if (instance is null)
+            throw new InvalidOperationException(
+                $"Entity '{entity.Name}' with key '{encodedKey}' was not found."
+            );
+
+        // Per-action authorization carries the action name so policies can branch on it.
+        await EnsureAuthorizedAsync(
+                entity,
+                AdminAction.Custom,
+                instance,
+                cancellationToken,
+                actionName
+            )
+            .ConfigureAwait(false);
+
+        // Invoke inside a fresh DI scope so the handler can resolve scoped services
+        // (e.g. its own DbContext) without entangling with the bridge's request scope.
+        using (var scope = _serviceProvider.CreateScope())
+        {
+            await action.Handler(scope.ServiceProvider, instance, context).ConfigureAwait(false);
+        }
+
+        if (_options.AuditSink is not null)
+        {
+            await _options
+                .AuditSink.RecordAsync(
+                    new AuditEvent
+                    {
+                        EntityType = entity.Name,
+                        Action = AuditAction.Custom,
+                        EntityId = encodedKey,
+                        ChangedValues = new Dictionary<string, AuditValueChange>(
+                            StringComparer.Ordinal
+                        )
+                        {
+                            ["ActionName"] = new AuditValueChange(null, actionName),
+                        },
+                        User = _userAccessor.GetUserId(),
+                    },
+                    cancellationToken
+                )
+                .ConfigureAwait(false);
+        }
     }
 
     public async Task<DashboardVM> LoadDashboardAsync(
@@ -288,7 +380,8 @@ public sealed class BlazorUIBridge : IAdminUIBridge
                     YAxisLabel = line.YAxisLabel,
                 };
             case TableWidgetMeta table:
-                return await MaterializeTableWidget(sp, table, cancellationToken).ConfigureAwait(false);
+                return await MaterializeTableWidget(sp, table, cancellationToken)
+                    .ConfigureAwait(false);
             default:
                 throw new InvalidOperationException(
                     $"Unknown widget kind '{widget.GetType().Name}'."
@@ -323,12 +416,13 @@ public sealed class BlazorUIBridge : IAdminUIBridge
         };
         var listVM = await adapter.ListAsync(query, cancellationToken).ConfigureAwait(false);
 
-        var columns = (meta.VisibleColumns ?? entityMeta
-            .Columns
-            .Where(c => !c.HiddenInList && c.Kind != ColumnKind.NavigationCollection)
-            .Select(c => c.PropertyName)
-            .ToList())
-            .ToList();
+        var columns = (
+            meta.VisibleColumns
+            ?? entityMeta
+                .Columns.Where(c => !c.HiddenInList && c.Kind != ColumnKind.NavigationCollection)
+                .Select(c => c.PropertyName)
+                .ToList()
+        ).ToList();
 
         return new TableWidgetVM
         {
@@ -369,26 +463,29 @@ public sealed class BlazorUIBridge : IAdminUIBridge
                     ClrType = table.EntityType,
                     Name = table.EntityType.Name,
                     Label = table.EntityType.Name,
-                    Columns = Array.Empty<ColumnMeta>(),
+                    Columns = [],
                     PrimaryKeyPropertyNames = Array.Empty<string>(),
                 },
                 VisibleColumns = Array.Empty<string>(),
                 Rows = Array.Empty<EntityListRowVM>(),
                 Error = message,
             },
-            _ => throw new InvalidOperationException($"Unknown widget kind '{widget.GetType().Name}'."),
+            _ => throw new InvalidOperationException(
+                $"Unknown widget kind '{widget.GetType().Name}'."
+            ),
         };
 
     private async Task EnsureAuthorizedAsync(
         EntityMeta entity,
         AdminAction action,
         object? instance,
-        CancellationToken cancellationToken
+        CancellationToken cancellationToken,
+        string? actionName = null
     )
     {
         var user = _userAccessor.GetUser();
         var ok = await _authzPolicy
-            .IsAuthorizedAsync(entity.Name, action, user, instance, cancellationToken)
+            .IsAuthorizedAsync(entity.Name, action, user, instance, actionName, cancellationToken)
             .ConfigureAwait(false);
         if (!ok)
             throw new AdminForbiddenException(entity.Name, action);
@@ -432,6 +529,12 @@ public sealed class BlazorUIBridge : IAdminUIBridge
             CancellationToken cancellationToken
         );
 
+        /// <summary>Load the raw entity instance by encoded key, or null when missing.</summary>
+        public abstract Task<object?> LoadRawAsync(
+            string encodedKey,
+            CancellationToken cancellationToken
+        );
+
         public static EntityAdapter Create(
             EntityMeta meta,
             IServiceProvider sp,
@@ -452,6 +555,8 @@ public sealed class BlazorUIBridge : IAdminUIBridge
         private readonly IAdminDataProvider<TEntity> _provider;
         private readonly KeyAccessor _keyAccessor;
         private readonly AdminForgeOptions _options;
+        private readonly DbContext _dbContext;
+        private readonly Microsoft.EntityFrameworkCore.Metadata.IEntityType _efEntityType;
 
         public GenericEntityAdapter(
             EntityMeta meta,
@@ -462,13 +567,23 @@ public sealed class BlazorUIBridge : IAdminUIBridge
         {
             _meta = meta;
             _options = options;
+            _dbContext = dbContext;
             _provider = sp.GetRequiredService<IAdminDataProvider<TEntity>>();
-            var efEntityType =
+            _efEntityType =
                 dbContext.Model.FindEntityType(typeof(TEntity))
                 ?? throw new InvalidOperationException(
                     $"Entity '{typeof(TEntity).FullName}' is not part of the DbContext model."
                 );
-            _keyAccessor = new KeyAccessor(efEntityType);
+            _keyAccessor = new KeyAccessor(_efEntityType);
+        }
+
+        public override async Task<object?> LoadRawAsync(
+            string encodedKey,
+            CancellationToken cancellationToken
+        )
+        {
+            var keyValues = _keyAccessor.DecodeKey(encodedKey);
+            return await _provider.FindAsync(keyValues, cancellationToken).ConfigureAwait(false);
         }
 
         public override async Task<EntityListVM> ListAsync(
@@ -476,11 +591,40 @@ public sealed class BlazorUIBridge : IAdminUIBridge
             CancellationToken cancellationToken
         )
         {
-            var result = await _provider.ListAsync(query, cancellationToken).ConfigureAwait(false);
+            // Wire custom columns from the meta into the query — the provider sees them
+            // there and (a) lifts sortable/filterable ones into the SQL clause, (b)
+            // projects each row's value back through CustomValues.
+            var customCols = BuildCustomColumnSpecs();
+            var effectiveQuery =
+                customCols.Count == 0
+                    ? query
+                    : new ListQuery
+                    {
+                        Page = query.Page,
+                        PageSize = query.PageSize,
+                        SortBy = query.SortBy,
+                        SortDescending = query.SortDescending,
+                        Filters = query.Filters,
+                        Search = query.Search,
+                        CustomColumns = customCols,
+                    };
+
+            var result = await _provider
+                .ListAsync(effectiveQuery, cancellationToken)
+                .ConfigureAwait(false);
             var rows = new List<EntityListRowVM>(result.Items.Count);
-            foreach (var item in result.Items)
+            for (var i = 0; i < result.Items.Count; i++)
             {
-                rows.Add(BuildRow(item));
+                var item = result.Items[i];
+                var rowValues = BuildValueMap(item, includeNavigations: true);
+                if (result.CustomValues.Count > i)
+                {
+                    foreach (var (colName, value) in result.CustomValues[i])
+                        rowValues[colName] = value;
+                }
+                rows.Add(
+                    new EntityListRowVM { Key = _keyAccessor.EncodeKey(item), Values = rowValues }
+                );
             }
             return new EntityListVM
             {
@@ -492,6 +636,24 @@ public sealed class BlazorUIBridge : IAdminUIBridge
                 SortBy = query.SortBy,
                 SortDescending = query.SortDescending,
             };
+        }
+
+        private IReadOnlyDictionary<string, CustomColumnSpec> BuildCustomColumnSpecs()
+        {
+            if (!_meta.Columns.Any(c => c.IsCustom && c.CustomValueSelector is not null))
+                return new Dictionary<string, CustomColumnSpec>();
+            var specs = new Dictionary<string, CustomColumnSpec>(StringComparer.Ordinal);
+            foreach (var col in _meta.Columns)
+            {
+                if (!col.IsCustom || col.CustomValueSelector is null)
+                    continue;
+                specs[col.PropertyName] = new CustomColumnSpec(
+                    col.CustomValueSelector,
+                    col.IsSortable,
+                    col.IsFilterable
+                );
+            }
+            return specs;
         }
 
         public override async Task<EntityViewVM?> FindAsync(
@@ -506,12 +668,226 @@ public sealed class BlazorUIBridge : IAdminUIBridge
             if (entity is null)
                 return null;
             var values = BuildValueMap(entity, includeNavigations: true);
+            var relatedLinks = await BuildRelatedLinksAsync(entity, cancellationToken)
+                .ConfigureAwait(false);
             return new EntityViewVM
             {
                 EntityName = _meta.Name,
                 Key = _keyAccessor.EncodeKey(entity),
                 Values = values,
+                RelatedLinks = relatedLinks,
             };
+        }
+
+        /// <summary>
+        /// Materialise related-link descriptors for the entity view page: one per
+        /// collection navigation (unless suppressed via <c>HideRelatedLink</c>), plus
+        /// any cross-entity <see cref="RelatedLinkMeta"/> registered explicitly.
+        /// </summary>
+        private async Task<IReadOnlyList<RelatedLinkVM>> BuildRelatedLinksAsync(
+            TEntity sourceInstance,
+            CancellationToken cancellationToken
+        )
+        {
+            var explicitBySourceNav = new Dictionary<string, RelatedLinkMeta>(
+                StringComparer.Ordinal
+            );
+            var crossEntityLinks = new List<RelatedLinkMeta>();
+            foreach (var link in _meta.RelatedLinks)
+            {
+                if (link.SourceNavigationName is { } navName)
+                    explicitBySourceNav[navName] = link;
+                else
+                    crossEntityLinks.Add(link);
+            }
+
+            var output = new List<RelatedLinkVM>();
+
+            // Auto + override links from collection navigations.
+            foreach (
+                var nav in _efEntityType
+                    .GetNavigations()
+                    .Concat<Microsoft.EntityFrameworkCore.Metadata.INavigationBase>(
+                        _efEntityType.GetSkipNavigations()
+                    )
+            )
+            {
+                if (!nav.IsCollection)
+                    continue;
+                if (_meta.HiddenRelatedNavigations.Contains(nav.Name))
+                    continue;
+
+                // Find the target meta — only links to registered entities are auto-emitted.
+                var targetType = nav.TargetEntityType.ClrType;
+                var targetMeta = _options.Entities.FirstOrDefault(e => e.ClrType == targetType);
+                if (targetMeta is null)
+                    continue;
+
+                // Inverse FK: for a regular collection nav (Tag.Todos), the FK lives on
+                // the other side (Todo.AssigneeId / Todo.TagId etc.). For an implicit
+                // M2M skip-nav we can't pre-filter (no scalar FK in the model), so we
+                // skip auto-emission — explicit RelatedLink<TTarget> covers that case.
+                IReadOnlyDictionary<string, object?> filter;
+                if (nav is Microsoft.EntityFrameworkCore.Metadata.INavigation regular)
+                {
+                    var fk = regular.ForeignKey;
+                    if (fk.Properties.Count != 1 || fk.PrincipalKey.Properties.Count != 1)
+                        continue;
+                    var fkPropName = fk.Properties[0].Name;
+                    var pkPropName = fk.PrincipalKey.Properties[0].Name;
+                    var pkValue = typeof(TEntity)
+                        .GetProperty(pkPropName, BindingFlags.Public | BindingFlags.Instance)
+                        ?.GetValue(sourceInstance);
+                    filter = new Dictionary<string, object?>(StringComparer.Ordinal)
+                    {
+                        [fkPropName] = pkValue,
+                    };
+                }
+                else
+                {
+                    continue;
+                }
+
+                // Build label: explicit override wins; otherwise "View N {label}".
+                string label;
+                string? icon = null;
+                if (explicitBySourceNav.TryGetValue(nav.Name, out var explicitMeta))
+                {
+                    label = explicitMeta.Label;
+                    icon = explicitMeta.Icon;
+                }
+                else
+                {
+                    var count = await CountRelatedAsync(nav.Name, filter, cancellationToken)
+                        .ConfigureAwait(false);
+                    label = $"View {count} {targetMeta.Label}";
+                }
+
+                output.Add(
+                    new RelatedLinkVM
+                    {
+                        Label = label,
+                        Icon = icon,
+                        RouteName = targetMeta.RouteName,
+                        Filter = filter,
+                    }
+                );
+            }
+
+            // Cross-entity explicit links (no source nav): use the user-supplied filter builder verbatim.
+            foreach (var link in crossEntityLinks)
+            {
+                var targetMeta = _options.Entities.FirstOrDefault(e =>
+                    e.ClrType == link.RelatedEntityType
+                );
+                if (targetMeta is null)
+                    continue;
+                var filter = link.FilterBuilder(sourceInstance);
+                output.Add(
+                    new RelatedLinkVM
+                    {
+                        Label = link.Label,
+                        Icon = link.Icon,
+                        RouteName = targetMeta.RouteName,
+                        Filter = filter,
+                    }
+                );
+            }
+
+            return output;
+        }
+
+        /// <summary>
+        /// Cheap COUNT query against the related entity restricted by <paramref name="filter"/>.
+        /// Used only for the "View N {label}" auto-label — eats one extra round-trip per
+        /// collection nav, which we accept given typical admin pages have a handful of these.
+        /// </summary>
+        private async Task<int> CountRelatedAsync(
+            string sourceNavName,
+            IReadOnlyDictionary<string, object?> filter,
+            CancellationToken cancellationToken
+        )
+        {
+            var nav = _efEntityType.FindNavigation(sourceNavName);
+            if (nav is null)
+                return 0;
+            var targetClrType = nav.TargetEntityType.ClrType;
+            var setMethod = typeof(DbContext)
+                .GetMethods()
+                .First(m =>
+                    m.Name == nameof(DbContext.Set)
+                    && m.IsGenericMethod
+                    && m.GetParameters().Length == 0
+                )
+                .MakeGenericMethod(targetClrType);
+            var dbSet = setMethod.Invoke(_dbContext, null);
+            if (dbSet is not IQueryable queryable)
+                return 0;
+
+            // Apply equality filters via a built lambda. Reuse provider's static helpers where possible.
+            var entityParam = Expression.Parameter(targetClrType, "e");
+            Expression? body = null;
+            foreach (var (propName, val) in filter)
+            {
+                var prop = targetClrType.GetProperty(
+                    propName,
+                    BindingFlags.Public | BindingFlags.Instance
+                );
+                if (prop is null)
+                    continue;
+                var member = Expression.Property(entityParam, prop);
+                var coerced = val is null
+                    ? null
+                    : Convert.ChangeType(
+                        val,
+                        Nullable.GetUnderlyingType(prop.PropertyType) ?? prop.PropertyType,
+                        CultureInfo.InvariantCulture
+                    );
+                Expression constant =
+                    coerced is null
+                    && prop.PropertyType.IsValueType
+                    && Nullable.GetUnderlyingType(prop.PropertyType) is null
+                        ? Expression.Default(prop.PropertyType)
+                        : Expression.Constant(coerced, prop.PropertyType);
+                var eq = Expression.Equal(member, constant);
+                body = body is null ? eq : Expression.AndAlso(body, eq);
+            }
+            if (body is null)
+                return await CountQueryableAsync(queryable, cancellationToken)
+                    .ConfigureAwait(false);
+
+            var lambda = Expression.Lambda(body, entityParam);
+            var whereMethod = typeof(Queryable)
+                .GetMethods()
+                .First(m =>
+                    m.Name == nameof(Queryable.Where)
+                    && m.GetParameters().Length == 2
+                    && m.GetParameters()[1]
+                        .ParameterType.GetGenericArguments()[0]
+                        .GetGenericArguments()
+                        .Length == 2
+                )
+                .MakeGenericMethod(targetClrType);
+            var filtered = (IQueryable)whereMethod.Invoke(null, [queryable, lambda])!;
+            return await CountQueryableAsync(filtered, cancellationToken).ConfigureAwait(false);
+        }
+
+        private static async Task<int> CountQueryableAsync(
+            IQueryable queryable,
+            CancellationToken ct
+        )
+        {
+            // Use EF's async CountAsync via reflection so we don't bind the open-generic call here.
+            var elementType = queryable.ElementType;
+            var asyncCount = typeof(EntityFrameworkQueryableExtensions)
+                .GetMethods()
+                .First(m =>
+                    m.Name == nameof(EntityFrameworkQueryableExtensions.CountAsync)
+                    && m.GetParameters().Length == 2
+                )
+                .MakeGenericMethod(elementType);
+            var task = (Task<int>)asyncCount.Invoke(null, [queryable, ct])!;
+            return await task.ConfigureAwait(false);
         }
 
         public override async Task<EntityEditVM?> LoadForEditAsync(
@@ -647,7 +1023,11 @@ public sealed class BlazorUIBridge : IAdminUIBridge
                         values[column.PropertyName] = null;
                         continue;
                     }
-                    values[column.PropertyName] = BuildNavRef(raw, column.RelatedEntityType);
+                    values[column.PropertyName] = BuildNavRef(
+                        raw,
+                        column.RelatedEntityType,
+                        column.LinkTextResolver
+                    );
                 }
                 else if (column.Kind == ColumnKind.NavigationCollection)
                 {
@@ -661,7 +1041,11 @@ public sealed class BlazorUIBridge : IAdminUIBridge
                     {
                         if (item is null)
                             continue;
-                        var navRef = BuildNavRef(item, column.RelatedEntityType);
+                        var navRef = BuildNavRef(
+                            item,
+                            column.RelatedEntityType,
+                            linkTextResolver: null
+                        );
                         if (navRef is not null)
                             refs.Add(navRef);
                     }
@@ -675,14 +1059,17 @@ public sealed class BlazorUIBridge : IAdminUIBridge
             return values;
         }
 
-        private NavigationRef? BuildNavRef(object relatedInstance, Type? relatedType)
+        private NavigationRef? BuildNavRef(
+            object relatedInstance,
+            Type? relatedType,
+            Func<object, string>? linkTextResolver
+        )
         {
             if (relatedType is null)
                 return null;
             var meta = _options.Entities.FirstOrDefault(e => e.ClrType == relatedType);
             if (meta is null)
                 return null;
-            var efRelated = _provider is null ? null : (IEntityTypeAccessor?)null; // fallback ignored
             // Use KeyAccessor on the related type via the EF model — borrow it from this adapter's _keyAccessor's source.
             // Simpler: use reflection over the meta.PrimaryKeyPropertyNames.
             var keyParts = new string[meta.PrimaryKeyPropertyNames.Count];
@@ -699,7 +1086,11 @@ public sealed class BlazorUIBridge : IAdminUIBridge
                 );
             }
             var encodedKey = string.Join('-', keyParts);
-            var label = meta.DisplayLabel?.Invoke(relatedInstance) ?? encodedKey;
+            // Source-side LinkText override beats the related entity's DisplayLabel.
+            var label =
+                linkTextResolver?.Invoke(relatedInstance)
+                ?? meta.DisplayLabel?.Invoke(relatedInstance)
+                ?? encodedKey;
             return new NavigationRef(encodedKey, label, meta.Name);
         }
 

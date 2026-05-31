@@ -9,4 +9,7 @@ public enum AdminAction
     Create,
     Update,
     Delete,
+
+    /// <summary>Invocation of a user-registered custom action (<c>AddAction</c>).</summary>
+    Custom,
 }

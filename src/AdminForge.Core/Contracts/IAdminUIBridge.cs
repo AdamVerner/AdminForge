@@ -116,4 +116,18 @@ public interface IAdminUIBridge
         DashboardMeta dashboard,
         CancellationToken cancellationToken = default
     );
+
+    /// <summary>
+    /// Invoke a custom action registered via <c>AddAction</c>. Loads the entity by key,
+    /// authorizes via <see cref="IAdminAuthorizationPolicy"/> (action name supplied),
+    /// runs the handler inside a fresh DI scope, and emits an
+    /// <see cref="AuditAction.Custom"/> audit event.
+    /// </summary>
+    Task InvokeActionAsync(
+        string entityRouteName,
+        string encodedKey,
+        string actionName,
+        IActionContext context,
+        CancellationToken cancellationToken = default
+    );
 }

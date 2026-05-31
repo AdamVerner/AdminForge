@@ -62,12 +62,14 @@ public class SearchTests
         {
             await TodoContextFactory.SeedAsync(ctx);
             // Add a description that matches but a title that does not.
-            ctx.Todos.Add(new Todo
-            {
-                Title = "Unrelated",
-                Description = "milk-run",
-                TodoListId = ctx.TodoLists.First().Id,
-            });
+            ctx.Todos.Add(
+                new Todo
+                {
+                    Title = "Unrelated",
+                    Description = "milk-run",
+                    TodoListId = ctx.TodoLists.First().Id,
+                }
+            );
             await ctx.SaveChangesAsync();
 
             var provider = new EfCoreDataProvider<AppDbContext, Todo>(ctx);

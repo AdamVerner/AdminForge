@@ -1,3 +1,4 @@
+using System.Linq.Expressions;
 using System.Text.Json.Serialization;
 using AdminForge;
 using AdminForge.Core.Metadata;
@@ -29,91 +30,156 @@ builder.Services.AddAdminForge<AppDbContext>(forge =>
         .WithTitle("Todo Admin")
         // Route prefix is pinned to "admin" in Phase 3 — see AdminForgeBuilder.WithRoutePrefix.
         .RequireAuthorizationPolicy("AdminForge.Demo")
-        .WithAuditLog((evt, _) =>
-        {
-            Console.WriteLine(
-                $"[audit] {evt.Timestamp:O} {evt.Action} {evt.EntityType}#{evt.EntityId} by {evt.User ?? "anonymous"} "
-                + $"({evt.ChangedValues.Count} change(s))"
-            );
-            return Task.CompletedTask;
-        })
-        .AddTable<User>(e => e
-            .Nav(n => n.Group("People").Order(1))
-            .DisplayMember(u => u.DisplayName)
+        .WithAuditLog(
+            (evt, _) =>
+            {
+                Console.WriteLine(
+                    $"[audit] {evt.Timestamp:O} {evt.Action} {evt.EntityType}#{evt.EntityId} by {evt.User ?? "anonymous"} "
+                        + $"({evt.ChangedValues.Count} change(s))"
+                );
+                return Task.CompletedTask;
+            }
+        )
+        .AddTable<User>(e =>
+            e.Nav(n => n.Group("People").Order(1))
+                .DisplayMember(u => u.DisplayName)
+                // Phase 3.5: custom action — exercises ConfirmAsync + ShowSuccess + audit.
+                .AddAction(
+                    "Send Welcome Email",
+                    async (sp, u, ctx) =>
+                    {
+                        if (!await ctx.ConfirmAsync($"Send to {u.Email}?"))
+                            return;
+                        // No real SMTP wired — this just exercises the surface.
+                        ctx.ShowSuccess($"Welcome email sent to {u.DisplayName}.");
+                    },
+                    cfg => cfg.Icon("Email").Color("Primary").RequireConfirmation()
+                )
+                // Phase 3.5: cross-entity related link — pre-filters Todo list by FK.
+                // Predicate decomposition is equality-only by design (target.Prop == source.X
+                // entries map to URL filter dictionary keys); the "exclude Done" axis from the
+                // plan text is left to the consumer's filter bar since `!=` cannot be encoded
+                // as an exact-match filter.
+                .RelatedLink<Todo>(
+                    "Active Tasks",
+                    source => target => target.AssigneeId == source.Id
+                )
+                // Phase 3.5: opt-out of the (low value) auto-link to TodoLists owned by this user.
+                .HideRelatedLink(u => u.TodoLists)
         )
         .AddTable<TodoList>(e => e.Nav(n => n.Group("Work").Order(1).Label("Lists")))
-        .AddTable<Todo>(e => e
-            .Nav(n => n.Group("Work").Order(2).Label("Tasks"))
-            .Column(t => t.Title, c => c
-                .Label("Headline")
-                .Description("Short summary visible in lists.")
-                .Validate(v => v is string s && s.Length >= 3, "Title must be at least 3 characters.")
-            )
+        .AddTable<Todo>(e =>
+            e.Nav(n => n.Group("Work").Order(2).Label("Tasks"))
+                .Column(
+                    t => t.Title,
+                    c =>
+                        c.Label("Headline")
+                            .Description("Short summary visible in lists.")
+                            .Validate(
+                                v => v is string s && s.Length >= 3,
+                                "Title must be at least 3 characters."
+                            )
+                )
+                // Phase 3.5: source-side reference-nav LinkText override.
+                // We pass the typed lambda as a LambdaExpression (Option A) since
+                // ColumnBuilder doesn't know the related entity type at compile time.
+                .Column(
+                    t => t.Assignee,
+                    c =>
+                        c.LinkText(
+                            (Expression<Func<User, string>>)(u => $"Owned by {u.DisplayName}")
+                        )
+                )
+                // Phase 3.5: HideColumn on a low-value field.
+                .HideColumn(t => t.CreatedAt)
         )
-        .AddTable<Tag>(e => e.Nav(n => n.Group("Work").Order(3)))
-        .AddDashboard("operations", d => d
-            .WithTitle("Operations")
-            .Nav(n => n.Group("Overview").Order(0).Label("Operations"))
-            .AddStatCard(
-                "Open Todos",
-                async (IServiceProvider sp, CancellationToken ct) =>
-                {
-                    var db = sp.GetRequiredService<AppDbContext>();
-                    return (object?)await db.Todos.CountAsync(
-                        t => t.Status != TodoStatus.Done && t.Status != TodoStatus.Cancelled,
-                        ct
-                    );
-                },
-                suffix: "open"
-            )
-            .AddStatCard(
-                "Completion %",
-                async (IServiceProvider sp, CancellationToken ct) =>
-                {
-                    var db = sp.GetRequiredService<AppDbContext>();
-                    var total = await db.Todos.CountAsync(ct);
-                    if (total == 0) return (object?)0d;
-                    var done = await db.Todos.CountAsync(t => t.Status == TodoStatus.Done, ct);
-                    return (object?)((double)done * 100.0 / total);
-                },
-                suffix: "%"
-            )
-            .AddLineChart<DailyCompletion>(
-                "Completed per day (14d)",
-                async (IServiceProvider sp, CancellationToken ct) =>
-                {
-                    var db = sp.GetRequiredService<AppDbContext>();
-                    var since = DateTime.UtcNow.Date.AddDays(-13);
-                    var raw = await db
-                        .Todos.Where(t => t.CompletedAt != null && t.CompletedAt >= since)
-                        .Select(t => t.CompletedAt!.Value.Date)
-                        .ToListAsync(ct);
-                    // Bucket into a continuous 14-day window so the chart shows zero days too.
-                    var byDate = raw.GroupBy(d => d).ToDictionary(g => g.Key, g => g.Count());
-                    var result = new List<DailyCompletion>(14);
-                    for (var i = 0; i < 14; i++)
-                    {
-                        var day = since.AddDays(i);
-                        byDate.TryGetValue(day, out var count);
-                        result.Add(new DailyCompletion(day, count));
-                    }
-                    return (IReadOnlyList<DailyCompletion>)result;
-                },
-                xAxis: p => p.Day,
-                yAxis: p => p.Count,
-                yAxisLabel: "todos"
-            )
-            .AddTable<Todo>(t => t
-                .WithTitle("Recent Todos")
-                .WithColumns(x => x.Title, x => x.Status, x => x.Priority, x => x.CreatedAt)
-                .OrderBy(x => x.CreatedAt, descending: true)
-                .Take(10)
-            )
-            .Layout(layout => layout
-                .Row(r => r.Add("Open Todos").Add("Completion %"))
-                .Row(r => r.Add("Completed per day (14d)", fullWidth: true))
-                .Row(r => r.Add("Recent Todos", fullWidth: true))
-            )
+        .AddTable<Tag>(e =>
+            e.Nav(n => n.Group("Work").Order(3))
+                // Phase 3.5: custom computed column — projected server-side via the user's expression.
+                .AddColumn<int>(
+                    "TodoCount",
+                    c => c.Label("# Todos").From(t => t.Todos.Count).Sortable()
+                )
+        )
+        .AddDashboard(
+            "operations",
+            d =>
+                d.WithTitle("Operations")
+                    .Nav(n => n.Group("Overview").Order(0).Label("Operations"))
+                    .AddStatCard(
+                        "Open Todos",
+                        async (IServiceProvider sp, CancellationToken ct) =>
+                        {
+                            var db = sp.GetRequiredService<AppDbContext>();
+                            return (object?)
+                                await db.Todos.CountAsync(
+                                    t =>
+                                        t.Status != TodoStatus.Done
+                                        && t.Status != TodoStatus.Cancelled,
+                                    ct
+                                );
+                        },
+                        suffix: "open"
+                    )
+                    .AddStatCard(
+                        "Completion %",
+                        async (IServiceProvider sp, CancellationToken ct) =>
+                        {
+                            var db = sp.GetRequiredService<AppDbContext>();
+                            var total = await db.Todos.CountAsync(ct);
+                            if (total == 0)
+                                return (object?)0d;
+                            var done = await db.Todos.CountAsync(
+                                t => t.Status == TodoStatus.Done,
+                                ct
+                            );
+                            return (object?)((double)done * 100.0 / total);
+                        },
+                        suffix: "%"
+                    )
+                    .AddLineChart<DailyCompletion>(
+                        "Completed per day (14d)",
+                        async (IServiceProvider sp, CancellationToken ct) =>
+                        {
+                            var db = sp.GetRequiredService<AppDbContext>();
+                            var since = DateTime.UtcNow.Date.AddDays(-13);
+                            var raw = await db
+                                .Todos.Where(t => t.CompletedAt != null && t.CompletedAt >= since)
+                                .Select(t => t.CompletedAt!.Value.Date)
+                                .ToListAsync(ct);
+                            // Bucket into a continuous 14-day window so the chart shows zero days too.
+                            var byDate = raw.GroupBy(d => d)
+                                .ToDictionary(g => g.Key, g => g.Count());
+                            var result = new List<DailyCompletion>(14);
+                            for (var i = 0; i < 14; i++)
+                            {
+                                var day = since.AddDays(i);
+                                byDate.TryGetValue(day, out var count);
+                                result.Add(new DailyCompletion(day, count));
+                            }
+                            return (IReadOnlyList<DailyCompletion>)result;
+                        },
+                        xAxis: p => p.Day,
+                        yAxis: p => p.Count,
+                        yAxisLabel: "todos"
+                    )
+                    .AddTable<Todo>(t =>
+                        t.WithTitle("Recent Todos")
+                            .WithColumns(
+                                x => x.Title,
+                                x => x.Status,
+                                x => x.Priority,
+                                x => x.CreatedAt
+                            )
+                            .OrderBy(x => x.CreatedAt, descending: true)
+                            .Take(10)
+                    )
+                    .Layout(layout =>
+                        layout
+                            .Row(r => r.Add("Open Todos").Add("Completion %"))
+                            .Row(r => r.Add("Completed per day (14d)", fullWidth: true))
+                            .Row(r => r.Add("Recent Todos", fullWidth: true))
+                    )
         )
 );
 

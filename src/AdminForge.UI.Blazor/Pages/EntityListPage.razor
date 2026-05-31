@@ -1,4 +1,5 @@
 @page "/admin/entities/{EntityName}"
+@using Microsoft.AspNetCore.WebUtilities
 @inject IAdminUIBridge Bridge
 @inject NavigationManager Nav
 @inject ISnackbar Snackbar
@@ -58,6 +59,15 @@ else
             _sortBy = null;
             _sortDescending = false;
             _filters = new();
+        }
+        // Seed filters from `?filter:{col}={value}` query-string entries on first load
+        // (the contract URL produced by related-link buttons).
+        var urlFilters = FilterUrlParser.Parse(Nav.Uri);
+        if (urlFilters.Count > 0)
+        {
+            foreach (var (k, v) in urlFilters)
+                _filters[k] = v;
+            _page = 0;
         }
         await Reload();
     }

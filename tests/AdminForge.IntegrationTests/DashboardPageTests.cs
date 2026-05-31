@@ -33,13 +33,15 @@ public class DashboardPageTests : IClassFixture<TodoAppFactory>
             db.TodoLists.Add(list);
             await db.SaveChangesAsync();
             db.Todos.Add(new Todo { Title = "Pay rent", TodoListId = list.Id });
-            db.Todos.Add(new Todo
-            {
-                Title = "Old task",
-                TodoListId = list.Id,
-                Status = TodoStatus.Done,
-                CompletedAt = DateTime.UtcNow.AddDays(-1),
-            });
+            db.Todos.Add(
+                new Todo
+                {
+                    Title = "Old task",
+                    TodoListId = list.Id,
+                    Status = TodoStatus.Done,
+                    CompletedAt = DateTime.UtcNow.AddDays(-1),
+                }
+            );
             await db.SaveChangesAsync();
         }
 

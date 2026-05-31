@@ -61,7 +61,11 @@ public sealed class LineChartMeta : WidgetMeta
     /// Provider delegate returning the raw data points to project. Items are boxed —
     /// concrete element types are captured behind <see cref="XSelector"/>/<see cref="YSelector"/>.
     /// </summary>
-    public required Func<IServiceProvider, CancellationToken, Task<IReadOnlyList<object>>> Fetch { get; init; }
+    public required Func<
+        IServiceProvider,
+        CancellationToken,
+        Task<IReadOnlyList<object>>
+    > Fetch { get; init; }
 
     /// <summary>Projects an item to its X-axis value (typically a date/time or numeric).</summary>
     public required Func<object, object?> XSelector { get; init; }

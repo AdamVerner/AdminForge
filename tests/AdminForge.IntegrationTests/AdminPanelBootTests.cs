@@ -41,7 +41,9 @@ public class AdminPanelBootTests : IClassFixture<TodoAppFactory>
         {
             var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
             await db.Database.EnsureCreatedAsync();
-            db.Users.Add(new TodoApp.Entities.User { DisplayName = "Alice", Email = "alice@example.com" });
+            db.Users.Add(
+                new TodoApp.Entities.User { DisplayName = "Alice", Email = "alice@example.com" }
+            );
             await db.SaveChangesAsync();
         }
 
@@ -74,7 +76,14 @@ public class TodoAppFactory : WebApplicationFactory<Program>
     protected override void Dispose(bool disposing)
     {
         base.Dispose(disposing);
-        try { if (File.Exists(DbPath)) File.Delete(DbPath); } catch { /* best-effort */ }
+        try
+        {
+            if (File.Exists(DbPath))
+                File.Delete(DbPath);
+        }
+        catch
+        { /* best-effort */
+        }
     }
 
     protected override void ConfigureClient(HttpClient client)

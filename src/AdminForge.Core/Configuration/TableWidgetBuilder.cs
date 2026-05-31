@@ -31,7 +31,9 @@ public sealed class TableWidgetBuilder<TEntity>
     /// Project the row to a fixed list of columns (in display order). When omitted
     /// the widget inherits the entity's default visible columns.
     /// </summary>
-    public TableWidgetBuilder<TEntity> WithColumns(params Expression<Func<TEntity, object?>>[] selectors)
+    public TableWidgetBuilder<TEntity> WithColumns(
+        params Expression<Func<TEntity, object?>>[] selectors
+    )
     {
         ArgumentNullException.ThrowIfNull(selectors);
         foreach (var s in selectors)
