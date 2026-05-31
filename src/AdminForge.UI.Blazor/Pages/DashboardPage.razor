@@ -14,7 +14,7 @@ else if (_dashboard is null)
 else
 {
     <MudText Typo="Typo.h4" Class="mb-4">@_dashboard.Title</MudText>
-    <WidgetGrid Dashboard="@_dashboard" />
+    <WidgetGrid Dashboard="@_dashboard" DashboardMeta="@_meta" />
 }
 
 @code {

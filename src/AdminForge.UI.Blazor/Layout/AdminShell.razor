@@ -1,7 +1,7 @@
 @inherits LayoutComponentBase
 @inject AdminForgeOptions Options
 
-<MudThemeProvider />
+<MudThemeProvider Theme="_theme" />
 <MudPopoverProvider />
 <MudDialogProvider />
 <MudSnackbarProvider />
@@ -9,6 +9,13 @@
 <MudLayout>
     <MudAppBar Elevation="1">
         <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit" Edge="Edge.Start" OnClick="@ToggleDrawer" />
+        @if (!string.IsNullOrWhiteSpace(Options.Theme.LogoUrl))
+        {
+            <MudImage Src="@Options.Theme.LogoUrl"
+                      Alt="@(Options.Theme.LogoAlt ?? "Logo")"
+                      Height="32"
+                      Class="ml-4" />
+        }
         <MudText Typo="Typo.h6" Class="ml-4">@Options.Title</MudText>
     </MudAppBar>
     <MudDrawer @bind-Open="_drawerOpen" ClipMode="DrawerClipMode.Always" Elevation="2" Variant="DrawerVariant.Mini" OpenMiniOnHover="true">
@@ -23,5 +30,43 @@
 
 @code {
     private bool _drawerOpen = true;
+    private MudTheme _theme = default!;
+
+    protected override void OnInitialized()
+    {
+        // Default palette: use MudBlazor's stock light palette, then override primary /
+        // secondary if the host configured them. Leaving everything null keeps the
+        // out-of-the-box experience untouched.
+        var palette = new PaletteLight();
+        if (TryParseHex(Options.Theme.PrimaryColor, out var primary))
+        {
+            palette.Primary = primary!;
+        }
+        if (TryParseHex(Options.Theme.SecondaryColor, out var secondary))
+        {
+            palette.Secondary = secondary!;
+        }
+        _theme = new MudTheme { PaletteLight = palette };
+    }
+
     private void ToggleDrawer() => _drawerOpen = !_drawerOpen;
+
+    /// <summary>
+    /// MudBlazor's <c>MudColor</c> implicit-converts from a hex string, but throws on
+    /// invalid input. Guard so a malformed config value can't crash the shell render.
+    /// </summary>
+    private static bool TryParseHex(string? value, out MudBlazor.Utilities.MudColor? color)
+    {
+        color = null;
+        if (string.IsNullOrWhiteSpace(value)) return false;
+        try
+        {
+            color = new MudBlazor.Utilities.MudColor(value);
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
 }

@@ -1,24 +1,77 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <PackageId>AdminForge</PackageId>
-    <Version>0.0.1</Version>
-    <Description>Automatic admin panel generator for ASP.NET Core applications.</Description>
+    <Version>0.1.0</Version>
+    <Authors>AdminForge contributors</Authors>
+    <Description>
+      AdminForge auto-generates an admin panel for ASP.NET Core apps: CRUD pages for EF Core
+      entities, dashboards (stat cards, line charts, table widgets), generic forms, custom
+      actions, related-table links, audit log hook, per-action authorization, and live updates.
+      Single NuGet, two lines of host wiring, MudBlazor-powered UI.
+    </Description>
+    <PackageTags>aspnetcore;blazor;admin;efcore;crud;dashboard</PackageTags>
     <IsPackable>true</IsPackable>
+
+    <!--
+      Phase 6 packaging strategy: the five sub-projects stay IsPackable=false; we ship a single
+      .nupkg whose lib/net10.0/ folder carries all five DLLs (+ XML docs). Project references use
+      PrivateAssets=all so MSBuild doesn't try to inflate them into NuGet package dependencies;
+      runtime dependencies (MudBlazor, EF Core, etc.) are declared explicitly on the meta-package
+      below so they propagate transitively to consumers.
+    -->
+    <TargetsForTfmSpecificContentInPackage>$(TargetsForTfmSpecificContentInPackage);AdminForgePackSubAssemblies</TargetsForTfmSpecificContentInPackage>
+
+    <!-- Suppress NU5131: tooling complains about unreferenced lib/ contents because the dlls
+         we inject aren't built outputs of THIS project. They're built outputs of the project
+         references — the injected files come from $(OutputPath) which contains them all. -->
+    <NoWarn>$(NoWarn);NU5131;NU5100</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
 
+  <!--
+    Sub-project references: PrivateAssets=all because we hand-roll the contents of lib/net10.0/
+    via the AdminForgePackSubAssemblies target. Without PrivateAssets the pack output would
+    list these sub-projects as missing NuGet dependencies.
+  -->
   <ItemGroup>
-    <ProjectReference Include="../AdminForge.Core/AdminForge.Core.csproj" />
-    <ProjectReference Include="../AdminForge.DataAccess.EfCore/AdminForge.DataAccess.EfCore.csproj" />
-    <ProjectReference Include="../AdminForge.LiveUpdates/AdminForge.LiveUpdates.csproj" />
-    <ProjectReference Include="../AdminForge.UI.Blazor/AdminForge.UI.Blazor.csproj" />
-    <ProjectReference Include="../AdminForge.Middleware/AdminForge.Middleware.csproj" />
+    <ProjectReference Include="../AdminForge.Core/AdminForge.Core.csproj" PrivateAssets="all" />
+    <ProjectReference Include="../AdminForge.DataAccess.EfCore/AdminForge.DataAccess.EfCore.csproj" PrivateAssets="all" />
+    <ProjectReference Include="../AdminForge.LiveUpdates/AdminForge.LiveUpdates.csproj" PrivateAssets="all" />
+    <ProjectReference Include="../AdminForge.UI.Blazor/AdminForge.UI.Blazor.csproj" PrivateAssets="all" />
+    <ProjectReference Include="../AdminForge.Middleware/AdminForge.Middleware.csproj" PrivateAssets="all" />
+  </ItemGroup>
+
+  <!--
+    Runtime dependencies that MUST propagate to consumers. MudBlazor and the ASP.NET Core
+    internal-assets package ship the static web assets (blazor.web.js, _content/MudBlazor/*)
+    that the rendered UI needs at runtime.
+  -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore" />
+    <PackageReference Include="MudBlazor" />
+    <PackageReference Include="Microsoft.AspNetCore.App.Internal.Assets" />
   </ItemGroup>
 
   <ItemGroup Condition="'$(IsPackable)' == 'true'">
     <None Include="../../README.md" Pack="true" PackagePath="/" />
   </ItemGroup>
+
+  <!--
+    Walk the meta-package's bin/$(Configuration)/$(TargetFramework) directory and ship every
+    AdminForge*.dll + matching .xml doc file under lib/net10.0/. The five sub-project DLLs land
+    there because they're project references, and AdminForge.dll itself is added too. We exclude
+    test/dependency DLLs because we only glob AdminForge*.{dll,xml}.
+  -->
+  <Target Name="AdminForgePackSubAssemblies">
+    <ItemGroup>
+      <_AdminForgeLibFiles Include="$(OutputPath)AdminForge*.dll" />
+      <_AdminForgeLibFiles Include="$(OutputPath)AdminForge*.xml" />
+      <TfmSpecificPackageFile Include="@(_AdminForgeLibFiles)">
+        <PackagePath>lib/$(TargetFramework)/</PackagePath>
+      </TfmSpecificPackageFile>
+    </ItemGroup>
+  </Target>
 </Project>

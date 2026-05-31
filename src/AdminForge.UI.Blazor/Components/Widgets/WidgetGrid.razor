@@ -40,6 +40,7 @@ else
 
 @code {
     [Parameter, EditorRequired] public DashboardVM? Dashboard { get; set; }
+    [Parameter] public DashboardMeta? DashboardMeta { get; set; }
 
     private IEnumerable<LayoutRowMeta> EffectiveRows()
     {
@@ -71,6 +72,7 @@ else
             case LineChartVM lc:
                 builder.OpenComponent<LineChart>(0);
                 builder.AddAttribute(1, "VM", lc);
+                builder.AddAttribute(2, "Dashboard", DashboardMeta);
                 builder.CloseComponent();
                 break;
             case TableWidgetVM tw:

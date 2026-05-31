@@ -2,12 +2,15 @@ using System.Collections.Concurrent;
 using System.Globalization;
 using System.Linq.Expressions;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Security.Claims;
 using AdminForge.Core.Configuration;
 using AdminForge.Core.Contracts;
+using AdminForge.Core.LiveUpdates;
 using AdminForge.Core.Metadata;
 using AdminForge.Core.ViewModels;
 using AdminForge.DataAccess.EfCore;
+using AdminForge.LiveUpdates;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -25,6 +28,7 @@ public sealed class BlazorUIBridge : IAdminUIBridge
     private readonly DbContext _dbContext;
     private readonly IAdminAuthorizationPolicy _authzPolicy;
     private readonly IUserAccessor _userAccessor;
+    private readonly ILiveSourceRegistry? _liveRegistry;
 
     // Cache compiled per-entity adapters keyed by CLR entity type.
     private readonly ConcurrentDictionary<Type, EntityAdapter> _adapters = new();
@@ -34,7 +38,8 @@ public sealed class BlazorUIBridge : IAdminUIBridge
         IServiceProvider serviceProvider,
         DbContext dbContext,
         IAdminAuthorizationPolicy authzPolicy,
-        IUserAccessor userAccessor
+        IUserAccessor userAccessor,
+        ILiveSourceRegistry? liveRegistry = null
     )
     {
         ArgumentNullException.ThrowIfNull(options);
@@ -47,6 +52,7 @@ public sealed class BlazorUIBridge : IAdminUIBridge
         _dbContext = dbContext;
         _authzPolicy = authzPolicy;
         _userAccessor = userAccessor;
+        _liveRegistry = liveRegistry;
     }
 
     public IReadOnlyList<EntityMeta> Entities => _options.Entities;
@@ -298,6 +304,107 @@ public sealed class BlazorUIBridge : IAdminUIBridge
                     cancellationToken
                 )
                 .ConfigureAwait(false);
+        }
+    }
+
+    public IAsyncEnumerable<LiveUpdate<LineChartPoint>>? SubscribeLineChart(
+        DashboardMeta dashboard,
+        string widgetId,
+        CancellationToken cancellationToken = default
+    )
+    {
+        ArgumentNullException.ThrowIfNull(dashboard);
+        ArgumentException.ThrowIfNullOrWhiteSpace(widgetId);
+        if (_liveRegistry is null)
+            return null;
+        var widget = dashboard
+            .Widgets.OfType<LineChartMeta>()
+            .FirstOrDefault(w => string.Equals(w.Id, widgetId, StringComparison.Ordinal));
+        if (widget?.LiveDataSource is null)
+            return null;
+        return SubscribeLineChartCore(dashboard, widget, _liveRegistry, cancellationToken);
+    }
+
+    private static async IAsyncEnumerable<LiveUpdate<LineChartPoint>> SubscribeLineChartCore(
+        DashboardMeta dashboard,
+        LineChartMeta widget,
+        ILiveSourceRegistry registry,
+        [EnumeratorCancellation] CancellationToken cancellationToken
+    )
+    {
+        var name = $"widget:{dashboard.RouteName}:{widget.Id}";
+        var sourceObj = registry.GetOrCreate(name, widget.LiveDataSource!);
+        var subscribeMethod = sourceObj
+            .GetType()
+            .GetMethod(nameof(ILiveDataSource<object>.Subscribe))!;
+        var enumerable = subscribeMethod.Invoke(sourceObj, new object?[] { cancellationToken })!;
+
+        // Project each TPoint to a LineChartPoint via the widget's X/Y selectors.
+        var elementType = widget.LiveDataSource!.ItemType;
+        var liveUpdateType = typeof(LiveUpdate<>).MakeGenericType(elementType);
+        var asyncEnumerableType = typeof(IAsyncEnumerable<>).MakeGenericType(liveUpdateType);
+        var castMethod = typeof(BlazorUIBridge)
+            .GetMethod(
+                nameof(EnumerateAsLineChartPoints),
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static
+            )!
+            .MakeGenericMethod(elementType);
+        var projected =
+            (IAsyncEnumerable<LiveUpdate<LineChartPoint>>)
+                castMethod.Invoke(
+                    null,
+                    new object?[]
+                    {
+                        enumerable,
+                        widget.XSelector,
+                        widget.YSelector,
+                        cancellationToken,
+                    }
+                )!;
+        await foreach (var u in projected.WithCancellation(cancellationToken).ConfigureAwait(false))
+        {
+            yield return u;
+        }
+    }
+
+    private static async IAsyncEnumerable<
+        LiveUpdate<LineChartPoint>
+    > EnumerateAsLineChartPoints<TPoint>(
+        IAsyncEnumerable<LiveUpdate<TPoint>> source,
+        Func<object, object?> xSelector,
+        Func<object, object?> ySelector,
+        [EnumeratorCancellation] CancellationToken cancellationToken
+    )
+    {
+        await foreach (
+            var update in source.WithCancellation(cancellationToken).ConfigureAwait(false)
+        )
+        {
+            var projected = new LineChartPoint[update.Items.Count];
+            for (var i = 0; i < update.Items.Count; i++)
+            {
+                var item = update.Items[i]!;
+                var x = xSelector(item!);
+                var y = ConvertToDouble(ySelector(item!));
+                projected[i] = new LineChartPoint(x, y);
+            }
+            yield return new LiveUpdate<LineChartPoint>(update.Kind, projected, update.Timestamp);
+        }
+    }
+
+    private static double ConvertToDouble(object? value)
+    {
+        if (value is null)
+            return 0d;
+        if (value is double d)
+            return d;
+        try
+        {
+            return Convert.ToDouble(value, System.Globalization.CultureInfo.InvariantCulture);
+        }
+        catch
+        {
+            return 0d;
         }
     }
 
@@ -595,6 +702,30 @@ public sealed class BlazorUIBridge : IAdminUIBridge
         public void NavigateTo(string url) { }
 
         public void Refresh() { }
+    }
+
+    public async Task<LineChartVM?> LoadLineChartAsync(
+        DashboardMeta dashboard,
+        string widgetId,
+        CancellationToken cancellationToken = default
+    )
+    {
+        ArgumentNullException.ThrowIfNull(dashboard);
+        ArgumentException.ThrowIfNullOrWhiteSpace(widgetId);
+        var widget = dashboard
+            .Widgets.OfType<LineChartMeta>()
+            .FirstOrDefault(w => string.Equals(w.Id, widgetId, StringComparison.Ordinal));
+        if (widget is null)
+            return null;
+        try
+        {
+            return (LineChartVM)
+                await MaterializeWidgetAsync(widget, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            return (LineChartVM)BuildErrorVM(widget, ex.Message);
+        }
     }
 
     public async Task<DashboardVM> LoadDashboardAsync(
@@ -1290,12 +1421,6 @@ public sealed class BlazorUIBridge : IAdminUIBridge
         {
             var keyValues = _keyAccessor.DecodeKey(encodedKey);
             return await _provider.DeleteAsync(keyValues, cancellationToken).ConfigureAwait(false);
-        }
-
-        private EntityListRowVM BuildRow(TEntity entity)
-        {
-            var values = BuildValueMap(entity, includeNavigations: true);
-            return new EntityListRowVM { Key = _keyAccessor.EncodeKey(entity), Values = values };
         }
 
         private Dictionary<string, object?> BuildValueMap(TEntity entity, bool includeNavigations)

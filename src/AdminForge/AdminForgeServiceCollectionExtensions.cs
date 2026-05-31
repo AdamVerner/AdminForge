@@ -1,6 +1,7 @@
 using AdminForge.Core.Configuration;
 using AdminForge.Core.Contracts;
 using AdminForge.DataAccess.EfCore;
+using AdminForge.LiveUpdates;
 using AdminForge.Middleware;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -56,6 +57,7 @@ public static class AdminForgeServiceCollectionExtensions
 
         // Wire up Blazor + auth pieces from the Middleware project.
         services.AddAdminForgeBlazor();
+        services.AddAdminForgeLiveUpdates();
         services.TryAddSingleton<IUserAccessor, HttpContextUserAccessor>();
         services.TryAddSingleton<IAdminAuthorizationPolicy, AllowAllAuthorizationPolicy>();
 

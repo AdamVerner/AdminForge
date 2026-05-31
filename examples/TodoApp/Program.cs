@@ -3,6 +3,7 @@ using System.Text.Json.Serialization;
 using AdminForge;
 using AdminForge.Core.Metadata;
 using Microsoft.EntityFrameworkCore;
+using TodoApp;
 using TodoApp.Data;
 using TodoApp.Entities;
 
@@ -19,6 +20,14 @@ var connectionString =
 
 builder.Services.AddDbContext<AppDbContext>(o => o.UseSqlite(connectionString));
 
+// Live updates demo wiring: a shared streaming channel + background producers. The
+// fluent dashboard builder needs an IAsyncEnumerable at registration time, so we
+// instantiate the stream up-front and feed it into both DI (so the BackgroundService
+// can resolve it) and the dashboard chart's WithStreaming(...) call.
+var metricsTickStream = new MetricsTickStream();
+builder.Services.AddSingleton(metricsTickStream);
+builder.Services.AddHostedService<MetricsBackgroundService>();
+
 // Allow-all umbrella policy for the demo so anonymous browsing works.
 builder.Services.AddAuthorization(opts =>
 {
@@ -30,6 +39,19 @@ builder.Services.AddAdminForge<AppDbContext>(forge =>
         .WithTitle("Todo Admin")
         // Route prefix is pinned to "admin" in Phase 3 — see AdminForgeBuilder.WithRoutePrefix.
         .RequireAuthorizationPolicy("AdminForge.Demo")
+        // Phase 6: exercise the theming hook end-to-end. Inline-SVG data URL avoids
+        // shipping a separate asset file with the example; teal primary makes it
+        // obvious at a glance that the configured palette is in effect.
+        .WithTheme(theme =>
+        {
+            theme.LogoUrl =
+                "data:image/svg+xml;utf8,"
+                + "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='white'>"
+                + "<path d='M9 16.17 4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z'/></svg>";
+            theme.LogoAlt = "Todo Admin";
+            theme.PrimaryColor = "#00897b"; // teal
+            theme.SecondaryColor = "#ff8a65"; // coral accent
+        })
         .WithAuditLog(
             (evt, _) =>
             {
@@ -92,6 +114,9 @@ builder.Services.AddAdminForge<AppDbContext>(forge =>
                 )
                 // Phase 3.5: HideColumn on a low-value field.
                 .HideColumn(t => t.CreatedAt)
+                // Phase 5 (narrowed): live polling on the single-entity VIEW page only.
+                // Visiting /admin/entities/Todo/{id} re-fetches the displayed row every 5s.
+                .WithLivePolling(TimeSpan.FromSeconds(5))
         )
         .AddTable<Tag>(e =>
             e.Nav(n => n.Group("Work").Order(3))
@@ -210,6 +235,39 @@ builder.Services.AddAdminForge<AppDbContext>(forge =>
                         yAxis: p => p.Count,
                         yAxisLabel: "todos"
                     )
+                    .AddLineChart<MetricsTick>(
+                        "Live metrics",
+                        xAxis: p => p.At,
+                        yAxis: p => p.Value,
+                        configure: c =>
+                            c.WithStreaming(metricsTickStream.Reader).WithWindowSize(40),
+                        yAxisLabel: "value"
+                    )
+                    // Phase 5 (narrowed): polling-variant line chart. The chart's fetch
+                    // delegate is re-invoked every 10s; no separate poll delegate is
+                    // taken — the library reuses the dashboard widget materialiser.
+                    .AddLineChart<OpenTodoSnapshot>(
+                        "Open todos (live)",
+                        async (IServiceProvider sp, CancellationToken ct) =>
+                        {
+                            var db = sp.GetRequiredService<AppDbContext>();
+                            var open = await db.Todos.CountAsync(
+                                t =>
+                                    t.Status != TodoStatus.Done && t.Status != TodoStatus.Cancelled,
+                                ct
+                            );
+                            // Single-point series — the chart appends each snapshot and
+                            // trims to the configured window.
+                            return (IReadOnlyList<OpenTodoSnapshot>)
+                                new[] { new OpenTodoSnapshot(DateTime.UtcNow, open) };
+                        },
+                        xAxis: p => p.At,
+                        yAxis: p => p.Count,
+                        xAxisLabel: null,
+                        yAxisLabel: "open",
+                        configure: c =>
+                            c.WithLivePolling(TimeSpan.FromSeconds(10)).WithWindowSize(30)
+                    )
                     .AddTable<Todo>(t =>
                         t.WithTitle("Recent Todos")
                             .WithColumns(
@@ -225,6 +283,8 @@ builder.Services.AddAdminForge<AppDbContext>(forge =>
                         layout
                             .Row(r => r.Add("Open Todos").Add("Completion %"))
                             .Row(r => r.Add("Completed per day (14d)", fullWidth: true))
+                            .Row(r => r.Add("Live metrics", fullWidth: true))
+                            .Row(r => r.Add("Open todos (live)", fullWidth: true))
                             .Row(r => r.Add("Recent Todos", fullWidth: true))
                     )
         )
@@ -331,6 +391,9 @@ public sealed record CreateTodoRequest(string Title, int TodoListId, TodoPriorit
 
 /// <summary>One bucket in the "completed per day" dashboard chart.</summary>
 public sealed record DailyCompletion(DateTime Day, int Count);
+
+/// <summary>One snapshot for the polling "Open todos (live)" chart.</summary>
+public sealed record OpenTodoSnapshot(DateTime At, int Count);
 
 // Required for WebApplicationFactory<TodoApp> in integration tests.
 public partial class Program { }

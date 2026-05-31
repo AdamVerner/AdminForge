@@ -1,4 +1,5 @@
 using AdminForge.Core.Configuration;
+using AdminForge.Core.LiveUpdates;
 using AdminForge.Core.Metadata;
 using AdminForge.Core.ViewModels;
 
@@ -129,6 +130,30 @@ public interface IAdminUIBridge
         string encodedKey,
         string actionName,
         IActionContext context,
+        CancellationToken cancellationToken = default
+    );
+
+    /// <summary>
+    /// Subscribe to streaming updates for a dashboard line-chart widget by its id.
+    /// Returns an async enumerable of <see cref="LiveUpdate{LineChartPoint}"/>
+    /// envelopes when the widget has a streaming source configured; otherwise null.
+    /// Polling charts use <see cref="LoadLineChartAsync"/> on a page-level timer instead.
+    /// </summary>
+    IAsyncEnumerable<LiveUpdate<LineChartPoint>>? SubscribeLineChart(
+        DashboardMeta dashboard,
+        string widgetId,
+        CancellationToken cancellationToken = default
+    );
+
+    /// <summary>
+    /// Re-materialise a single line-chart widget, re-invoking its registered fetch
+    /// delegate. Returns null when the widget is not on the dashboard. Used by the
+    /// polling path in <c>LineChart.razor</c>; reuses the same materialiser as
+    /// <see cref="LoadDashboardAsync"/>.
+    /// </summary>
+    Task<LineChartVM?> LoadLineChartAsync(
+        DashboardMeta dashboard,
+        string widgetId,
         CancellationToken cancellationToken = default
     );
 

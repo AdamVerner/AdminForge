@@ -202,6 +202,25 @@ public sealed class EntityBuilder<T>
     }
 
     /// <summary>
+    /// Enable live polling on the <em>entity view</em> page for this entity. While the
+    /// view is mounted the page re-fetches the displayed row every
+    /// <paramref name="interval"/> via the existing data provider's find-by-key path
+    /// — no separate delegate is required. The entity <em>list</em> is NOT polled
+    /// (table-level live updates were removed after the initial Phase 5 build).
+    /// </summary>
+    public EntityBuilder<T> WithLivePolling(TimeSpan interval)
+    {
+        if (interval <= TimeSpan.Zero)
+            throw new ArgumentOutOfRangeException(
+                nameof(interval),
+                interval,
+                "Interval must be positive."
+            );
+        _meta.LivePollingInterval = interval;
+        return this;
+    }
+
+    /// <summary>
     /// Suppress the auto-generated "View N {label}" link for a collection navigation.
     /// </summary>
     public EntityBuilder<T> HideRelatedLink<TCollection>(Expression<Func<T, TCollection>> selector)

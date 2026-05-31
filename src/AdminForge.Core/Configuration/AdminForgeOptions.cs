@@ -40,4 +40,10 @@ public sealed class AdminForgeOptions
     /// Wired via <c>AdminForgeBuilder.WithAuditLog(...)</c>.
     /// </summary>
     public IAuditSink? AuditSink { get; init; }
+
+    /// <summary>
+    /// Optional visual theming (logo, palette colours). Always non-null;
+    /// individual properties on the returned object may be null when unconfigured.
+    /// </summary>
+    public ThemeOptions Theme { get; init; } = new();
 }

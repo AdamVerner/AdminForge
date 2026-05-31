@@ -6,6 +6,7 @@
   <ItemGroup>
     <ProjectReference Include="../AdminForge.Core/AdminForge.Core.csproj" />
     <ProjectReference Include="../AdminForge.DataAccess.EfCore/AdminForge.DataAccess.EfCore.csproj" />
+    <ProjectReference Include="../AdminForge.LiveUpdates/AdminForge.LiveUpdates.csproj" />
   </ItemGroup>
 
   <ItemGroup>

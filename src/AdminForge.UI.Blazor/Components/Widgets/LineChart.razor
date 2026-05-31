@@ -2,13 +2,27 @@
    string[] labels for the X axis; we project the materialised LineChartVM.Points
    into those shapes here so the meta side can stay strongly typed. *@
 
+@implements IDisposable
+@inject IAdminUIBridge Bridge
+@using AdminForge.Core.LiveUpdates
+
 <MudPaper Class="pa-4" Elevation="2" Style="height:100%">
-    <MudText Typo="Typo.subtitle2" Color="Color.Secondary">@VM.Title</MudText>
+    <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-1">
+        <MudText Typo="Typo.subtitle2" Color="Color.Secondary">@VM.Title</MudText>
+        @if (_mode == LiveMode.Streaming)
+        {
+            <MudChip T="string" Size="Size.Small" Color="Color.Success" Variant="Variant.Outlined">Live</MudChip>
+        }
+        else if (_mode == LiveMode.Polling)
+        {
+            <MudChip T="string" Size="Size.Small" Color="Color.Success" Variant="Variant.Outlined">Live · polling</MudChip>
+        }
+    </MudStack>
     @if (VM.Error is not null)
     {
         <MudAlert Severity="Severity.Error" Dense="true">@VM.Error</MudAlert>
     }
-    else if (VM.Points.Count == 0)
+    else if (_points.Count == 0)
     {
         <MudText Typo="Typo.body2" Class="mt-2">No data.</MudText>
     }
@@ -29,34 +43,177 @@
 
 @code {
     [Parameter, EditorRequired] public LineChartVM VM { get; set; } = default!;
+    [Parameter] public DashboardMeta? Dashboard { get; set; }
+
+    private enum LiveMode { Static, Streaming, Polling }
 
     private List<ChartSeries<double>> _series = new();
     private string[] _xLabels = Array.Empty<string>();
+    // Buffer of points currently rendered — seeded from the initial VM and trimmed to window size.
+    private List<LineChartPoint> _points = new();
+    private LiveMode _mode = LiveMode.Static;
+    private int _windowSize = 50;
+
+    private CancellationTokenSource? _cts;
+    private Task? _liveTask;
+    private string? _subscribedWidgetId;
 
     protected override void OnParametersSet()
     {
-        if (VM is null || VM.Points.Count == 0)
+        if (!string.Equals(_subscribedWidgetId, VM?.Id, StringComparison.Ordinal))
+        {
+            StopLive();
+            _subscribedWidgetId = VM?.Id;
+            _points = VM?.Points.ToList() ?? new();
+            // Live source registration on the LineChartMeta gates whether we attach a live
+            // loop; we need the dashboard for the meta lookup. Without it, just render static.
+            if (Dashboard is not null && VM is not null)
+            {
+                var widget = Dashboard.Widgets
+                    .OfType<LineChartMeta>()
+                    .FirstOrDefault(w => string.Equals(w.Id, VM.Id, StringComparison.Ordinal));
+                if (widget is not null)
+                {
+                    _windowSize = widget.LiveWindowSize > 0 ? widget.LiveWindowSize : 50;
+                    if (widget.LiveDataSource is not null)
+                    {
+                        _mode = LiveMode.Streaming;
+                        StartStreaming();
+                    }
+                    else if (widget.LivePollingInterval is { } interval)
+                    {
+                        _mode = LiveMode.Polling;
+                        StartPolling(interval);
+                    }
+                }
+            }
+        }
+        RebuildSeries();
+    }
+
+    private void StartStreaming()
+    {
+        if (Dashboard is null || VM is null) return;
+        var subscription = Bridge.SubscribeLineChart(Dashboard, VM.Id);
+        if (subscription is null) return;
+        _cts = new CancellationTokenSource();
+        var token = _cts.Token;
+        _liveTask = Task.Run(async () =>
+        {
+            try
+            {
+                await foreach (var update in subscription.WithCancellation(token).ConfigureAwait(false))
+                {
+                    MergeUpdate(update);
+                    await InvokeAsync(StateHasChanged);
+                }
+            }
+            catch (OperationCanceledException) { }
+            catch (Exception) { /* swallow; live updates are best-effort */ }
+        });
+    }
+
+    private void StartPolling(TimeSpan interval)
+    {
+        if (Dashboard is null || VM is null) return;
+        var dashboard = Dashboard;
+        var widgetId = VM.Id;
+        _cts = new CancellationTokenSource();
+        var token = _cts.Token;
+        _liveTask = Task.Run(async () =>
+        {
+            try
+            {
+                while (!token.IsCancellationRequested)
+                {
+                    try
+                    {
+                        await Task.Delay(interval, token).ConfigureAwait(false);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        return;
+                    }
+                    try
+                    {
+                        var refreshed = await Bridge.LoadLineChartAsync(dashboard, widgetId, token).ConfigureAwait(false);
+                        if (refreshed is null || refreshed.Error is not null)
+                            continue;
+                        _points = refreshed.Points.TakeLast(_windowSize).ToList();
+                        RebuildSeries();
+                        await InvokeAsync(StateHasChanged);
+                    }
+                    catch (OperationCanceledException) { return; }
+                    catch (Exception)
+                    {
+                        // Best-effort poll — transient failures shouldn't kill the loop.
+                    }
+                }
+            }
+            catch (OperationCanceledException) { }
+        });
+    }
+
+    private void MergeUpdate(LiveUpdate<LineChartPoint> update)
+    {
+        switch (update.Kind)
+        {
+            case LiveUpdateKind.FullReplace:
+                _points = update.Items.TakeLast(_windowSize).ToList();
+                break;
+            case LiveUpdateKind.Append:
+            case LiveUpdateKind.Update:
+                foreach (var p in update.Items)
+                    _points.Add(p);
+                if (_points.Count > _windowSize)
+                    _points.RemoveRange(0, _points.Count - _windowSize);
+                break;
+            case LiveUpdateKind.Remove:
+                // Rare for charts — treat as no-op for v1.
+                break;
+        }
+        RebuildSeries();
+    }
+
+    private void RebuildSeries()
+    {
+        if (VM is null || _points.Count == 0)
         {
             _series = new();
             _xLabels = Array.Empty<string>();
             return;
         }
-
         _series = new List<ChartSeries<double>>
         {
             new ChartSeries<double>
             {
                 Name = VM.YAxisLabel ?? VM.Title,
-                Data = VM.Points.Select(p => p.Y).ToArray(),
+                Data = _points.Select(p => p.Y).ToArray(),
             },
         };
-        _xLabels = VM.Points.Select(p => FormatX(p.X)).ToArray();
+        _xLabels = _points.Select(p => FormatX(p.X)).ToArray();
+    }
+
+    public void Dispose() => StopLive();
+
+    private void StopLive()
+    {
+        try
+        {
+            _cts?.Cancel();
+            _cts?.Dispose();
+        }
+        catch { }
+        _cts = null;
+        _liveTask = null;
+        _mode = LiveMode.Static;
     }
 
     private static string FormatX(object? x)
     {
         if (x is null) return "";
-        if (x is DateTime dt) return dt.ToString("MM-dd");
+        if (x is DateTime dt) return dt.ToString("HH:mm:ss");
+        if (x is DateTimeOffset dto) return dto.ToString("HH:mm:ss");
         if (x is DateOnly d) return d.ToString("MM-dd");
         return x.ToString() ?? "";
     }

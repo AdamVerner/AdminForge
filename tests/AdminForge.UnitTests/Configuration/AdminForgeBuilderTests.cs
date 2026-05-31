@@ -108,6 +108,61 @@ public class AdminForgeBuilderTests
     }
 
     [Fact]
+    public void WithLivePolling_Stores_Interval_On_EntityMeta()
+    {
+        var builder = new AdminForgeBuilder(Scan());
+        builder.AddTable<Todo>(e => e.WithLivePolling(TimeSpan.FromSeconds(7)));
+
+        var meta = builder.Build().Entities.Single();
+        Assert.Equal(TimeSpan.FromSeconds(7), meta.LivePollingInterval);
+    }
+
+    [Fact]
+    public void WithLivePolling_Rejects_Non_Positive_Interval()
+    {
+        var builder = new AdminForgeBuilder(Scan());
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            builder.AddTable<Todo>(e => e.WithLivePolling(TimeSpan.Zero))
+        );
+    }
+
+    [Fact]
+    public void WithTheme_Defaults_Are_All_Null()
+    {
+        var options = new AdminForgeBuilder(Scan()).Build();
+        Assert.NotNull(options.Theme);
+        Assert.Null(options.Theme.LogoUrl);
+        Assert.Null(options.Theme.LogoAlt);
+        Assert.Null(options.Theme.PrimaryColor);
+        Assert.Null(options.Theme.SecondaryColor);
+    }
+
+    [Fact]
+    public void WithTheme_Configures_All_Properties()
+    {
+        var builder = new AdminForgeBuilder(Scan());
+        builder.WithTheme(t =>
+        {
+            t.LogoUrl = "/logo.png";
+            t.LogoAlt = "MyApp";
+            t.PrimaryColor = "#00897b";
+            t.SecondaryColor = "#ff8a65";
+        });
+        var theme = builder.Build().Theme;
+        Assert.Equal("/logo.png", theme.LogoUrl);
+        Assert.Equal("MyApp", theme.LogoAlt);
+        Assert.Equal("#00897b", theme.PrimaryColor);
+        Assert.Equal("#ff8a65", theme.SecondaryColor);
+    }
+
+    [Fact]
+    public void WithTheme_Rejects_Null_Configure()
+    {
+        var builder = new AdminForgeBuilder(Scan());
+        Assert.Throws<ArgumentNullException>(() => builder.WithTheme(null!));
+    }
+
+    [Fact]
     public void Validator_Captures_Predicate_And_Message()
     {
         var builder = new AdminForgeBuilder(Scan());

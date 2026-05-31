@@ -22,6 +22,13 @@ public sealed class AdminForgeBuilder
     public IAuditSink? AuditSink { get; private set; }
 
     /// <summary>
+    /// Mutable theme surface for the admin shell. Configured via
+    /// <see cref="WithTheme(System.Action{ThemeOptions})"/>; defaults render the
+    /// renderer's stock palette and no logo.
+    /// </summary>
+    public ThemeOptions Theme { get; } = new();
+
+    /// <summary>
     /// Constructs a builder seeded with the entity metadata produced by the
     /// reflection scanner. Lookups in <see cref="AddTable{T}"/> resolve against this map.
     /// </summary>
@@ -225,6 +232,17 @@ public sealed class AdminForgeBuilder
         return this;
     }
 
+    /// <summary>
+    /// Customise the admin shell's visual theme (logo, primary / secondary palette).
+    /// All values are optional — anything left unset keeps the renderer's defaults.
+    /// </summary>
+    public AdminForgeBuilder WithTheme(Action<ThemeOptions> configure)
+    {
+        ArgumentNullException.ThrowIfNull(configure);
+        configure(Theme);
+        return this;
+    }
+
     /// <summary>Materialise the immutable <see cref="AdminForgeOptions"/> consumed by the host pipeline.</summary>
     public AdminForgeOptions Build() =>
         new()
@@ -236,6 +254,13 @@ public sealed class AdminForgeBuilder
             Dashboards = _dashboards.AsReadOnly(),
             Forms = _forms.AsReadOnly(),
             AuditSink = AuditSink,
+            Theme = new ThemeOptions
+            {
+                LogoUrl = Theme.LogoUrl,
+                LogoAlt = Theme.LogoAlt,
+                PrimaryColor = Theme.PrimaryColor,
+                SecondaryColor = Theme.SecondaryColor,
+            },
         };
 
     private sealed class DelegateAuditSink(Func<AuditEvent, CancellationToken, Task> callback)

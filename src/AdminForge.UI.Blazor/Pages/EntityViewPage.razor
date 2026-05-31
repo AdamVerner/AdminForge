@@ -1,4 +1,5 @@
 @page "/admin/entities/{EntityName}/{Key}"
+@implements IDisposable
 @inject IAdminUIBridge Bridge
 @inject NavigationManager Nav
 
@@ -16,6 +17,12 @@ else
 {
     <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-4">
         <MudText Typo="Typo.h4">@Entity.Label — @_view.Key</MudText>
+        @if (Entity.LivePollingInterval is { } iv)
+        {
+            <MudChip T="string" Size="Size.Small" Color="Color.Success" Variant="Variant.Outlined">
+                Live · every @((int)iv.TotalSeconds)s@(_lastRefreshedAt is { } at ? $" · {at.ToLocalTime():HH:mm:ss}" : "")
+            </MudChip>
+        }
         <MudSpacer />
         <MudButton Variant="Variant.Outlined"
                    OnClick="@(() => Nav.NavigateTo($"/admin/entities/{Entity.RouteName}"))">
@@ -52,12 +59,66 @@ else
 
     private EntityMeta? Entity;
     private EntityViewVM? _view;
+    private CancellationTokenSource? _pollCts;
+    private Task? _pollTask;
+    private string? _polledForKey;
+    private DateTimeOffset? _lastRefreshedAt;
 
     protected override async Task OnParametersSetAsync()
     {
         Entity = Bridge.FindEntityByRouteName(EntityName);
         if (Entity is null) return;
         await Refresh();
+        // (Re)start the polling loop only when the route key actually changes — a
+        // re-render that supplies the same parameters must not spin up a second timer.
+        var pollKey = $"{Entity.RouteName}/{Key}";
+        if (Entity.LivePollingInterval is { } interval && !string.Equals(_polledForKey, pollKey, StringComparison.Ordinal))
+        {
+            StopPolling();
+            _polledForKey = pollKey;
+            _pollCts = new CancellationTokenSource();
+            var token = _pollCts.Token;
+            _pollTask = Task.Run(() => PollLoop(Entity, Key, interval, token));
+        }
+        else if (Entity.LivePollingInterval is null)
+        {
+            StopPolling();
+            _polledForKey = null;
+        }
+    }
+
+    private async Task PollLoop(EntityMeta entity, string key, TimeSpan interval, CancellationToken ct)
+    {
+        try
+        {
+            while (!ct.IsCancellationRequested)
+            {
+                try
+                {
+                    await Task.Delay(interval, ct).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    return;
+                }
+                try
+                {
+                    var refreshed = await Bridge.FindAsync(entity, Uri.UnescapeDataString(key), ct).ConfigureAwait(false);
+                    if (refreshed is not null)
+                    {
+                        _view = refreshed;
+                        _lastRefreshedAt = DateTimeOffset.UtcNow;
+                        await InvokeAsync(StateHasChanged);
+                    }
+                }
+                catch (OperationCanceledException) { return; }
+                catch (Exception)
+                {
+                    // Best-effort live refresh — transient errors must not tear down the loop.
+                }
+            }
+        }
+        catch (OperationCanceledException) { }
     }
 
     private async Task Refresh()
@@ -65,6 +126,20 @@ else
         if (Entity is null) return;
         _view = await Bridge.FindAsync(Entity, Uri.UnescapeDataString(Key));
         StateHasChanged();
+    }
+
+    public void Dispose() => StopPolling();
+
+    private void StopPolling()
+    {
+        try
+        {
+            _pollCts?.Cancel();
+            _pollCts?.Dispose();
+        }
+        catch { /* best effort */ }
+        _pollCts = null;
+        _pollTask = null;
     }
 
     private RenderFragment RenderValue(object? raw, ColumnMeta column) => builder =>

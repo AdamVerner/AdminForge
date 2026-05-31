@@ -25,6 +25,7 @@ tasks:
   example:todo:seed:
     desc: Seed the TodoApp SQLite database
     cmds:
+      - rm -f examples/TodoApp/todapp.db
       - dotnet run --project examples/TodoApp -- seed
 
   clean:

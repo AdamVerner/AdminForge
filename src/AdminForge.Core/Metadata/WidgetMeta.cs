@@ -1,3 +1,5 @@
+using AdminForge.Core.LiveUpdates;
+
 namespace AdminForge.Core.Metadata;
 
 /// <summary>
@@ -78,6 +80,27 @@ public sealed class LineChartMeta : WidgetMeta
 
     /// <summary>Optional axis labels for the chart.</summary>
     public string? YAxisLabel { get; init; }
+
+    /// <summary>
+    /// Optional streaming live-data source registered via <c>WithStreaming</c> on the
+    /// line-chart builder. When set, the chart subscribes for append-style updates.
+    /// Mutually exclusive with <see cref="LivePollingInterval"/>.
+    /// </summary>
+    public LiveDataSourceMeta? LiveDataSource { get; set; }
+
+    /// <summary>
+    /// Optional polling interval registered via <c>WithLivePolling</c> on the line-chart
+    /// builder. When set, the chart page re-invokes the chart's <see cref="Fetch"/>
+    /// delegate every interval and replaces the displayed points. Mutually exclusive
+    /// with <see cref="LiveDataSource"/>.
+    /// </summary>
+    public TimeSpan? LivePollingInterval { get; set; }
+
+    /// <summary>
+    /// Maximum number of points to keep in the chart when live updates are merged.
+    /// Default 50. Ignored for non-live charts.
+    /// </summary>
+    public int LiveWindowSize { get; set; } = 50;
 }
 
 /// <summary>

@@ -1,3 +1,5 @@
+@inject IAdminUIBridge Bridge
+
 @if (Entity is null)
 {
     <MudText>No entity.</MudText>
@@ -70,7 +72,6 @@ else
 
     private bool IsSortable(ColumnMeta col)
     {
-        // Custom columns honour the explicit IsSortable flag set on the builder.
         if (col.IsCustom) return col.IsSortable;
         return col.Kind is ColumnKind.Scalar or ColumnKind.Enum && !col.IsForeignKey && col.IsSortable;
     }

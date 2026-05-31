@@ -100,6 +100,20 @@ public sealed class DashboardBuilder
         Expression<Func<TPoint, object?>> yAxis,
         string? xAxisLabel = null,
         string? yAxisLabel = null
+    ) => AddLineChart(title, fetch, xAxis, yAxis, xAxisLabel, yAxisLabel, configure: null);
+
+    /// <summary>
+    /// Adds a line-chart widget with an additional configuration callback that
+    /// exposes live-update opt-ins (<c>WithStreaming</c>, <c>WithLivePolling</c>).
+    /// </summary>
+    public DashboardBuilder AddLineChart<TPoint>(
+        string title,
+        Func<IServiceProvider, CancellationToken, Task<IReadOnlyList<TPoint>>> fetch,
+        Expression<Func<TPoint, object?>> xAxis,
+        Expression<Func<TPoint, object?>> yAxis,
+        string? xAxisLabel,
+        string? yAxisLabel,
+        Action<LineChartBuilder<TPoint>>? configure
     )
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(title);
@@ -111,30 +125,55 @@ public sealed class DashboardBuilder
         var compiledY = yAxis.Compile();
 
         var id = AllocateId(title);
-        _widgets.Add(
-            new LineChartMeta
+        var meta = new LineChartMeta
+        {
+            Id = id,
+            Title = title,
+            Fetch = async (sp, ct) =>
             {
-                Id = id,
-                Title = title,
-                Fetch = async (sp, ct) =>
+                var typed = await fetch(sp, ct).ConfigureAwait(false);
+                var boxed = new List<object>(typed.Count);
+                foreach (var p in typed)
                 {
-                    var typed = await fetch(sp, ct).ConfigureAwait(false);
-                    var boxed = new List<object>(typed.Count);
-                    foreach (var p in typed)
-                    {
-                        if (p is null)
-                            continue;
-                        boxed.Add(p);
-                    }
-                    return boxed;
-                },
-                XSelector = o => compiledX((TPoint)o),
-                YSelector = o => compiledY((TPoint)o),
-                XAxisLabel = xAxisLabel,
-                YAxisLabel = yAxisLabel,
-            }
-        );
+                    if (p is null)
+                        continue;
+                    boxed.Add(p);
+                }
+                return boxed;
+            },
+            XSelector = o => compiledX((TPoint)o),
+            YSelector = o => compiledY((TPoint)o),
+            XAxisLabel = xAxisLabel,
+            YAxisLabel = yAxisLabel,
+        };
+        configure?.Invoke(new LineChartBuilder<TPoint>(meta));
+        _widgets.Add(meta);
         return this;
+    }
+
+    /// <summary>
+    /// Adds a line chart with no initial-load fetch — useful for streaming-only charts
+    /// where the points are pushed exclusively via <see cref="LineChartBuilder{TPoint}.WithStreaming"/>.
+    /// </summary>
+    public DashboardBuilder AddLineChart<TPoint>(
+        string title,
+        Expression<Func<TPoint, object?>> xAxis,
+        Expression<Func<TPoint, object?>> yAxis,
+        Action<LineChartBuilder<TPoint>> configure,
+        string? xAxisLabel = null,
+        string? yAxisLabel = null
+    )
+    {
+        ArgumentNullException.ThrowIfNull(configure);
+        return AddLineChart<TPoint>(
+            title,
+            (_, _) => Task.FromResult<IReadOnlyList<TPoint>>(Array.Empty<TPoint>()),
+            xAxis,
+            yAxis,
+            xAxisLabel,
+            yAxisLabel,
+            configure
+        );
     }
 
     /// <summary>

@@ -70,4 +70,12 @@ public sealed class EntityMeta
     /// when materialising auto-links on the entity view page.
     /// </summary>
     public HashSet<string> HiddenRelatedNavigations { get; init; } = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// Optional live-polling interval registered via <c>EntityBuilder.WithLivePolling</c>.
+    /// When set, the entity <em>view</em> page re-fetches the displayed row every interval
+    /// (the entity list table is NOT polled — that scope was dropped after the initial
+    /// Phase 5 build).
+    /// </summary>
+    public TimeSpan? LivePollingInterval { get; set; }
 }
