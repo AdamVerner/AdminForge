@@ -60,7 +60,7 @@ public sealed class CustomColumnBuilder<T, TValue>
     /// <summary>Hide the column from list views (still computed if referenced elsewhere).</summary>
     public CustomColumnBuilder<T, TValue> HiddenInList()
     {
-        _meta.HiddenInList = true;
+        _meta.ShowInList = false;
         return this;
     }
 }

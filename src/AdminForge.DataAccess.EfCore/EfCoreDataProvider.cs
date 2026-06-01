@@ -133,158 +133,203 @@ public class EfCoreDataProvider<TContext, TEntity> : IAdminDataProvider<TEntity>
         };
     }
 
+    /// <summary>
+    /// Compute every custom column for the current page in a single server-side query.
+    /// <para>
+    /// Builds a composite projection of the form
+    /// <c>q.Where(e =&gt; pks.Contains(e.Pk)).Select(e =&gt; new ProjectionRow {
+    /// Key = e.Pk, V0 = selectorA(e), V1 = selectorB(e), ... })</c>. The row type is
+    /// constructed at runtime (one closed generic per (PK type × custom-column count)
+    /// shape, cached) so every custom column collapses into one round-trip regardless
+    /// of count. Falls back to per-row in-process evaluation for composite keys.
+    /// </para>
+    /// </summary>
     private async Task<IReadOnlyList<IReadOnlyDictionary<string, object?>>> ProjectCustomColumns(
         IReadOnlyList<TEntity> pageItems,
         IReadOnlyDictionary<string, CustomColumnSpec> customColumns,
         CancellationToken cancellationToken
     )
     {
-        // Build a per-row dictionary keyed by the same string encoding the bridge uses
-        // for navigation, so we don't have to re-encode in the bridge.
-        var keysOnPage = pageItems.Select(_keyAccessor.EncodeKey).ToList();
         var rowDicts = new Dictionary<string, object?>[pageItems.Count];
         for (var i = 0; i < pageItems.Count; i++)
             rowDicts[i] = new Dictionary<string, object?>(StringComparer.Ordinal);
 
-        // Build a single PK-set filter; reused across each custom column.
-        // SQLite (and SQL Server) translate this efficiently as `Id IN (...)`.
-        var pkPropName =
-            _keyAccessor.KeyProperties.Count > 0 ? _keyAccessor.KeyProperties[0].Name : null;
+        // Preserve a stable column order so the projection's positional slots line up.
+        var orderedColumns = customColumns.Select(kvp => (Name: kvp.Key, Spec: kvp.Value)).ToList();
+        if (orderedColumns.Count == 0)
+            return rowDicts;
 
-        foreach (var (columnName, spec) in customColumns)
+        var pkProperties = _keyAccessor.KeyProperties;
+
+        // Composite-key fallback: evaluate selectors in-process per row. Less ideal for
+        // selectors that touch the DB (e.g. nav.Count) — but admin pages with composite
+        // keys are rare and we lose pushdown only in that edge case.
+        if (pkProperties.Count != 1 || pkProperties[0].PropertyInfo is null)
         {
-            // Fetch (key, value) pairs for the current page only.
-            var pairs = await FetchCustomColumnPairs(spec.Selector, pageItems, cancellationToken)
-                .ConfigureAwait(false);
-            for (var i = 0; i < pageItems.Count; i++)
+            for (var i = 0; i < orderedColumns.Count; i++)
             {
-                rowDicts[i][columnName] = pairs[i];
+                var compiled = orderedColumns[i].Spec.Selector.Compile();
+                for (var r = 0; r < pageItems.Count; r++)
+                {
+                    object? value;
+                    try
+                    {
+                        value = compiled.DynamicInvoke(pageItems[r]);
+                    }
+                    catch
+                    {
+                        value = null;
+                    }
+                    rowDicts[r][orderedColumns[i].Name] = value;
+                }
             }
+            return rowDicts;
+        }
+
+        var pkInfo = pkProperties[0].PropertyInfo!;
+
+        // Materialise PKs for the page (Contains(...) input).
+        var typedKeysArray = Array.CreateInstance(pkInfo.PropertyType, pageItems.Count);
+        for (var i = 0; i < pageItems.Count; i++)
+            typedKeysArray.SetValue(pkInfo.GetValue(pageItems[i]), i);
+
+        // Build the projection row type for this (PK type, N) shape (cached).
+        var rowType = GetProjectionRowType(pkInfo.PropertyType, orderedColumns.Count);
+
+        // Compose: e => new ProjectionRow<PK,N> { Key = e.Pk, V0 = sel0(e), V1 = sel1(e), ... }
+        var entityParam = Expression.Parameter(typeof(TEntity), "e");
+        var bindings = new List<MemberBinding>(orderedColumns.Count + 1)
+        {
+            Expression.Bind(rowType.GetProperty("Key")!, Expression.Property(entityParam, pkInfo)),
+        };
+        for (var i = 0; i < orderedColumns.Count; i++)
+        {
+            var selector = orderedColumns[i].Spec.Selector;
+            var replacer = new ParameterReplacer(selector.Parameters[0], entityParam);
+            var body = replacer.Visit(selector.Body)!;
+            bindings.Add(
+                Expression.Bind(
+                    rowType.GetProperty($"V{i}")!,
+                    Expression.Convert(body, typeof(object))
+                )
+            );
+        }
+        var memberInit = Expression.MemberInit(Expression.New(rowType), bindings);
+        var selectorLambda = Expression.Lambda(
+            typeof(Func<,>).MakeGenericType(typeof(TEntity), rowType),
+            memberInit,
+            entityParam
+        );
+
+        // Where(e => keys.Contains(e.Pk))
+        var pkAccess = Expression.Property(entityParam, pkInfo);
+        var containsMethod = typeof(System.Linq.Enumerable)
+            .GetMethods()
+            .First(m =>
+                m.Name == nameof(System.Linq.Enumerable.Contains) && m.GetParameters().Length == 2
+            )
+            .MakeGenericMethod(pkInfo.PropertyType);
+        var keysConstant = Expression.Constant(typedKeysArray, typedKeysArray.GetType());
+        var containsCall = Expression.Call(null, containsMethod, keysConstant, pkAccess);
+        var whereLambda = Expression.Lambda<Func<TEntity, bool>>(containsCall, entityParam);
+
+        var dbSet = _context.Set<TEntity>().AsNoTracking();
+        var filtered = dbSet.Where(whereLambda);
+
+        var selectMethod = typeof(Queryable)
+            .GetMethods()
+            .First(m =>
+                m.Name == nameof(Queryable.Select)
+                && m.GetParameters().Length == 2
+                && m.GetParameters()[1]
+                    .ParameterType.GetGenericArguments()[0]
+                    .GetGenericArguments()
+                    .Length == 2
+            )
+            .MakeGenericMethod(typeof(TEntity), rowType);
+
+        var projectedQuery = (IQueryable)selectMethod.Invoke(null, [filtered, selectorLambda])!;
+
+        // Cancellation: EF translates this query asynchronously; iterate via the async
+        // enumerable path so the token honours.
+        var rows = new List<object>();
+        await foreach (
+            var item in projectedQuery
+                .Cast<object>()
+                .AsAsyncEnumerable()
+                .WithCancellation(cancellationToken)
+                .ConfigureAwait(false)
+        )
+            rows.Add(item);
+
+        // Index by PK then write into the per-row dictionaries in the original page order.
+        var keyProp = rowType.GetProperty("Key")!;
+        var valueProps = new PropertyInfo[orderedColumns.Count];
+        for (var i = 0; i < orderedColumns.Count; i++)
+            valueProps[i] = rowType.GetProperty($"V{i}")!;
+
+        var byKey = new Dictionary<object, object>(rows.Count);
+        foreach (var row in rows)
+        {
+            var k = keyProp.GetValue(row);
+            if (k is not null)
+                byKey[k] = row;
+        }
+        for (var r = 0; r < pageItems.Count; r++)
+        {
+            var k = pkInfo.GetValue(pageItems[r]);
+            if (k is null || !byKey.TryGetValue(k, out var row))
+            {
+                for (var i = 0; i < orderedColumns.Count; i++)
+                    rowDicts[r][orderedColumns[i].Name] = null;
+                continue;
+            }
+            for (var i = 0; i < orderedColumns.Count; i++)
+                rowDicts[r][orderedColumns[i].Name] = valueProps[i].GetValue(row);
         }
         return rowDicts;
     }
 
-    /// <summary>
-    /// Project <paramref name="selector"/> over the same page of entities, returning
-    /// values in matching order. Implementation: round-trip the PKs of <paramref name="pageItems"/>
-    /// into a single server-side query that selects (PK, projected-value) pairs, then
-    /// re-aligns the result by PK. Falls back to per-row queries when there's no scalar
-    /// PK (composite keys etc.) — admin pages rarely paginate those, so the perf hit is fine.
-    /// </summary>
-    private async Task<object?[]> FetchCustomColumnPairs(
-        LambdaExpression selector,
-        IReadOnlyList<TEntity> pageItems,
-        CancellationToken cancellationToken
-    )
-    {
-        var result = new object?[pageItems.Count];
+    // Cache of closed generic projection row types keyed by (PK CLR type, custom-column count).
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<
+        (Type, int),
+        Type
+    > _projectionRowTypes = new();
 
-        var pkProperties = _keyAccessor.KeyProperties;
-        if (pkProperties.Count == 1 && pkProperties[0].PropertyInfo is { } pkInfo)
-        {
-            // Single-property PK fast path.
-            var keys = pageItems
-                .Select(e => pkInfo.GetValue(e))
-                .Where(k => k is not null)
-                .ToArray();
-
-            // Build: q.Where(e => keys.Contains(e.Pk)).Select(e => new { e.Pk, value = selector(e) })
-            var entityParam = Expression.Parameter(typeof(TEntity), "e");
-            var pkAccess = Expression.Property(entityParam, pkInfo);
-
-            // Replace the selector's parameter with our entityParam so we can compose into one lambda.
-            var replacer = new ParameterReplacer(selector.Parameters[0], entityParam);
-            var selectorBody = replacer.Visit(selector.Body)!;
-            // Box to object so the anonymous projection has a stable value column type.
-            var valueAccess = Expression.Convert(selectorBody, typeof(object));
-
-            var tupleCtor = typeof(KeyValuePair<,>)
-                .MakeGenericType(pkInfo.PropertyType, typeof(object))
-                .GetConstructor([pkInfo.PropertyType, typeof(object)])!;
-            var newTuple = Expression.New(tupleCtor, pkAccess, valueAccess);
-
-            var resultType = tupleCtor.DeclaringType!;
-            var lambda = Expression.Lambda(
-                typeof(Func<,>).MakeGenericType(typeof(TEntity), resultType),
-                newTuple,
-                entityParam
-            );
-
-            // Build queryable and apply Where + Select via reflection because the
-            // tuple type is closed over the PK CLR type.
-            var dbSet = _context.Set<TEntity>().AsNoTracking();
-
-            // Where(e => keys.Contains(e.Pk))
-            var containsMethod = typeof(System.Linq.Enumerable)
-                .GetMethods()
-                .First(m =>
-                    m.Name == nameof(System.Linq.Enumerable.Contains)
-                    && m.GetParameters().Length == 2
-                )
-                .MakeGenericMethod(pkInfo.PropertyType);
-
-            // Cast the keys array to the PK's CLR type so Contains type-checks.
-            var typedKeysArray = Array.CreateInstance(pkInfo.PropertyType, keys.Length);
-            for (var i = 0; i < keys.Length; i++)
-                typedKeysArray.SetValue(keys[i], i);
-
-            var keysConstant = Expression.Constant(typedKeysArray, typedKeysArray.GetType());
-            var containsCall = Expression.Call(null, containsMethod, keysConstant, pkAccess);
-            var whereLambda = Expression.Lambda<Func<TEntity, bool>>(containsCall, entityParam);
-            var filtered = dbSet.Where(whereLambda);
-
-            // Materialise via reflection-built Select call.
-            var selectMethod = typeof(Queryable)
-                .GetMethods()
-                .First(m =>
-                    m.Name == nameof(Queryable.Select)
-                    && m.GetParameters().Length == 2
-                    && m.GetParameters()[1]
-                        .ParameterType.GetGenericArguments()[0]
-                        .GetGenericArguments()
-                        .Length == 2
-                )
-                .MakeGenericMethod(typeof(TEntity), resultType);
-
-            var projected = (IQueryable)selectMethod.Invoke(null, [filtered, lambda])!;
-
-            var listed = new List<object>();
-            foreach (var item in projected)
-                listed.Add(item);
-
-            // Index by PK value.
-            var byKey = new Dictionary<object, object?>();
-            foreach (var item in listed)
+    private static Type GetProjectionRowType(Type pkType, int valueCount) =>
+        _projectionRowTypes.GetOrAdd(
+            (pkType, valueCount),
+            static key =>
             {
-                var k = item.GetType().GetProperty("Key")!.GetValue(item);
-                var v = item.GetType().GetProperty("Value")!.GetValue(item);
-                if (k is not null)
-                    byKey[k] = v;
+                // The arity of ProjectionRow varies; rather than emit a TypeBuilder type per
+                // shape, we use a small family of pre-declared generics. We support up to
+                // 8 custom columns per page query (deep beyond that we wouldn't expect a
+                // human admin page to go); throw a clear error otherwise so a follow-up
+                // can extend the family rather than silently degrading.
+                var (pk, n) = key;
+                var openType = n switch
+                {
+                    0 => typeof(CustomProjectionRow<>),
+                    1 => typeof(CustomProjectionRow<,>),
+                    2 => typeof(CustomProjectionRow<,,>),
+                    3 => typeof(CustomProjectionRow<,,,>),
+                    4 => typeof(CustomProjectionRow<,,,,>),
+                    5 => typeof(CustomProjectionRow<,,,,,>),
+                    6 => typeof(CustomProjectionRow<,,,,,,>),
+                    7 => typeof(CustomProjectionRow<,,,,,,,>),
+                    8 => typeof(CustomProjectionRow<,,,,,,,,>),
+                    _ => throw new InvalidOperationException(
+                        $"Custom-column projection supports up to 8 columns per page; got {n}."
+                    ),
+                };
+                // All value slots are object so EF can box arbitrary expression types into them.
+                var typeArgs = new Type[n + 1];
+                typeArgs[0] = pk;
+                for (var i = 1; i <= n; i++)
+                    typeArgs[i] = typeof(object);
+                return openType.MakeGenericType(typeArgs);
             }
-            for (var i = 0; i < pageItems.Count; i++)
-            {
-                var k = pkInfo.GetValue(pageItems[i]);
-                if (k is not null && byKey.TryGetValue(k, out var v))
-                    result[i] = v;
-            }
-            return result;
-        }
-
-        // Fallback: per-row evaluation against the queryable (composite keys, no single PK).
-        var compiled = selector.Compile();
-        for (var i = 0; i < pageItems.Count; i++)
-        {
-            try
-            {
-                result[i] = compiled.DynamicInvoke(pageItems[i]);
-            }
-            catch
-            {
-                result[i] = null;
-            }
-        }
-        return result;
-    }
+        );
 
     private sealed class ParameterReplacer(ParameterExpression from, ParameterExpression to)
         : ExpressionVisitor
@@ -700,4 +745,90 @@ public class EfCoreDataProvider<TContext, TEntity> : IAdminDataProvider<TEntity>
         }
         return Convert.ChangeType(value, underlying, CultureInfo.InvariantCulture);
     }
+}
+
+// Projection row types used by EfCoreDataProvider.ProjectCustomColumns. Declared at
+// the namespace level so MakeGenericType() doesn't have to close over the enclosing
+// EfCoreDataProvider<TContext,TEntity> generic context. Each shape carries the
+// entity's PK as Key and the custom-column projections as V0..V{N-1}. Value slots
+// are typed as object so any EF-translatable expression result fits.
+public sealed class CustomProjectionRow<TKey>
+{
+    public TKey? Key { get; set; }
+}
+
+public sealed class CustomProjectionRow<TKey, TV0>
+{
+    public TKey? Key { get; set; }
+    public object? V0 { get; set; }
+}
+
+public sealed class CustomProjectionRow<TKey, TV0, TV1>
+{
+    public TKey? Key { get; set; }
+    public object? V0 { get; set; }
+    public object? V1 { get; set; }
+}
+
+public sealed class CustomProjectionRow<TKey, TV0, TV1, TV2>
+{
+    public TKey? Key { get; set; }
+    public object? V0 { get; set; }
+    public object? V1 { get; set; }
+    public object? V2 { get; set; }
+}
+
+public sealed class CustomProjectionRow<TKey, TV0, TV1, TV2, TV3>
+{
+    public TKey? Key { get; set; }
+    public object? V0 { get; set; }
+    public object? V1 { get; set; }
+    public object? V2 { get; set; }
+    public object? V3 { get; set; }
+}
+
+public sealed class CustomProjectionRow<TKey, TV0, TV1, TV2, TV3, TV4>
+{
+    public TKey? Key { get; set; }
+    public object? V0 { get; set; }
+    public object? V1 { get; set; }
+    public object? V2 { get; set; }
+    public object? V3 { get; set; }
+    public object? V4 { get; set; }
+}
+
+public sealed class CustomProjectionRow<TKey, TV0, TV1, TV2, TV3, TV4, TV5>
+{
+    public TKey? Key { get; set; }
+    public object? V0 { get; set; }
+    public object? V1 { get; set; }
+    public object? V2 { get; set; }
+    public object? V3 { get; set; }
+    public object? V4 { get; set; }
+    public object? V5 { get; set; }
+}
+
+public sealed class CustomProjectionRow<TKey, TV0, TV1, TV2, TV3, TV4, TV5, TV6>
+{
+    public TKey? Key { get; set; }
+    public object? V0 { get; set; }
+    public object? V1 { get; set; }
+    public object? V2 { get; set; }
+    public object? V3 { get; set; }
+    public object? V4 { get; set; }
+    public object? V5 { get; set; }
+    public object? V6 { get; set; }
+}
+
+public sealed class CustomProjectionRow<TKey, TV0, TV1, TV2, TV3, TV4, TV5, TV6, TV7>
+{
+    public TKey? Key { get; set; }
+    public object? V0 { get; set; }
+    public object? V1 { get; set; }
+    public object? V2 { get; set; }
+    public object? V3 { get; set; }
+    public object? V4 { get; set; }
+    public object? V5 { get; set; }
+    public object? V6 { get; set; }
+    public object? V7 { get; set; }
 }

@@ -6,37 +6,39 @@ namespace AdminForge.Core.Configuration;
 /// <summary>
 /// Fluent column override surface. Wraps an existing <see cref="ColumnMeta"/>
 /// produced by reflection so the host can tweak label, helper text, visibility,
-/// and add custom validators.
+/// and add custom validators. Generic on <typeparamref name="TProp"/> so the
+/// <see cref="LinkText"/> overload can be compile-time-typed against the column's
+/// related-entity type.
 /// </summary>
-public sealed class ColumnBuilder
+public sealed class ColumnBuilder<TProp>
 {
     private readonly ColumnMeta _meta;
 
     internal ColumnBuilder(ColumnMeta meta) => _meta = meta;
 
     /// <summary>Override the column label shown in lists and forms.</summary>
-    public ColumnBuilder Label(string label)
+    public ColumnBuilder<TProp> Label(string label)
     {
         _meta.Label = label;
         return this;
     }
 
     /// <summary>Set the helper text shown alongside the field in edit forms.</summary>
-    public ColumnBuilder Description(string description)
+    public ColumnBuilder<TProp> Description(string description)
     {
         _meta.Description = description;
         return this;
     }
 
-    /// <summary>Hide the column from list views (still editable).</summary>
-    public ColumnBuilder HiddenInList()
+    /// <summary>Hide the column from list views (still editable). Equivalent to clearing <c>ShowInList</c>.</summary>
+    public ColumnBuilder<TProp> HiddenInList()
     {
-        _meta.HiddenInList = true;
+        _meta.ShowInList = false;
         return this;
     }
 
     /// <summary>Hide the column from edit forms (still visible in lists).</summary>
-    public ColumnBuilder HiddenInEdit()
+    public ColumnBuilder<TProp> HiddenInEdit()
     {
         _meta.HiddenInEdit = true;
         return this;
@@ -46,7 +48,7 @@ public sealed class ColumnBuilder
     /// Adds a custom validator. <paramref name="predicate"/> returns true for valid values;
     /// when it returns false the supplied <paramref name="message"/> is surfaced.
     /// </summary>
-    public ColumnBuilder Validate(Func<object?, bool> predicate, string message)
+    public ColumnBuilder<TProp> Validate(Func<object?, bool> predicate, string message)
     {
         ArgumentNullException.ThrowIfNull(predicate);
         ArgumentException.ThrowIfNullOrWhiteSpace(message);
@@ -55,61 +57,27 @@ public sealed class ColumnBuilder
     }
 
     /// <summary>
-    /// For a navigation-reference column: override the link label using an
-    /// <c>Expression&lt;Func&lt;TTarget, string&gt;&gt;</c>. The expression's input parameter
-    /// must be assignable from the column's <see cref="ColumnMeta.RelatedEntityType"/>;
-    /// validation happens at <see cref="EntityBuilder{T}"/> build time. The expression is
-    /// compiled lazily; the compiled delegate is mirrored on
-    /// <see cref="ColumnMeta.LinkTextResolver"/>.
+    /// For a navigation-reference column: override the link label using a typed
+    /// <c>Expression&lt;Func&lt;TProp, string&gt;&gt;</c>. The compile-time parameter
+    /// type matches the column's CLR type, so the user no longer casts. A runtime
+    /// check enforces that the underlying column is a navigation reference (the
+    /// constraint <c>TProp : class</c> doesn't rule out <c>string</c>, which the
+    /// scanner reports as <see cref="ColumnKind.Scalar"/>).
     /// </summary>
-    /// <remarks>
-    /// Non-generic on purpose ("Option A" in the plan): the user passes a typed lambda
-    /// (e.g. <c>(User u) =&gt; $"Owned by {u.DisplayName}"</c>) and we validate the target
-    /// type at runtime so the parent <c>EntityBuilder&lt;T&gt;</c> doesn't have to take an
-    /// extra type parameter per column.
-    /// </remarks>
-    public ColumnBuilder LinkText(LambdaExpression expression)
+    public ColumnBuilder<TProp> LinkText(Expression<Func<TProp, string>> expression)
     {
         ArgumentNullException.ThrowIfNull(expression);
-        if (expression.Parameters.Count != 1)
-        {
-            throw new ArgumentException(
-                "LinkText expression must have exactly one parameter (the related entity).",
-                nameof(expression)
-            );
-        }
-        if (expression.ReturnType != typeof(string))
-        {
-            throw new ArgumentException(
-                $"LinkText expression must return string, got {expression.ReturnType}.",
-                nameof(expression)
-            );
-        }
         if (_meta.Kind != ColumnKind.NavigationReference)
         {
             throw new InvalidOperationException(
                 $"LinkText is only valid on navigation-reference columns; '{_meta.PropertyName}' is {_meta.Kind}."
             );
         }
-        var targetParamType = expression.Parameters[0].Type;
-        if (
-            _meta.RelatedEntityType is null
-            || !targetParamType.IsAssignableFrom(_meta.RelatedEntityType)
-        )
-        {
-            throw new InvalidOperationException(
-                $"LinkText expression parameter type '{targetParamType}' is not compatible with "
-                    + $"column '{_meta.PropertyName}' related entity type '{_meta.RelatedEntityType}'."
-            );
-        }
 
         _meta.LinkTextExpression = expression;
         var compiled = expression.Compile();
         _meta.LinkTextResolver = instance =>
-        {
-            var result = compiled.DynamicInvoke(instance);
-            return result as string ?? string.Empty;
-        };
+            instance is TProp typed ? compiled(typed) ?? string.Empty : string.Empty;
         return this;
     }
 }

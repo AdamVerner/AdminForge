@@ -1,3 +1,6 @@
+using AdminForge.Core.Configuration;
+using AdminForge.Core.Contracts;
+
 namespace AdminForge.Core.Metadata;
 
 /// <summary>
@@ -70,6 +73,44 @@ public sealed class EntityMeta
     /// when materialising auto-links on the entity view page.
     /// </summary>
     public HashSet<string> HiddenRelatedNavigations { get; init; } = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// Optional opt-in custom create handler registered via
+    /// <c>EntityBuilder&lt;T&gt;.OnCreate(...)</c>. When set, the bridge bypasses the
+    /// data provider's <c>CreateAsync</c> entirely and dispatches to this delegate
+    /// instead — letting business logic own the actual persistence. Stored as an
+    /// untyped delegate so the meta is not generic; the typed builder wraps the
+    /// user's <c>Func&lt;..., T, ...&gt;</c> in an <c>object</c>-accepting adapter at
+    /// registration time (mirrors <see cref="ActionMeta.Handler"/>).
+    /// </summary>
+    public Func<
+        IServiceProvider,
+        object,
+        IActionContext,
+        CancellationToken,
+        Task<CreateResult>
+    >? CustomCreateHandler { get; set; }
+
+    /// <summary>
+    /// Optional opt-in custom update handler registered via
+    /// <c>EntityBuilder&lt;T&gt;.OnUpdate(...)</c>. When set, the bridge bypasses the
+    /// data provider's <c>UpdateAsync</c> entirely on the entity-edit page: the
+    /// bridge loads the existing row (passed as <em>original</em>), materialises
+    /// the patched instance from the submitted form values, then dispatches to
+    /// this delegate. The boxed adapter wraps the user's typed
+    /// <c>Func&lt;sp, T, T, ctx, ct, Task&lt;UpdateResult&gt;&gt;</c>. Mirrors
+    /// <see cref="CustomCreateHandler"/>.
+    /// </summary>
+    public Func<
+        IServiceProvider,
+        object /*original*/
+        ,
+        object /*patched*/
+        ,
+        IActionContext,
+        CancellationToken,
+        Task<UpdateResult>
+    >? CustomUpdateHandler { get; set; }
 
     /// <summary>
     /// Optional live-polling interval registered via <c>EntityBuilder.WithLivePolling</c>.

@@ -39,11 +39,15 @@ public sealed class EntityBuilder<T>
     }
 
     /// <summary>
-    /// Tweak a single column (label, helper text, validators, visibility).
+    /// Tweak a single column (label, helper text, validators, visibility). Note:
+    /// this does <em>not</em> opt the column into list views — use the
+    /// <see cref="AddColumn{TProp}(Expression{Func{T, TProp}}, Action{ColumnBuilder{TProp}}?)"/>
+    /// overload for that. (Both surfaces accept a <see cref="ColumnBuilder{TProp}"/>
+    /// so they're functionally interchangeable apart from list opt-in semantics.)
     /// </summary>
     public EntityBuilder<T> Column<TProp>(
         Expression<Func<T, TProp>> selector,
-        Action<ColumnBuilder> configure
+        Action<ColumnBuilder<TProp>> configure
     )
     {
         ArgumentNullException.ThrowIfNull(selector);
@@ -57,7 +61,43 @@ public sealed class EntityBuilder<T>
             );
         }
 
-        configure(new ColumnBuilder(column));
+        configure(new ColumnBuilder<TProp>(column));
+        return this;
+    }
+
+    /// <summary>
+    /// Opt an auto-discovered column into the list view (and the filter bar). Lists
+    /// are opt-in: by default no auto-discovered column appears in the table — the
+    /// host calls <c>AddColumn(t =&gt; t.Title)</c> for each column it wants visible.
+    /// The optional <paramref name="configure"/> callback tweaks the same surface
+    /// area as <see cref="Column{TProp}"/> (label, description, validators, etc.).
+    /// <para>
+    /// Custom computed columns (added via the
+    /// <see cref="AddColumn{TValue}(string, Action{CustomColumnBuilder{T, TValue}})"/>
+    /// overload) are list-visible automatically.
+    /// </para>
+    /// </summary>
+    public EntityBuilder<T> AddColumn<TProp>(
+        Expression<Func<T, TProp>> selector,
+        Action<ColumnBuilder<TProp>>? configure = null
+    )
+    {
+        ArgumentNullException.ThrowIfNull(selector);
+        var propertyName = GetPropertyName(selector);
+        if (!_columnsByName.TryGetValue(propertyName, out var column))
+        {
+            throw new InvalidOperationException(
+                $"Column '{propertyName}' was not discovered on entity '{typeof(T).Name}'."
+            );
+        }
+        if (column.Kind == ColumnKind.NavigationCollection)
+        {
+            throw new InvalidOperationException(
+                $"Column '{propertyName}' is a navigation collection and cannot be added to the list view."
+            );
+        }
+        column.ShowInList = true;
+        configure?.Invoke(new ColumnBuilder<TProp>(column));
         return this;
     }
 
@@ -92,7 +132,7 @@ public sealed class EntityBuilder<T>
                 $"Column '{propertyName}' was not discovered on entity '{typeof(T).Name}'."
             );
         }
-        column.HiddenInList = true;
+        column.ShowInList = false;
         column.HiddenInEdit = true;
         return this;
     }
@@ -126,6 +166,9 @@ public sealed class EntityBuilder<T>
                 || Nullable.GetUnderlyingType(typeof(TValue)) is not null,
             Kind = ColumnKind.Scalar,
             IsCustom = true,
+            // Custom (computed) columns are list-visible by default — the user added
+            // them precisely so they'd render in the table.
+            ShowInList = true,
             // Computed columns default to opt-in for sort/filter — the user enables
             // each per call so the SQL surface stays predictable.
             IsSortable = false,
@@ -160,7 +203,7 @@ public sealed class EntityBuilder<T>
             MaxLength = null,
             IsRequired = false,
             Description = column.Description,
-            HiddenInList = column.HiddenInList,
+            ShowInList = column.ShowInList,
             HiddenInEdit = true, // computed columns are read-only
             IsCustom = true,
             CustomValueSelector = builder.Selector,
@@ -198,6 +241,90 @@ public sealed class EntityBuilder<T>
         };
         configure?.Invoke(new ActionBuilder(meta));
         _meta.Actions.Add(meta);
+        return this;
+    }
+
+    /// <summary>
+    /// Register an opt-in custom create handler. When set, the bridge bypasses the
+    /// data provider's <c>CreateAsync</c> path entirely on the entity-create page:
+    /// the form is still auto-built from the column metadata and the typed entity
+    /// is materialised from the submitted values, but persistence (and any business
+    /// rules around it) is the handler's responsibility.
+    /// <para>
+    /// Return <see cref="CreateResult.Ok(object)"/> with the new entity's identifier
+    /// on success; the bridge emits an <c>AuditAction.Create</c> event and the page
+    /// navigates to the entity view. Return <see cref="CreateResult.Error(string)"/>
+    /// to reject the submission — no audit is emitted and the message is surfaced
+    /// inline on the create form (the bridge wraps the failure in an
+    /// <see cref="EntityCreateFailedException"/>).
+    /// </para>
+    /// <para>
+    /// The handler runs inside a fresh DI scope so it can resolve scoped services
+    /// (e.g. its own <c>DbContext</c>) without entangling with the bridge's request
+    /// scope. v1 caveat: the returned <c>Id</c> is round-tripped to the entity-view
+    /// route as <c>Uri.EscapeDataString(Id.ToString())</c> — single-property keys
+    /// (<see cref="Guid"/>, <see cref="int"/>, <see cref="long"/>, <see cref="string"/>)
+    /// round-trip cleanly; composite keys are out of scope.
+    /// </para>
+    /// </summary>
+    public EntityBuilder<T> OnCreate(
+        Func<IServiceProvider, T, IActionContext, CancellationToken, Task<CreateResult>> handler
+    )
+    {
+        ArgumentNullException.ThrowIfNull(handler);
+        if (_meta.CustomCreateHandler is not null)
+        {
+            throw new InvalidOperationException(
+                $"A custom create handler is already registered on entity '{typeof(T).Name}'."
+            );
+        }
+        _meta.CustomCreateHandler = (sp, obj, ctx, ct) => handler(sp, (T)obj, ctx, ct);
+        return this;
+    }
+
+    /// <summary>
+    /// Register an opt-in custom update handler. When set, the bridge bypasses the
+    /// data provider's <c>UpdateAsync</c> path entirely on the entity-edit page:
+    /// the bridge loads the existing row from the data provider (passed as
+    /// <em>original</em>), materialises the patched instance from the submitted
+    /// form values (passed as <em>patched</em>), and dispatches to this delegate.
+    /// <para>
+    /// Return <see cref="UpdateResult.Ok"/> on success; the bridge emits an
+    /// <c>AuditAction.Update</c> event with a before/after diff and the page
+    /// navigates back to the entity view. Return <see cref="UpdateResult.Error(string)"/>
+    /// to reject the submission — no audit is emitted and the message is surfaced
+    /// inline on the edit form (the bridge wraps the failure in an
+    /// <see cref="EntityUpdateFailedException"/>).
+    /// </para>
+    /// <para>
+    /// The handler runs inside a fresh DI scope so it can resolve scoped services
+    /// (e.g. its own <c>DbContext</c>) without entangling with the bridge's request
+    /// scope. The before-snapshot for audit is captured from <em>original</em>
+    /// before the handler runs; the after-snapshot is captured from <em>patched</em>.
+    /// </para>
+    /// </summary>
+    public EntityBuilder<T> OnUpdate(
+        Func<
+            IServiceProvider,
+            T /*original*/
+            ,
+            T /*patched*/
+            ,
+            IActionContext,
+            CancellationToken,
+            Task<UpdateResult>
+        > handler
+    )
+    {
+        ArgumentNullException.ThrowIfNull(handler);
+        if (_meta.CustomUpdateHandler is not null)
+        {
+            throw new InvalidOperationException(
+                $"A custom update handler is already registered on entity '{typeof(T).Name}'."
+            );
+        }
+        _meta.CustomUpdateHandler = (sp, original, patched, ctx, ct) =>
+            handler(sp, (T)original, (T)patched, ctx, ct);
         return this;
     }
 

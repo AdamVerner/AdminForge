@@ -58,19 +58,51 @@ public interface IAdminUIBridge
     /// </summary>
     EntityEditVM NewEditModel(EntityMeta entity);
 
-    /// <summary>Persists a new entity from an edit VM. Returns the encoded key of the new instance.</summary>
+    /// <summary>
+    /// Persists a new entity from an edit VM. Returns the encoded key of the new instance.
+    /// <para>
+    /// When the entity has a custom create handler registered via
+    /// <c>EntityBuilder&lt;T&gt;.OnCreate(...)</c>, the bridge invokes that handler
+    /// instead of calling the data provider. On
+    /// <see cref="CreateResult.Success"/> the returned id is encoded as the route key;
+    /// on <see cref="CreateResult.Failure"/> an
+    /// <see cref="EntityCreateFailedException"/> is thrown carrying the rejection
+    /// message so the renderer can surface it inline.
+    /// </para>
+    /// <para>
+    /// <paramref name="context"/> is forwarded to custom handlers — when null and a
+    /// custom handler is registered, the bridge supplies a renderer-neutral
+    /// no-op context. The data-provider path ignores this parameter.
+    /// </para>
+    /// </summary>
     Task<string> CreateAsync(
         EntityMeta entity,
         EntityEditVM model,
+        IActionContext? context = null,
         CancellationToken cancellationToken = default
     );
 
     /// <summary>
-    /// Persists changes from an edit VM. <paramref name="model.Key"/> identifies the row.
+    /// Persists changes from an edit VM. <paramref name="model"/>.Key identifies the row.
+    /// <para>
+    /// When the entity has a custom update handler registered via
+    /// <c>EntityBuilder&lt;T&gt;.OnUpdate(...)</c>, the bridge invokes that handler
+    /// instead of calling the data provider. On <see cref="UpdateResult.Success"/>
+    /// the bridge emits an <c>AuditAction.Update</c> event carrying a before/after
+    /// diff; on <see cref="UpdateResult.Failure"/> an
+    /// <see cref="EntityUpdateFailedException"/> is thrown so the renderer can
+    /// surface it inline.
+    /// </para>
+    /// <para>
+    /// <paramref name="context"/> is forwarded to custom handlers — when null and a
+    /// custom handler is registered, the bridge supplies a renderer-neutral
+    /// no-op context. The data-provider path ignores this parameter.
+    /// </para>
     /// </summary>
     Task UpdateAsync(
         EntityMeta entity,
         EntityEditVM model,
+        IActionContext? context = null,
         CancellationToken cancellationToken = default
     );
 

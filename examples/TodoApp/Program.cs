@@ -1,6 +1,6 @@
-using System.Linq.Expressions;
 using System.Text.Json.Serialization;
 using AdminForge;
+using AdminForge.Core.Configuration;
 using Microsoft.EntityFrameworkCore;
 using TodoApp;
 using TodoApp.Data;
@@ -64,7 +64,58 @@ builder.Services.AddAdminForge<AppDbContext>(forge =>
         .AddTable<User>(e =>
             e.Nav(n => n.Group("People").Order(1))
                 .DisplayMember(u => u.DisplayName)
-                // Phase 3.5: custom action — exercises ConfirmAsync + ShowSuccess + audit.
+                // List view is opt-in: name the columns to render.
+                .AddColumn(u => u.Email)
+                .AddColumn(u => u.DisplayName)
+                .AddColumn(u => u.Role)
+                .AddColumn(u => u.CreatedAt)
+                // Opt-in custom create handler — the library no longer performs the
+                // INSERT for User; business logic runs (duplicate-email check, default
+                // DisplayName, server-stamped CreatedAt) and only then is the row
+                // persisted. Demonstrates both Success and Failure paths.
+                .OnCreate(
+                    async (sp, user, ctx, ct) =>
+                    {
+                        var db = sp.GetRequiredService<AppDbContext>();
+                        var exists = await db.Users.AnyAsync(u => u.Email == user.Email, ct);
+                        if (exists)
+                            return CreateResult.Error(
+                                $"Email '{user.Email}' is already registered."
+                            );
+
+                        user.DisplayName = string.IsNullOrWhiteSpace(user.DisplayName)
+                            ? user.Email.Split('@')[0]
+                            : user.DisplayName.Trim();
+                        user.CreatedAt = DateTime.UtcNow;
+
+                        db.Users.Add(user);
+                        await db.SaveChangesAsync(ct);
+                        return CreateResult.Ok(user.Id);
+                    }
+                )
+                // Mirror of OnCreate: business logic owns the update path. Rejects
+                // email collisions with another existing user; on success stamps
+                // UpdatedAt and persists the patched instance.
+                .OnUpdate(
+                    async (sp, original, patched, ctx, ct) =>
+                    {
+                        var db = sp.GetRequiredService<AppDbContext>();
+                        if (!string.Equals(original.Email, patched.Email, StringComparison.Ordinal))
+                        {
+                            var conflict = await db.Users.AnyAsync(
+                                u => u.Email == patched.Email && u.Id != patched.Id,
+                                ct
+                            );
+                            if (conflict)
+                                return UpdateResult.Error(
+                                    $"Email '{patched.Email}' is already registered."
+                                );
+                        }
+                        db.Users.Update(patched);
+                        await db.SaveChangesAsync(ct);
+                        return UpdateResult.Ok();
+                    }
+                )
                 .AddAction(
                     "Send Welcome Email",
                     async (sp, u, ctx) =>
@@ -76,7 +127,7 @@ builder.Services.AddAdminForge<AppDbContext>(forge =>
                     },
                     cfg => cfg.Icon("Email").Color("Primary").RequireConfirmation()
                 )
-                // Phase 3.5: cross-entity related link — pre-filters Todo list by FK.
+                // cross-entity related link — pre-filters Todo list by FK.
                 // Predicate decomposition is equality-only by design (target.Prop == source.X
                 // entries map to URL filter dictionary keys); the "exclude Done" axis from the
                 // plan text is left to the consumer's filter bar since `!=` cannot be encoded
@@ -88,10 +139,16 @@ builder.Services.AddAdminForge<AppDbContext>(forge =>
                 // Phase 3.5: opt-out of the (low value) auto-link to TodoLists owned by this user.
                 .HideRelatedLink(u => u.TodoLists)
         )
-        .AddTable<TodoList>(e => e.Nav(n => n.Group("Work").Order(1).Label("Lists")))
+        .AddTable<TodoList>(e =>
+            e.Nav(n => n.Group("Work").Order(1).Label("Lists"))
+                .AddColumn(l => l.Name)
+                .AddColumn(l => l.Owner)
+                .AddColumn(l => l.IsArchived)
+                .AddColumn(l => l.CreatedAt)
+        )
         .AddTable<Todo>(e =>
             e.Nav(n => n.Group("Work").Order(2).Label("Tasks"))
-                .Column(
+                .AddColumn(
                     t => t.Title,
                     c =>
                         c.Label("Headline")
@@ -101,31 +158,30 @@ builder.Services.AddAdminForge<AppDbContext>(forge =>
                                 "Title must be at least 3 characters."
                             )
                 )
-                // Phase 3.5: source-side reference-nav LinkText override.
-                // We pass the typed lambda as a LambdaExpression (Option A) since
-                // ColumnBuilder doesn't know the related entity type at compile time.
-                .Column(
+                .AddColumn(t => t.Status)
+                .AddColumn(t => t.Priority)
+                // Typed LinkText: parameter type matches the column's CLR type at
+                // compile time — no LambdaExpression cast required.
+                .AddColumn(
                     t => t.Assignee,
-                    c =>
-                        c.LinkText(
-                            (Expression<Func<User, string>>)(u => $"Owned by {u.DisplayName}")
-                        )
+                    c => c.LinkText(u => "Owned by " + (u == null ? "?" : u.DisplayName))
                 )
-                // Phase 3.5: HideColumn on a low-value field.
+                .AddColumn(t => t.DueAt)
                 .HideColumn(t => t.CreatedAt)
-                // Phase 5 (narrowed): live polling on the single-entity VIEW page only.
                 // Visiting /admin/entities/Todo/{id} re-fetches the displayed row every 5s.
                 .WithLivePolling(TimeSpan.FromSeconds(5))
         )
         .AddTable<Tag>(e =>
             e.Nav(n => n.Group("Work").Order(3))
-                // Phase 3.5: custom computed column — projected server-side via the user's expression.
+                .AddColumn(t => t.Name)
+                .AddColumn(t => t.Color)
+                // Custom columns are list-visible by default; no opt-in needed.
                 .AddColumn<int>(
                     "TodoCount",
                     c => c.Label("# Todos").From(t => t.Todos.Count).Sortable()
                 )
         )
-        // Phase 4: generic form exercising every supported field kind. The submit
+        // generic form exercising every supported field kind. The submit
         // handler just logs + shows a snackbar via the IActionContext; the audit
         // sink captures the serialised values for inspection.
         .AddForm(

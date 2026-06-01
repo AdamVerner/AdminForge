@@ -61,7 +61,7 @@
     private IEnumerable<ColumnMeta> FilterableColumns =>
         Entity.Columns.Where(c =>
             c.Kind is ColumnKind.Scalar or ColumnKind.Enum
-            && !c.HiddenInList
+            && c.ShowInList
             && !c.IsPrimaryKey
             && !c.IsForeignKey
         );

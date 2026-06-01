@@ -67,7 +67,7 @@ else
     [Parameter] public bool SortDescending { get; set; }
 
     private IEnumerable<ColumnMeta> VisibleColumns =>
-        Entity?.Columns.Where(c => !c.HiddenInList && c.Kind != ColumnKind.NavigationCollection)
+        Entity?.Columns.Where(c => c.ShowInList && c.Kind != ColumnKind.NavigationCollection)
         ?? Enumerable.Empty<ColumnMeta>();
 
     private bool IsSortable(ColumnMeta col)

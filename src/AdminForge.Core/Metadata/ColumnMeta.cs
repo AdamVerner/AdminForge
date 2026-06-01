@@ -61,10 +61,26 @@ public sealed class ColumnMeta
     /// <summary>Optional description / helper text rendered alongside the field.</summary>
     public string? Description { get; set; }
 
-    /// <summary>Hide this column from list views.</summary>
-    public bool HiddenInList { get; set; }
+    /// <summary>
+    /// True when this column appears in list (table) views and the filter bar.
+    /// <para>
+    /// Default semantics — <b>list views are opt-in</b>: auto-discovered scalar
+    /// columns default to <c>false</c>; the host opts each desired column in via
+    /// <c>EntityBuilder&lt;T&gt;.AddColumn(selector, ...)</c>. Custom computed
+    /// columns added via <c>AddColumn&lt;TValue&gt;(name, ...)</c> default to <c>true</c>.
+    /// </para>
+    /// <para>
+    /// <c>HideColumn(selector)</c> flips this back to <c>false</c> (and also sets
+    /// <see cref="HiddenInEdit"/>). Entity view + edit visibility is governed by
+    /// <see cref="HiddenInEdit"/> and is opt-out by default.
+    /// </para>
+    /// </summary>
+    public bool ShowInList { get; set; }
 
-    /// <summary>Hide this column from edit forms.</summary>
+    /// <summary>
+    /// Hide this column from edit forms. Entity view/edit surfaces show all
+    /// auto-discovered columns by default (opt-out); set this to true to suppress one.
+    /// </summary>
     public bool HiddenInEdit { get; set; }
 
     /// <summary>

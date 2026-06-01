@@ -23,13 +23,13 @@ public class EntityBuilderPowerupTests
     }
 
     [Fact]
-    public void HideColumn_Marks_Discovered_Column_Hidden_In_List_And_Edit()
+    public void HideColumn_Clears_ShowInList_And_Sets_HiddenInEdit()
     {
         var builder = new AdminForgeBuilder(Scan());
         builder.AddTable<Todo>(e => e.HideColumn(t => t.CreatedAt));
         var todo = builder.Build().Entities.Single();
         var col = todo.Columns.Single(c => c.PropertyName == nameof(Todo.CreatedAt));
-        Assert.True(col.HiddenInList);
+        Assert.False(col.ShowInList);
         Assert.True(col.HiddenInEdit);
     }
 
@@ -170,7 +170,7 @@ public class EntityBuilderPowerupTests
         builder.AddTable<Todo>(e =>
             e.Column(
                 t => t.Assignee,
-                c => c.LinkText((Expression<Func<User, string>>)(u => "Owned by " + u.DisplayName))
+                c => c.LinkText(u => "Owned by " + (u == null ? "?" : u.DisplayName))
             )
         );
 
@@ -185,27 +185,54 @@ public class EntityBuilderPowerupTests
     }
 
     [Fact]
-    public void LinkText_Rejects_NonString_Return_Type()
+    public void LinkText_Rejects_Non_Navigation_Column()
     {
+        // Typed LinkText: the column's CLR type for Todo.Title is string, so the
+        // expression below is well-typed; the kind check at runtime trips it.
         var builder = new AdminForgeBuilder(Scan());
-        Assert.Throws<ArgumentException>(() =>
+        Assert.Throws<InvalidOperationException>(() =>
             builder.AddTable<Todo>(e =>
-                e.Column(t => t.Assignee, c => c.LinkText((Expression<Func<User, int>>)(u => u.Id)))
+                e.Column(t => t.Title, c => c.LinkText(s => s ?? string.Empty))
             )
         );
     }
 
     [Fact]
-    public void LinkText_Rejects_Non_Navigation_Column()
+    public void AddColumn_With_Selector_Opts_Column_Into_List()
+    {
+        var builder = new AdminForgeBuilder(Scan());
+        builder.AddTable<Todo>(e => e.AddColumn(t => t.Title));
+        var meta = builder.Build().Entities.Single();
+        var col = meta.Columns.Single(c => c.PropertyName == nameof(Todo.Title));
+        Assert.True(col.ShowInList);
+    }
+
+    [Fact]
+    public void AddColumn_With_Selector_Honours_Configure_Callback()
+    {
+        var builder = new AdminForgeBuilder(Scan());
+        builder.AddTable<Todo>(e => e.AddColumn(t => t.Title, c => c.Label("Headline")));
+        var meta = builder.Build().Entities.Single();
+        var col = meta.Columns.Single(c => c.PropertyName == nameof(Todo.Title));
+        Assert.True(col.ShowInList);
+        Assert.Equal("Headline", col.Label);
+    }
+
+    [Fact]
+    public void AddColumn_With_Selector_Throws_On_Nav_Collection()
     {
         var builder = new AdminForgeBuilder(Scan());
         Assert.Throws<InvalidOperationException>(() =>
-            builder.AddTable<Todo>(e =>
-                e.Column(
-                    t => t.Title,
-                    c => c.LinkText((Expression<Func<User, string>>)(u => u.DisplayName))
-                )
-            )
+            builder.AddTable<Tag>(e => e.AddColumn(t => t.Todos))
         );
+    }
+
+    [Fact]
+    public void Default_AutoDiscovered_Columns_Are_Not_ShowInList()
+    {
+        var builder = new AdminForgeBuilder(Scan());
+        builder.AddTable<Todo>();
+        var meta = builder.Build().Entities.Single();
+        Assert.All(meta.Columns.Where(c => !c.IsCustom), c => Assert.False(c.ShowInList));
     }
 }

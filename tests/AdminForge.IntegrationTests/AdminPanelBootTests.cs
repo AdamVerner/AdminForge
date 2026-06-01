@@ -53,6 +53,27 @@ public class AdminPanelBootTests : IClassFixture<TodoAppFactory>
         var body = await response.Content.ReadAsStringAsync();
         Assert.Contains("Alice", body);
     }
+
+    [Fact]
+    public async Task User_List_Page_Only_Shows_Configured_Columns()
+    {
+        // List is opt-in. TodoApp configures Email, DisplayName, Role, CreatedAt — not Id.
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var bridge = scope.ServiceProvider.GetRequiredService<IAdminUIBridge>();
+            var userMeta = bridge.FindEntityByRouteName("User")!;
+            var shown = userMeta
+                .Columns.Where(c => c.ShowInList)
+                .Select(c => c.PropertyName)
+                .ToHashSet();
+            Assert.Contains(nameof(TodoApp.Entities.User.Email), shown);
+            Assert.Contains(nameof(TodoApp.Entities.User.DisplayName), shown);
+            Assert.Contains(nameof(TodoApp.Entities.User.Role), shown);
+            Assert.Contains(nameof(TodoApp.Entities.User.CreatedAt), shown);
+            // Id is NOT opted in.
+            Assert.DoesNotContain(nameof(TodoApp.Entities.User.Id), shown);
+        }
+    }
 }
 
 /// <summary>

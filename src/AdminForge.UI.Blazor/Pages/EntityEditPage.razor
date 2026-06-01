@@ -2,6 +2,7 @@
 @inject IAdminUIBridge Bridge
 @inject NavigationManager Nav
 @inject ISnackbar Snackbar
+@inject IDialogService Dialogs
 
 <PageTitle>Edit @(Entity?.Label ?? EntityName)</PageTitle>
 
@@ -16,6 +17,10 @@ else if (_edit is null)
 else
 {
     <MudText Typo="Typo.h4" Class="mb-4">Edit @Entity.Label — @_edit.Key</MudText>
+    @if (!string.IsNullOrEmpty(_errorMessage))
+    {
+        <MudAlert Severity="Severity.Error" Class="mb-4">@_errorMessage</MudAlert>
+    }
     <EntityForm Entity="@Entity" Model="@_edit" OnSubmit="HandleSubmit" OnCancel="@Cancel" SubmitLabel="Save" />
 }
 
@@ -25,22 +30,34 @@ else
 
     private EntityMeta? Entity;
     private EntityEditVM? _edit;
+    private string? _errorMessage;
 
     protected override async Task OnParametersSetAsync()
     {
         Entity = Bridge.FindEntityByRouteName(EntityName);
         if (Entity is null) return;
         _edit = await Bridge.LoadForEditAsync(Entity, Uri.UnescapeDataString(Key));
+        _errorMessage = null;
     }
 
     private async Task HandleSubmit()
     {
         if (Entity is null || _edit is null) return;
+        _errorMessage = null;
         try
         {
-            await Bridge.UpdateAsync(Entity, _edit);
+            var ctx = new BlazorActionContext(
+                Snackbar, Nav, Dialogs, refresh: () => Task.CompletedTask);
+            await Bridge.UpdateAsync(Entity, _edit, ctx);
             Snackbar.Add("Saved.", MudBlazor.Severity.Success);
             Nav.NavigateTo($"/admin/entities/{Entity.RouteName}/{Uri.EscapeDataString(_edit.Key!)}");
+        }
+        catch (EntityUpdateFailedException ex)
+        {
+            // Business-logic rejection from a custom OnUpdate handler — surface
+            // inline (mirrors EntityCreatePage's EntityCreateFailedException handler).
+            _errorMessage = ex.Message;
+            Snackbar.Add(ex.Message, MudBlazor.Severity.Warning);
         }
         catch (Exception ex)
         {

@@ -91,23 +91,168 @@ public sealed class BlazorUIBridge : IAdminUIBridge
     public async Task<string> CreateAsync(
         EntityMeta entity,
         EntityEditVM model,
+        IActionContext? context = null,
         CancellationToken cancellationToken = default
     )
     {
         await EnsureAuthorizedAsync(entity, AdminAction.Create, instance: null, cancellationToken)
             .ConfigureAwait(false);
-        return await GetAdapter(entity).CreateAsync(model, cancellationToken).ConfigureAwait(false);
+
+        var adapter = GetAdapter(entity);
+
+        // No custom handler → preserve the legacy data-provider path verbatim.
+        if (entity.CustomCreateHandler is null)
+        {
+            return await adapter.CreateAsync(model, cancellationToken).ConfigureAwait(false);
+        }
+
+        // Custom handler: materialise the typed entity from the form values (same code
+        // path the legacy CreateAsync uses internally), invoke the handler in a fresh
+        // DI scope, then dispatch on the result. Audit is emitted here because the
+        // data provider — which normally fires Create audit — is bypassed entirely.
+        var instance = adapter.MaterializeFromVM(model);
+        var actionContext = context ?? new NullActionContext();
+
+        CreateResult result;
+        using (var scope = _serviceProvider.CreateScope())
+        {
+            result = await entity
+                .CustomCreateHandler(
+                    scope.ServiceProvider,
+                    instance,
+                    actionContext,
+                    cancellationToken
+                )
+                .ConfigureAwait(false);
+        }
+
+        switch (result)
+        {
+            case CreateResult.Success success:
+            {
+                var encodedKey = Uri.EscapeDataString(
+                    Convert.ToString(success.Id, CultureInfo.InvariantCulture) ?? string.Empty
+                );
+                if (_options.AuditSink is not null)
+                {
+                    var snapshot = adapter.SnapshotScalarValues(instance);
+                    await _options
+                        .AuditSink.RecordAsync(
+                            new AuditEvent
+                            {
+                                EntityType = entity.Name,
+                                Action = AuditAction.Create,
+                                EntityId = encodedKey,
+                                ChangedValues = snapshot.ToDictionary(
+                                    kvp => kvp.Key,
+                                    kvp => new AuditValueChange(null, kvp.Value)
+                                ),
+                                User = _userAccessor.GetUserId(),
+                            },
+                            cancellationToken
+                        )
+                        .ConfigureAwait(false);
+                }
+                return encodedKey;
+            }
+            case CreateResult.Failure failure:
+                throw new EntityCreateFailedException(entity.Name, failure.Message);
+            default:
+                throw new InvalidOperationException(
+                    $"Unknown CreateResult variant '{result.GetType().Name}'."
+                );
+        }
     }
 
     public async Task UpdateAsync(
         EntityMeta entity,
         EntityEditVM model,
+        IActionContext? context = null,
         CancellationToken cancellationToken = default
     )
     {
         await EnsureAuthorizedAsync(entity, AdminAction.Update, instance: null, cancellationToken)
             .ConfigureAwait(false);
-        await GetAdapter(entity).UpdateAsync(model, cancellationToken).ConfigureAwait(false);
+
+        var adapter = GetAdapter(entity);
+
+        // No custom handler → preserve the legacy data-provider path verbatim.
+        if (entity.CustomUpdateHandler is null)
+        {
+            await adapter.UpdateAsync(model, cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        if (string.IsNullOrEmpty(model.Key))
+            throw new ArgumentException("Update requires a non-empty key.", nameof(model));
+
+        // Custom handler: load the original from the data provider, materialise the
+        // patched instance from the form, snapshot before-state, then dispatch.
+        // Audit is emitted here because the data provider — which normally fires
+        // Update audit — is bypassed entirely.
+        var original = await adapter
+            .LoadRawAsync(model.Key, cancellationToken)
+            .ConfigureAwait(false);
+        if (original is null)
+            throw new InvalidOperationException(
+                $"Entity '{entity.Name}' with key '{model.Key}' was not found."
+            );
+
+        var before = adapter.SnapshotScalarValues(original);
+        var patched = adapter.MaterializePatched(original, model);
+        var actionContext = context ?? new NullActionContext();
+
+        UpdateResult result;
+        using (var scope = _serviceProvider.CreateScope())
+        {
+            result = await entity
+                .CustomUpdateHandler(
+                    scope.ServiceProvider,
+                    original,
+                    patched,
+                    actionContext,
+                    cancellationToken
+                )
+                .ConfigureAwait(false);
+        }
+
+        switch (result)
+        {
+            case UpdateResult.Success:
+            {
+                if (_options.AuditSink is not null)
+                {
+                    var after = adapter.SnapshotScalarValues(patched);
+                    var changes = new Dictionary<string, AuditValueChange>(StringComparer.Ordinal);
+                    foreach (var (key, newVal) in after)
+                    {
+                        before.TryGetValue(key, out var oldVal);
+                        if (!Equals(oldVal, newVal))
+                            changes[key] = new AuditValueChange(oldVal, newVal);
+                    }
+                    await _options
+                        .AuditSink.RecordAsync(
+                            new AuditEvent
+                            {
+                                EntityType = entity.Name,
+                                Action = AuditAction.Update,
+                                EntityId = model.Key,
+                                ChangedValues = changes,
+                                User = _userAccessor.GetUserId(),
+                            },
+                            cancellationToken
+                        )
+                        .ConfigureAwait(false);
+                }
+                return;
+            }
+            case UpdateResult.Failure failure:
+                throw new EntityUpdateFailedException(entity.Name, failure.Message);
+            default:
+                throw new InvalidOperationException(
+                    $"Unknown UpdateResult variant '{result.GetType().Name}'."
+                );
+        }
     }
 
     public async Task<bool> DeleteAsync(
@@ -846,7 +991,7 @@ public sealed class BlazorUIBridge : IAdminUIBridge
         var columns = (
             meta.VisibleColumns
             ?? entityMeta
-                .Columns.Where(c => !c.HiddenInList && c.Kind != ColumnKind.NavigationCollection)
+                .Columns.Where(c => c.ShowInList && c.Kind != ColumnKind.NavigationCollection)
                 .Select(c => c.PropertyName)
                 .ToList()
         ).ToList();
@@ -961,6 +1106,30 @@ public sealed class BlazorUIBridge : IAdminUIBridge
             string encodedKey,
             CancellationToken cancellationToken
         );
+
+        /// <summary>
+        /// Build a fresh entity instance from an edit VM's values, exactly mirroring
+        /// what <see cref="CreateAsync"/> does internally before handing the entity
+        /// to the data provider. Used by the custom-create handler path so the
+        /// handler receives a fully-populated typed instance.
+        /// </summary>
+        public abstract object MaterializeFromVM(EntityEditVM model);
+
+        /// <summary>
+        /// Build the "patched" instance for a custom-update handler: a fresh entity
+        /// seeded with every scalar from <paramref name="original"/> (so unchanged
+        /// columns survive), then overwritten by every value in <paramref name="model"/>'s
+        /// form payload (so the user's edits take effect). The primary key is
+        /// preserved from <paramref name="original"/>.
+        /// </summary>
+        public abstract object MaterializePatched(object original, EntityEditVM model);
+
+        /// <summary>
+        /// Project the entity's scalar columns into a name→value dictionary. Used by
+        /// the bridge to assemble the <c>ChangedValues</c> snapshot for the audit
+        /// event emitted on a successful custom-create.
+        /// </summary>
+        public abstract IReadOnlyDictionary<string, object?> SnapshotScalarValues(object instance);
 
         public static EntityAdapter Create(
             EntityMeta meta,
@@ -1386,12 +1555,78 @@ public sealed class BlazorUIBridge : IAdminUIBridge
             CancellationToken cancellationToken
         )
         {
-            var entity = Activator.CreateInstance<TEntity>();
-            ApplyValues(entity, model.Values, includePk: true);
+            var entity = (TEntity)MaterializeFromVM(model);
             var created = await _provider
                 .CreateAsync(entity, cancellationToken)
                 .ConfigureAwait(false);
             return _keyAccessor.EncodeKey(created);
+        }
+
+        public override object MaterializeFromVM(EntityEditVM model)
+        {
+            ArgumentNullException.ThrowIfNull(model);
+            var entity = Activator.CreateInstance<TEntity>();
+            ApplyValues(entity, model.Values, includePk: true);
+            return entity;
+        }
+
+        public override object MaterializePatched(object original, EntityEditVM model)
+        {
+            ArgumentNullException.ThrowIfNull(original);
+            ArgumentNullException.ThrowIfNull(model);
+            var typedOriginal = (TEntity)original;
+            var patched = Activator.CreateInstance<TEntity>();
+
+            // Seed every writable scalar property from the original so columns that
+            // weren't in the form (HiddenInEdit, generated, etc.) survive the round-trip.
+            foreach (var column in _meta.Columns)
+            {
+                if (
+                    column.Kind == ColumnKind.NavigationReference
+                    || column.Kind == ColumnKind.NavigationCollection
+                    || column.Kind == ColumnKind.Owned
+                )
+                    continue;
+                if (column.IsCustom)
+                    continue;
+                var prop = typeof(TEntity).GetProperty(
+                    column.PropertyName,
+                    BindingFlags.Public | BindingFlags.Instance
+                );
+                if (prop is null || !prop.CanRead || !prop.CanWrite)
+                    continue;
+                prop.SetValue(patched, prop.GetValue(typedOriginal));
+            }
+
+            // Overlay the form-supplied values. Skip PK (preserved from original above).
+            ApplyValues(patched, model.Values, includePk: false);
+            return patched;
+        }
+
+        public override IReadOnlyDictionary<string, object?> SnapshotScalarValues(object instance)
+        {
+            ArgumentNullException.ThrowIfNull(instance);
+            var typed = (TEntity)instance;
+            var snap = new Dictionary<string, object?>(StringComparer.Ordinal);
+            foreach (var column in _meta.Columns)
+            {
+                if (
+                    column.Kind == ColumnKind.NavigationReference
+                    || column.Kind == ColumnKind.NavigationCollection
+                    || column.Kind == ColumnKind.Owned
+                )
+                    continue;
+                if (column.IsCustom)
+                    continue; // computed columns aren't part of the persisted state
+                var prop = typeof(TEntity).GetProperty(
+                    column.PropertyName,
+                    BindingFlags.Public | BindingFlags.Instance
+                );
+                if (prop is null || !prop.CanRead)
+                    continue;
+                snap[column.PropertyName] = prop.GetValue(typed);
+            }
+            return snap;
         }
 
         public override async Task UpdateAsync(
