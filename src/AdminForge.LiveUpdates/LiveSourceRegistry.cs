@@ -11,10 +11,10 @@ namespace AdminForge.LiveUpdates;
 /// on <see cref="LiveDataSourceMeta"/>.
 /// </summary>
 /// <remarks>
-/// Phase 5 was narrowed: only <see cref="StreamingDataSource{T}"/> remains. Polling is
-/// now done at the page level (one <c>Task.Delay</c> loop per browser tab) so the
-/// registry-backed multicast scaffolding is exclusively used to share a single
-/// upstream <see cref="IAsyncEnumerable{T}"/> across multiple subscribed circuits.
+/// Only <see cref="StreamingDataSource{T}"/> is registered here. Polling is done at
+/// the page level (one <c>Task.Delay</c> loop per browser tab) so the registry-backed
+/// multicast scaffolding is exclusively used to share a single upstream
+/// <see cref="IAsyncEnumerable{T}"/> across multiple subscribed circuits.
 /// </remarks>
 public sealed class LiveSourceRegistry : ILiveSourceRegistry, IAsyncDisposable
 {

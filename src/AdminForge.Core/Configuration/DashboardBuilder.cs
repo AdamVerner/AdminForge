@@ -41,7 +41,7 @@ public sealed class DashboardBuilder
 
     /// <summary>
     /// Adds a single-value stat card. <paramref name="fetch"/> is invoked once per
-    /// page load (Phase 3) — live updates land in Phase 5.
+    /// page load — for live updates use <c>WithStreaming</c> on a line chart widget.
     /// </summary>
     public DashboardBuilder AddStatCard(
         string title,

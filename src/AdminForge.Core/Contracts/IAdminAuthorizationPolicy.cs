@@ -4,8 +4,8 @@ using AdminForge.Core.Configuration;
 namespace AdminForge.Core.Contracts;
 
 /// <summary>
-/// Per-action authorization hook. The default Phase 2 implementation will delegate
-/// to ASP.NET's <c>IAuthorizationService</c> with policies named
+/// Per-action authorization hook. The default implementation delegates to ASP.NET's
+/// <c>IAuthorizationService</c> with policies named
 /// <c>"AdminForge:{Entity}:{Action}"</c> (see <see cref="PolicyNames"/>). Consumers
 /// can swap in a custom implementation when they need richer logic (per-entity
 /// row access, ownership checks, etc.).

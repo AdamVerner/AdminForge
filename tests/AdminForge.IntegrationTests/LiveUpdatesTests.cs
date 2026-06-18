@@ -8,9 +8,9 @@ using Microsoft.Extensions.DependencyInjection;
 namespace AdminForge.IntegrationTests;
 
 /// <summary>
-/// Bridge-level coverage for the (narrowed) Phase 5 live-update surface. After scope
-/// narrowing the only multicasted source is the streaming line chart on the operations
-/// dashboard; entity views poll directly via the existing find-by-key path.
+/// Bridge-level coverage for the live-update surface. The only multicasted source is
+/// the streaming line chart on the operations dashboard; entity views poll directly
+/// via the existing find-by-key path.
 /// </summary>
 public class LiveUpdatesTests : IClassFixture<TodoAppFactory>
 {

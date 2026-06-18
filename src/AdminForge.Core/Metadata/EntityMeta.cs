@@ -113,10 +113,26 @@ public sealed class EntityMeta
     >? CustomUpdateHandler { get; set; }
 
     /// <summary>
+    /// Optional opt-in custom delete handler registered via
+    /// <c>EntityBuilder&lt;T&gt;.OnDelete(...)</c>. When null, the delete button is hidden
+    /// entirely — delete is opt-in, not opt-out. When set, the bridge loads the entity
+    /// instance and dispatches to this delegate instead of calling the data provider's
+    /// <c>DeleteAsync</c> directly. Stored as an untyped delegate; the typed builder wraps
+    /// the user's <c>Func&lt;..., T, ...&gt;</c> in an <c>object</c>-accepting adapter at
+    /// registration time (mirrors <see cref="CustomCreateHandler"/>).
+    /// </summary>
+    public Func<
+        IServiceProvider,
+        object,
+        IActionContext,
+        CancellationToken,
+        Task<DeleteResult>
+    >? CustomDeleteHandler { get; set; }
+
+    /// <summary>
     /// Optional live-polling interval registered via <c>EntityBuilder.WithLivePolling</c>.
     /// When set, the entity <em>view</em> page re-fetches the displayed row every interval
-    /// (the entity list table is NOT polled — that scope was dropped after the initial
-    /// Phase 5 build).
+    /// (the entity list table is NOT polled — only entity-view polling is supported).
     /// </summary>
     public TimeSpan? LivePollingInterval { get; set; }
 }

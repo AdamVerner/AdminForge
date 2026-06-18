@@ -44,7 +44,7 @@ public static class AdminForgeEndpointRouteBuilderExtensions
 
     /// <summary>
     /// DI-side helper that complements <c>AddAdminForge</c> with the Blazor + auth wiring
-    /// needed for Phase 2. Called from the meta-package extension.
+    /// needed for Blazor + auth wiring. Called from the meta-package extension.
     /// </summary>
     public static IServiceCollection AddAdminForgeBlazor(this IServiceCollection services)
     {

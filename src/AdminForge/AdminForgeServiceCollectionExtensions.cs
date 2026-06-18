@@ -19,6 +19,23 @@ namespace AdminForge;
 public static class AdminForgeServiceCollectionExtensions
 {
     /// <summary>
+    /// Registers a custom <see cref="IAdminDataProvider{TEntity}"/> for an entity that was (or
+    /// will be) added via <c>AdminForgeBuilder.AddTable(EntityMeta)</c>. The specific closed-generic
+    /// registration shadows the open-generic <c>HostScopedDataProvider&lt;T&gt;</c> fallback, so
+    /// this can be called before or after <see cref="AddAdminForge{TDbContext}"/> — DI ordering
+    /// does not matter.
+    /// </summary>
+    public static IServiceCollection AddAdminForgeDataProvider<TEntity, TProvider>(
+        this IServiceCollection services
+    )
+        where TEntity : class
+        where TProvider : class, IAdminDataProvider<TEntity>
+    {
+        services.AddScoped<IAdminDataProvider<TEntity>, TProvider>();
+        return services;
+    }
+
+    /// <summary>
     /// Registers AdminForge against the host's <typeparamref name="TDbContext"/>.
     /// The <paramref name="configure"/> callback receives a pre-seeded
     /// <see cref="AdminForgeBuilder"/> populated with metadata for every entity

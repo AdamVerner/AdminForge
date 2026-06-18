@@ -49,8 +49,11 @@ else
                                OnClick="@(() => OnRowClick.InvokeAsync(row))" />
                 <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small"
                                OnClick="@(() => OnEdit.InvokeAsync(row))" />
-                <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
-                               OnClick="@(() => OnDelete.InvokeAsync(row))" />
+                @if (Entity?.CustomDeleteHandler is not null)
+                {
+                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
+                                   OnClick="@(() => OnDelete.InvokeAsync(row))" />
+                }
             </MudTd>
         </RowTemplate>
     </MudTable>

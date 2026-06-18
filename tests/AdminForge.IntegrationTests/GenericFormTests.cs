@@ -13,9 +13,9 @@ using TodoApp.Entities;
 namespace AdminForge.IntegrationTests;
 
 /// <summary>
-/// End-to-end coverage of Phase 4 generic forms: the page renders, the bridge
-/// validates + emits audit on submit, denying authz short-circuits before the
-/// handler, and missing required fields surface as <see cref="FormValidationException"/>.
+/// End-to-end coverage of generic forms: the page renders, the bridge validates +
+/// emits audit on submit, denying authz short-circuits before the handler, and
+/// missing required fields surface as <see cref="FormValidationException"/>.
 /// </summary>
 public class GenericFormTests : IClassFixture<FormTodoAppFactory>
 {

@@ -33,7 +33,7 @@ public abstract class WidgetMeta
 
 /// <summary>
 /// A single-value status indicator (e.g. "Open todos: 42"). The provider delegate
-/// is invoked once per page load (Phase 3) within a scoped <see cref="IServiceProvider"/>.
+/// is invoked once per page load within a scoped <see cref="IServiceProvider"/>.
 /// </summary>
 public sealed class StatCardMeta : WidgetMeta
 {

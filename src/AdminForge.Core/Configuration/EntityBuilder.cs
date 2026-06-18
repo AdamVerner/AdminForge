@@ -329,11 +329,46 @@ public sealed class EntityBuilder<T>
     }
 
     /// <summary>
+    /// Register an opt-in custom delete handler. When set, the delete button becomes visible
+    /// and the bridge loads the existing entity instance, then dispatches to this delegate
+    /// instead of calling the data provider's <c>DeleteAsync</c> directly.
+    /// <para>
+    /// Return <see cref="DeleteResult.Ok"/> on success; the bridge emits an
+    /// <c>AuditAction.Delete</c> event and the list reloads. Return
+    /// <see cref="DeleteResult.Error(string)"/> to reject — no audit is emitted and the
+    /// message is surfaced as an error snackbar (the bridge wraps the failure in an
+    /// <see cref="EntityDeleteFailedException"/>).
+    /// </para>
+    /// <para>
+    /// The handler runs inside a fresh DI scope so it can resolve scoped services
+    /// (e.g. its own <c>DbContext</c>).
+    /// </para>
+    /// <para>
+    /// When no handler is registered (the default), the delete button is hidden
+    /// entirely — delete is opt-in.
+    /// </para>
+    /// </summary>
+    public EntityBuilder<T> OnDelete(
+        Func<IServiceProvider, T, IActionContext, CancellationToken, Task<DeleteResult>> handler
+    )
+    {
+        ArgumentNullException.ThrowIfNull(handler);
+        if (_meta.CustomDeleteHandler is not null)
+        {
+            throw new InvalidOperationException(
+                $"A custom delete handler is already registered on entity '{typeof(T).Name}'."
+            );
+        }
+        _meta.CustomDeleteHandler = (sp, obj, ctx, ct) => handler(sp, (T)obj, ctx, ct);
+        return this;
+    }
+
+    /// <summary>
     /// Enable live polling on the <em>entity view</em> page for this entity. While the
     /// view is mounted the page re-fetches the displayed row every
     /// <paramref name="interval"/> via the existing data provider's find-by-key path
     /// — no separate delegate is required. The entity <em>list</em> is NOT polled
-    /// (table-level live updates were removed after the initial Phase 5 build).
+    /// (table-level live updates were removed; only entity-view polling remains).
     /// </summary>
     public EntityBuilder<T> WithLivePolling(TimeSpan interval)
     {

@@ -42,35 +42,6 @@ public sealed class AdminForgeBuilder
     public AdminForgeBuilder()
         : this([]) { }
 
-    /// <summary>
-    /// Set the URL prefix where the admin panel mounts.
-    /// </summary>
-    /// <remarks>
-    /// Phase 3 limitation: the Blazor page routes are compile-time <c>@page</c> directives
-    /// pinned to <c>/admin</c>. A non-default prefix would route the middleware correctly
-    /// but the rendered links and <c>@page</c> declarations would not move with it. Until
-    /// a runtime route-rewriter lands, only the default value is accepted.
-    /// </remarks>
-    [Obsolete(
-        "Phase 3 limitation: only the default \"admin\" prefix is supported. Runtime route propagation is deferred until a router-rewriter component lands.",
-        error: false
-    )]
-    public AdminForgeBuilder WithRoutePrefix(string prefix)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(prefix);
-        var normalised = prefix.Trim('/');
-        if (!string.Equals(normalised, "admin", StringComparison.Ordinal))
-        {
-            throw new NotSupportedException(
-                "AdminForge currently only supports the default route prefix \"admin\". "
-                    + "Configurable prefixes are deferred until the Blazor router can rewrite "
-                    + "compile-time @page routes at runtime."
-            );
-        }
-        Options.RoutePrefix = normalised;
-        return this;
-    }
-
     /// <summary>Set the display title shown in the admin shell.</summary>
     public AdminForgeBuilder WithTitle(string title)
     {
@@ -129,6 +100,15 @@ public sealed class AdminForgeBuilder
     /// Registers an entity using already-built <see cref="EntityMeta"/> (escape hatch for
     /// custom providers that don't go through EF reflection).
     /// </summary>
+    /// <remarks>
+    /// Because the entity has no EF-backed <c>DbSet</c>, the default
+    /// <c>HostScopedDataProvider&lt;T&gt;</c> will throw when AdminForge tries to serve its
+    /// list or view pages. You must register a concrete
+    /// <see cref="AdminForge.Core.Contracts.IAdminDataProvider{T}"/> for the same CLR type
+    /// before the open-generic fallback is reached — use
+    /// <c>services.AddAdminForgeDataProvider&lt;TEntity, TProvider&gt;()</c> (or the raw DI
+    /// overload) in your host's <c>Program.cs</c>.
+    /// </remarks>
     public AdminForgeBuilder AddTable(EntityMeta meta)
     {
         ArgumentNullException.ThrowIfNull(meta);

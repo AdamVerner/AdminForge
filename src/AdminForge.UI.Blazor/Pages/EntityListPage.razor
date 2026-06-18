@@ -154,9 +154,14 @@ else
 
         try
         {
-            await Bridge.DeleteAsync(Entity, row.Key);
+            var actionContext = new BlazorActionContext(Snackbar, Nav, DialogService, Reload);
+            await Bridge.DeleteAsync(Entity, row.Key, actionContext);
             Snackbar.Add("Deleted.", MudBlazor.Severity.Success);
             await Reload();
+        }
+        catch (EntityDeleteFailedException ex)
+        {
+            Snackbar.Add(ex.Message, MudBlazor.Severity.Error);
         }
         catch (Exception ex)
         {

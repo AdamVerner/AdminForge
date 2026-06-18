@@ -9,7 +9,7 @@ using TodoApp.Entities;
 namespace AdminForge.UnitTests.Configuration;
 
 /// <summary>
-/// Builder-shape tests for the Phase 3.5 power-ups (HideColumn / AddColumn /
+/// Builder-shape tests for the column/action/link power-ups (HideColumn / AddColumn /
 /// AddAction / HideRelatedLink / RelatedLink / LinkText). These exercise only the
 /// metadata produced by <c>EntityBuilder&lt;T&gt;</c>; runtime behaviour is covered
 /// by the provider + bridge integration tests.

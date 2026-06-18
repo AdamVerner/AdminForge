@@ -35,7 +35,7 @@ public class StreamingDataSource<T> : BroadcastDataSourceBase<T>
         catch (Exception)
         {
             // Stream failures terminate the source's loop until a new subscriber kicks it.
-            // Per Phase 5 plan, in-process only — no resubscribe semantics yet.
+            // In-process only — no resubscribe semantics yet.
         }
     }
 }

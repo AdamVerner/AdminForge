@@ -1,6 +1,7 @@
 using System.Text.Json.Serialization;
 using AdminForge;
 using AdminForge.Core.Configuration;
+using AdminForge.Core.Metadata;
 using Microsoft.EntityFrameworkCore;
 using TodoApp;
 using TodoApp.Data;
@@ -33,14 +34,75 @@ builder.Services.AddAuthorization(opts =>
     opts.AddPolicy("AdminForge.Demo", p => p.RequireAssertion(_ => true));
 });
 
+// SiteSettings: non-EF entity registered via AddTable(EntityMeta) escape hatch.
+// The singleton store is shared between the scoped provider instances.
+builder.Services.AddSingleton<SiteSettingsStore>();
+builder.Services.AddAdminForgeDataProvider<SiteSettings, SiteSettingsDataProvider>();
+
+// Hand-built EntityMeta — mirrors what EfCoreReflectionScanner would emit for an EF entity.
+var siteSettingsMeta = new EntityMeta
+{
+    ClrType = typeof(SiteSettings),
+    Name = "SiteSettings",
+    RouteName = "SiteSettings",
+    Label = "Site Settings",
+    PrimaryKeyPropertyNames = ["Id"],
+    Nav = new NavMeta
+    {
+        Group = "System",
+        Order = 0,
+        Label = "Site Settings",
+    },
+    Columns =
+    [
+        new ColumnMeta
+        {
+            PropertyName = "Id",
+            Label = "Id",
+            ClrType = typeof(int),
+            IsNullable = false,
+            Kind = ColumnKind.Scalar,
+            IsPrimaryKey = true,
+            IsGenerated = true,
+        },
+        new ColumnMeta
+        {
+            PropertyName = "MaintenanceMode",
+            Label = "Maintenance Mode",
+            ClrType = typeof(bool),
+            IsNullable = false,
+            Kind = ColumnKind.Scalar,
+            ShowInList = true,
+            IsRequired = true,
+        },
+        new ColumnMeta
+        {
+            PropertyName = "MaxItemsPerPage",
+            Label = "Max Items Per Page",
+            ClrType = typeof(int),
+            IsNullable = false,
+            Kind = ColumnKind.Scalar,
+            ShowInList = true,
+            IsRequired = true,
+        },
+        new ColumnMeta
+        {
+            PropertyName = "WelcomeMessage",
+            Label = "Welcome Message",
+            ClrType = typeof(string),
+            IsNullable = true,
+            Kind = ColumnKind.Scalar,
+            ShowInList = true,
+        },
+    ],
+};
+
 builder.Services.AddAdminForge<AppDbContext>(forge =>
     forge
         .WithTitle("Todo Admin")
-        // Route prefix is pinned to "admin" in Phase 3 — see AdminForgeBuilder.WithRoutePrefix.
         .RequireAuthorizationPolicy("AdminForge.Demo")
-        // Phase 6: exercise the theming hook end-to-end. Inline-SVG data URL avoids
-        // shipping a separate asset file with the example; teal primary makes it
-        // obvious at a glance that the configured palette is in effect.
+        // Inline-SVG data URL avoids shipping a separate asset file with the example;
+        // teal primary makes it obvious at a glance that the configured palette is in effect.
         .WithTheme(theme =>
         {
             theme.LogoUrl =
@@ -69,6 +131,15 @@ builder.Services.AddAdminForge<AppDbContext>(forge =>
                 .AddColumn(u => u.DisplayName)
                 .AddColumn(u => u.Role)
                 .AddColumn(u => u.CreatedAt)
+                .OnDelete(
+                    async (sp, user, ctx, ct) =>
+                    {
+                        var db = sp.GetRequiredService<AppDbContext>();
+                        db.Users.Remove(user);
+                        await db.SaveChangesAsync(ct);
+                        return DeleteResult.Ok();
+                    }
+                )
                 // Opt-in custom create handler — the library no longer performs the
                 // INSERT for User; business logic runs (duplicate-email check, default
                 // DisplayName, server-stamped CreatedAt) and only then is the row
@@ -136,7 +207,7 @@ builder.Services.AddAdminForge<AppDbContext>(forge =>
                     "Active Tasks",
                     source => target => target.AssigneeId == source.Id
                 )
-                // Phase 3.5: opt-out of the (low value) auto-link to TodoLists owned by this user.
+                // Opt-out of the (low value) auto-link to TodoLists owned by this user.
                 .HideRelatedLink(u => u.TodoLists)
         )
         .AddTable<TodoList>(e =>
@@ -145,6 +216,15 @@ builder.Services.AddAdminForge<AppDbContext>(forge =>
                 .AddColumn(l => l.Owner)
                 .AddColumn(l => l.IsArchived)
                 .AddColumn(l => l.CreatedAt)
+                .OnDelete(
+                    async (sp, list, ctx, ct) =>
+                    {
+                        var db = sp.GetRequiredService<AppDbContext>();
+                        db.TodoLists.Remove(list);
+                        await db.SaveChangesAsync(ct);
+                        return DeleteResult.Ok();
+                    }
+                )
         )
         .AddTable<Todo>(e =>
             e.Nav(n => n.Group("Work").Order(2).Label("Tasks"))
@@ -170,6 +250,15 @@ builder.Services.AddAdminForge<AppDbContext>(forge =>
                 .HideColumn(t => t.CreatedAt)
                 // Visiting /admin/entities/Todo/{id} re-fetches the displayed row every 5s.
                 .WithLivePolling(TimeSpan.FromSeconds(5))
+                .OnDelete(
+                    async (sp, todo, ctx, ct) =>
+                    {
+                        var db = sp.GetRequiredService<AppDbContext>();
+                        db.Todos.Remove(todo);
+                        await db.SaveChangesAsync(ct);
+                        return DeleteResult.Ok();
+                    }
+                )
         )
         .AddTable<Tag>(e =>
             e.Nav(n => n.Group("Work").Order(3))
@@ -180,7 +269,20 @@ builder.Services.AddAdminForge<AppDbContext>(forge =>
                     "TodoCount",
                     c => c.Label("# Todos").From(t => t.Todos.Count).Sortable()
                 )
+                .OnDelete(
+                    async (sp, tag, ctx, ct) =>
+                    {
+                        var db = sp.GetRequiredService<AppDbContext>();
+                        db.Tags.Remove(tag);
+                        await db.SaveChangesAsync(ct);
+                        return DeleteResult.Ok();
+                    }
+                )
         )
+        // Non-EF entity via the AddTable(EntityMeta) escape hatch. SiteSettings has no
+        // DbSet — its metadata is hand-built above and its data provider is the in-memory
+        // SiteSettingsDataProvider registered via AddAdminForgeDataProvider<>.
+        .AddTable(siteSettingsMeta)
         // generic form exercising every supported field kind. The submit
         // handler just logs + shows a snackbar via the IActionContext; the audit
         // sink captures the serialised values for inspection.
@@ -298,9 +400,9 @@ builder.Services.AddAdminForge<AppDbContext>(forge =>
                             c.WithStreaming(metricsTickStream.Reader).WithWindowSize(40),
                         yAxisLabel: "value"
                     )
-                    // Phase 5 (narrowed): polling-variant line chart. The chart's fetch
-                    // delegate is re-invoked every 10s; no separate poll delegate is
-                    // taken — the library reuses the dashboard widget materialiser.
+                    // Polling-variant line chart. The chart's fetch delegate is re-invoked
+                    // every 10s; no separate poll delegate is taken — the library reuses
+                    // the dashboard widget materialiser.
                     .AddLineChart<OpenTodoSnapshot>(
                         "Open todos (live)",
                         async (IServiceProvider sp, CancellationToken ct) =>
@@ -357,7 +459,7 @@ if (args.Length > 0 && string.Equals(args[0], "seed", StringComparison.OrdinalIg
     return;
 }
 
-// Make sure the DB exists for normal runs too (no migrations in Phase 0).
+// Make sure the DB exists for normal runs too (no migrations in the example app).
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();

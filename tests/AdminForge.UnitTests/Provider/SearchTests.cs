@@ -7,9 +7,9 @@ using TodoApp.Entities;
 namespace AdminForge.UnitTests.Provider;
 
 /// <summary>
-/// Phase 3 polish: <see cref="ListQuery.Search"/> applies a case-insensitive
-/// Contains over every string scalar column. The provider builds the predicate
-/// at runtime; SQLite must translate it cleanly.
+/// <see cref="ListQuery.Search"/> applies a case-insensitive Contains over every
+/// string scalar column. The provider builds the predicate at runtime; SQLite must
+/// translate it cleanly.
 /// </summary>
 public class SearchTests
 {

@@ -258,14 +258,67 @@ public sealed class BlazorUIBridge : IAdminUIBridge
     public async Task<bool> DeleteAsync(
         EntityMeta entity,
         string encodedKey,
+        IActionContext? context = null,
         CancellationToken cancellationToken = default
     )
     {
         await EnsureAuthorizedAsync(entity, AdminAction.Delete, instance: null, cancellationToken)
             .ConfigureAwait(false);
-        return await GetAdapter(entity)
-            .DeleteAsync(encodedKey, cancellationToken)
+
+        if (entity.CustomDeleteHandler is null)
+            throw new InvalidOperationException(
+                $"Entity '{entity.Name}' has no delete handler. Register one via EntityBuilder<T>.OnDelete(...)."
+            );
+
+        var adapter = GetAdapter(entity);
+        var instance = await adapter
+            .LoadRawAsync(encodedKey, cancellationToken)
             .ConfigureAwait(false);
+        if (instance is null)
+            return false;
+
+        var actionContext = context ?? new NullActionContext();
+        DeleteResult result;
+        using (var scope = _serviceProvider.CreateScope())
+        {
+            result = await entity
+                .CustomDeleteHandler(
+                    scope.ServiceProvider,
+                    instance,
+                    actionContext,
+                    cancellationToken
+                )
+                .ConfigureAwait(false);
+        }
+
+        switch (result)
+        {
+            case DeleteResult.Success:
+            {
+                if (_options.AuditSink is not null)
+                {
+                    await _options
+                        .AuditSink.RecordAsync(
+                            new AuditEvent
+                            {
+                                EntityType = entity.Name,
+                                Action = AuditAction.Delete,
+                                EntityId = encodedKey,
+                                User = _userAccessor.GetUserId(),
+                            },
+                            cancellationToken
+                        )
+                        .ConfigureAwait(false);
+                }
+                return true;
+            }
+            case DeleteResult.Failure failure:
+                throw new EntityDeleteFailedException(entity.Name, failure.Message);
+            default:
+                throw new InvalidOperationException(
+                    $"Unknown DeleteResult variant '{result.GetType().Name}'."
+                );
+        }
     }
 
     public async Task<IReadOnlyList<NavigationRef>> SearchRelatedAsync(

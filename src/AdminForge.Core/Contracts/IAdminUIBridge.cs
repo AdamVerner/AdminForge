@@ -106,10 +106,17 @@ public interface IAdminUIBridge
         CancellationToken cancellationToken = default
     );
 
-    /// <summary>Deletes an entity by key. Returns false when nothing was found.</summary>
+    /// <summary>
+    /// Deletes an entity by key using its registered <c>OnDelete</c> handler. Returns false
+    /// when the entity was not found; throws <see cref="EntityDeleteFailedException"/> when
+    /// the handler rejects the deletion. Throws <see cref="InvalidOperationException"/> when
+    /// no delete handler is registered — callers should check
+    /// <c>EntityMeta.CustomDeleteHandler != null</c> before showing the delete button.
+    /// </summary>
     Task<bool> DeleteAsync(
         EntityMeta entity,
         string encodedKey,
+        IActionContext? context = null,
         CancellationToken cancellationToken = default
     );
 
