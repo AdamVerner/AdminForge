@@ -178,6 +178,7 @@ public class CustomUpdateTodoAppFactory : WebApplicationFactory<Program>
 
                 var b = new AdminForgeBuilder(scanned);
                 b.WithTitle("Custom Update Test")
+                    .AllowAnonymousAccess()
                     .AddTable<User>(e =>
                         e.OnUpdate(
                             async (csp, original, patched, _, ct) =>

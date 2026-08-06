@@ -4,6 +4,12 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- Lets the integration suite exercise the mount-time authorization guard directly;
+         MapAdminForge() itself needs a static-web-assets manifest a bare test host lacks. -->
+    <InternalsVisibleTo Include="AdminForge.IntegrationTests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
 

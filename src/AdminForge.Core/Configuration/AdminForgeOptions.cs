@@ -26,6 +26,15 @@ public sealed class AdminForgeOptions
     /// </summary>
     public string? AuthorizationPolicy { get; set; }
 
+    /// <summary>
+    /// Opt-out of the mount-time authorization check: when true, <c>MapAdminForge()</c>
+    /// accepts a host that configured neither <see cref="AuthorizationPolicy"/> nor a
+    /// custom <see cref="IAdminAuthorizationPolicy"/>, leaving the panel open to anyone
+    /// who can reach the route. Intended for demos, local tooling and tests.
+    /// Set via <c>AdminForgeBuilder.AllowAnonymousAccess()</c>.
+    /// </summary>
+    public bool AllowAnonymousAccess { get; init; }
+
     /// <summary>All registered entities, in registration order.</summary>
     public IReadOnlyList<EntityMeta> Entities { get; init; } = [];
 

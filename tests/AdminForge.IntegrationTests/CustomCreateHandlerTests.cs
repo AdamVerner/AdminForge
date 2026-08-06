@@ -163,6 +163,7 @@ public class CustomCreateTodoAppFactory : WebApplicationFactory<Program>
 
                 var b = new AdminForgeBuilder(scanned);
                 b.WithTitle("Custom Create Test")
+                    .AllowAnonymousAccess()
                     .AddTable<User>(e =>
                         e.OnCreate(
                             async (csp, user, _, ct) =>

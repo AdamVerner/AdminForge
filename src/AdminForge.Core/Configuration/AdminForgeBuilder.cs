@@ -62,6 +62,18 @@ public sealed class AdminForgeBuilder
     }
 
     /// <summary>
+    /// Declares that this panel is deliberately open — no umbrella policy, no custom
+    /// <see cref="IAdminAuthorizationPolicy"/>. Without this (or one of those two),
+    /// <c>MapAdminForge()</c> throws at startup rather than serving an unprotected
+    /// admin panel. Use for demos, local tooling and tests only.
+    /// </summary>
+    public AdminForgeBuilder AllowAnonymousAccess()
+    {
+        Options.AllowAnonymousAccess = true;
+        return this;
+    }
+
+    /// <summary>
     /// Registers an entity table page. The entity must have been discovered by the
     /// reflection scanner (i.e. it must be a <c>DbSet</c> on the host's <c>DbContext</c>).
     /// </summary>
@@ -230,6 +242,7 @@ public sealed class AdminForgeBuilder
             RoutePrefix = Options.RoutePrefix,
             Title = Options.Title,
             AuthorizationPolicy = Options.AuthorizationPolicy,
+            AllowAnonymousAccess = Options.AllowAnonymousAccess,
             Entities = _registeredEntities.AsReadOnly(),
             Dashboards = _dashboards.AsReadOnly(),
             Forms = _forms.AsReadOnly(),
@@ -267,4 +280,7 @@ public sealed class AdminForgeOptionsDraft
 
     /// <inheritdoc cref="AdminForgeOptions.AuthorizationPolicy" />
     public string? AuthorizationPolicy { get; set; }
+
+    /// <inheritdoc cref="AdminForgeOptions.AllowAnonymousAccess" />
+    public bool AllowAnonymousAccess { get; set; }
 }

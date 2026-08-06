@@ -25,6 +25,8 @@ public static class AdminForgeEndpointRouteBuilderExtensions
     {
         ArgumentNullException.ThrowIfNull(endpoints);
 
+        GuardAuthorizationIsConfigured(endpoints.ServiceProvider);
+
         // Insert antiforgery + the umbrella-policy middleware in front of the Razor endpoints.
         // Razor Components in .NET 8+ refuse to serve unless antiforgery middleware is present.
         if (endpoints is IApplicationBuilder appBuilder)
@@ -40,6 +42,40 @@ public static class AdminForgeEndpointRouteBuilderExtensions
         var builder = endpoints.MapRazorComponents<App>().AddInteractiveServerRenderMode();
 
         return builder;
+    }
+
+    /// <summary>
+    /// Refuses to mount an admin panel that nobody is gating. Fails at boot rather than at
+    /// request time: a stock-default panel authorizes everything, and the failure mode of a
+    /// deny-by-default alternative is an empty grid whose obvious "fix" is re-registering
+    /// <see cref="AllowAllAuthorizationPolicy"/>.
+    /// </summary>
+    internal static void GuardAuthorizationIsConfigured(IServiceProvider serviceProvider)
+    {
+        // Scoped, so a host that registered IAdminAuthorizationPolicy per-request still resolves.
+        using var scope = serviceProvider.CreateScope();
+        var options =
+            scope.ServiceProvider.GetService<AdminForgeOptions>()
+            ?? throw new InvalidOperationException(
+                "AdminForge is not registered. Call services.AddAdminForge<TDbContext>(...) before MapAdminForge()."
+            );
+
+        if (options.AllowAnonymousAccess || !string.IsNullOrWhiteSpace(options.AuthorizationPolicy))
+            return;
+
+        var perAction = scope.ServiceProvider.GetService<IAdminAuthorizationPolicy>();
+        if (perAction is not null and not AllowAllAuthorizationPolicy)
+            return;
+
+        throw new InvalidOperationException(
+            "AdminForge refuses to mount without authorization: the panel exposes read/write access to every "
+                + "registered entity. Configure one of:\n"
+                + "  • an umbrella policy — AddAdminForge<T>(f => f.RequireAuthorizationPolicy(\"Admins\")), or\n"
+                + "  • a per-action hook — services.AddSingleton<IAdminAuthorizationPolicy, MyPolicy>().\n"
+                + "If the panel is genuinely meant to be open (demo, local tooling, tests), say so explicitly "
+                + "with AddAdminForge<T>(f => f.AllowAnonymousAccess()). Do not silence this by registering "
+                + "AllowAllAuthorizationPolicy — that reads as a real policy and hides the same hole."
+        );
     }
 
     /// <summary>

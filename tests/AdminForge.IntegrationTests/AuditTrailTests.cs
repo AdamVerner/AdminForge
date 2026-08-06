@@ -85,6 +85,7 @@ public class AuditableTodoAppFactory : WebApplicationFactory<Program>
 
                 var b = new AdminForgeBuilder(scanned);
                 b.WithTitle("Todo Admin Test")
+                    .AllowAnonymousAccess()
                     .AddTable<User>()
                     .AddTable<TodoList>()
                     .AddTable<Todo>()

@@ -100,6 +100,9 @@ var siteSettingsMeta = new EntityMeta
 builder.Services.AddAdminForge<AppDbContext>(forge =>
     forge
         .WithTitle("Todo Admin")
+        // MapAdminForge() refuses to mount a panel with no authorization at all. This demo
+        // satisfies it with an umbrella policy; a host that genuinely wants an open panel
+        // declares that instead, with .AllowAnonymousAccess().
         .RequireAuthorizationPolicy("AdminForge.Demo")
         // Inline-SVG data URL avoids shipping a separate asset file with the example;
         // teal primary makes it obvious at a glance that the configured palette is in effect.

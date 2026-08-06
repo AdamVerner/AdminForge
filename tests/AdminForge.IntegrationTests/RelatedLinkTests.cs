@@ -106,6 +106,7 @@ public class RelatedLinkTodoAppFactory : WebApplicationFactory<Program>
 
                 var b = new AdminForgeBuilder(scanned);
                 b.WithTitle("Related Tests")
+                    .AllowAnonymousAccess()
                     .AddTable<User>(e =>
                         e.HideRelatedLink(u => u.TodoLists)
                             .RelatedLink<Todo>(

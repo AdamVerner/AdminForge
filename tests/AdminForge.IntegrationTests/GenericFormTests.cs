@@ -189,6 +189,7 @@ public class FormTodoAppFactory : WebApplicationFactory<Program>
 
             var b = new AdminForgeBuilder(scanned);
             b.WithTitle("Form Tests")
+                .AllowAnonymousAccess()
                 .WithAuditLog(sink)
                 .AddTable<User>()
                 .AddTable<TodoList>()

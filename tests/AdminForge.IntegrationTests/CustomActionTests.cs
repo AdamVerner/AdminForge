@@ -165,6 +165,7 @@ public class CustomActionTodoAppFactory : WebApplicationFactory<Program>
 
             var b = new AdminForgeBuilder(scanned);
             b.WithTitle("Action Tests")
+                .AllowAnonymousAccess()
                 .WithAuditLog(auditSink)
                 .AddTable<User>(e =>
                     e.AddAction(
