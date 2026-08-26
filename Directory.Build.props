@@ -38,7 +38,7 @@
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <RepositoryType>git</RepositoryType>
     <PackageTags>aspnetcore;admin;panel;generator;scaffold</PackageTags>
-    <PackageProjectUrl>https://github.com/averner/AdminForge</PackageProjectUrl>
-    <RepositoryUrl>https://github.com/averner/AdminForge</RepositoryUrl>
+    <PackageProjectUrl>https://github.com/AdamVerner/AdminForge</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/AdamVerner/AdminForge</RepositoryUrl>
   </PropertyGroup>
 </Project>
