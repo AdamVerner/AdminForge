@@ -64,13 +64,40 @@ public static class AdminForgeServiceCollectionExtensions
             return builder.Build();
         });
 
-        services.AddScoped(typeof(IAdminDataProvider<>), typeof(HostScopedDataProvider<>));
-
         services.AddSingleton(new HostDbContextMarker(typeof(TDbContext)));
 
         // DbContext-as-DbContext alias so the renderer bridge can resolve an EF model
         // without knowing the host's TDbContext type at compile time.
         services.AddScoped<DbContext>(sp => sp.GetRequiredService<TDbContext>());
+
+        return services.AddAdminForgeCore();
+    }
+
+    /// <summary>
+    /// Registers AdminForge with no DbContext: every table is a type the host serves through the
+    /// <see cref="IAdminDataProvider{TEntity}"/> it registers for it.
+    /// </summary>
+    public static IServiceCollection AddAdminForge(
+        this IServiceCollection services,
+        Action<AdminForgeBuilder> configure
+    )
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        ArgumentNullException.ThrowIfNull(configure);
+
+        services.AddSingleton(_ =>
+        {
+            var builder = new AdminForgeBuilder();
+            configure(builder);
+            return builder.Build();
+        });
+
+        return services.AddAdminForgeCore();
+    }
+
+    private static IServiceCollection AddAdminForgeCore(this IServiceCollection services)
+    {
+        services.AddScoped(typeof(IAdminDataProvider<>), typeof(HostScopedDataProvider<>));
 
         // Wire up Blazor + auth pieces from the Middleware project.
         services.AddAdminForgeBlazor();
@@ -98,13 +125,21 @@ internal sealed class HostScopedDataProvider<TEntity> : IAdminDataProvider<TEnti
 {
     private readonly IAdminDataProvider<TEntity> _inner;
 
-    public HostScopedDataProvider(IServiceProvider serviceProvider, HostDbContextMarker marker)
+    public HostScopedDataProvider(
+        IServiceProvider serviceProvider,
+        HostDbContextMarker? marker = null
+    )
     {
+        var fix =
+            $"Register a provider: services.AddAdminForgeDataProvider<{typeof(TEntity).Name}, YourProvider>().";
+        if (marker is null)
+            throw new InvalidOperationException(
+                $"AdminForge has no DbContext to serve '{typeof(TEntity).Name}' from. {fix}"
+            );
         var context = (DbContext)serviceProvider.GetRequiredService(marker.ContextType);
         if (context.Model.FindEntityType(typeof(TEntity)) is null)
             throw new InvalidOperationException(
-                $"'{typeof(TEntity).Name}' is not on {marker.ContextType.Name}, so EF cannot serve it. "
-                    + $"Register a provider: services.AddAdminForgeDataProvider<{typeof(TEntity).Name}, YourProvider>()."
+                $"'{typeof(TEntity).Name}' is not on {marker.ContextType.Name}, so EF cannot serve it. {fix}"
             );
         var options = serviceProvider.GetService<AdminForgeOptions>();
         var userAccessor = serviceProvider.GetService<IUserAccessor>();
