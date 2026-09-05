@@ -1,5 +1,5 @@
 using System.Globalization;
-using AdminForge.Core.Metadata;
+using System.Reflection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata;
 
@@ -13,7 +13,7 @@ public sealed class KeyAccessor
 {
     private const char Separator = '-';
 
-    private readonly IReadOnlyList<IProperty> _keyProperties;
+    private readonly IReadOnlyList<KeyProperty> _keyProperties;
 
     public KeyAccessor(IEntityType entityType)
     {
@@ -23,11 +23,35 @@ public sealed class KeyAccessor
             ?? throw new InvalidOperationException(
                 $"Entity '{entityType.ClrType.Name}' has no primary key — AdminForge requires keyed entities."
             );
-        _keyProperties = primaryKey.Properties;
+        _keyProperties = primaryKey
+            .Properties.Select(p => new KeyProperty(p.Name, p.ClrType, p.PropertyInfo))
+            .ToList();
     }
 
-    /// <summary>The properties that make up the primary key, in EF-declared order.</summary>
-    public IReadOnlyList<IProperty> KeyProperties => _keyProperties;
+    /// <summary>For a type outside the EF model: the key is whatever the metadata names.</summary>
+    public KeyAccessor(Type clrType, IEnumerable<string> keyPropertyNames)
+    {
+        ArgumentNullException.ThrowIfNull(clrType);
+        ArgumentNullException.ThrowIfNull(keyPropertyNames);
+        _keyProperties = keyPropertyNames
+            .Select(name =>
+            {
+                var property =
+                    clrType.GetProperty(name, BindingFlags.Public | BindingFlags.Instance)
+                    ?? throw new InvalidOperationException(
+                        $"Key property '{name}' does not exist on '{clrType.Name}'."
+                    );
+                return new KeyProperty(name, property.PropertyType, property);
+            })
+            .ToList();
+        if (_keyProperties.Count == 0)
+            throw new InvalidOperationException(
+                $"'{clrType.Name}' has no primary key — AdminForge requires keyed entities."
+            );
+    }
+
+    /// <summary>The properties that make up the primary key, in declared order.</summary>
+    public IReadOnlyList<KeyProperty> KeyProperties => _keyProperties;
 
     /// <summary>Extracts the boxed PK values from an entity instance, suitable for <see cref="DbContext.Find"/>.</summary>
     public object?[] GetKeyValues(object entity)
@@ -108,3 +132,6 @@ public sealed class KeyAccessor
         return Convert.ChangeType(raw, targetType, CultureInfo.InvariantCulture)!;
     }
 }
+
+/// <summary>One primary-key property. <paramref name="PropertyInfo"/> is null for an EF shadow property.</summary>
+public sealed record KeyProperty(string Name, Type ClrType, PropertyInfo? PropertyInfo);

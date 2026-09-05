@@ -102,19 +102,15 @@ public sealed class AdminForgeBuilder
     }
 
     /// <summary>
-    /// Registers an entity table page. The entity must have been discovered by the
-    /// reflection scanner (i.e. it must be a <c>DbSet</c> on the host's <c>DbContext</c>).
+    /// Registers an entity table page. A <c>DbSet</c> on the host's <c>DbContext</c> is served by
+    /// EF; any other type is described by its public scalar properties and served by the
+    /// <see cref="IAdminDataProvider{T}"/> the host registers for it.
     /// </summary>
     public AdminForgeBuilder AddTable<T>(Action<EntityBuilder<T>>? configure = null)
         where T : class
     {
         if (!_scannedMetaByType.TryGetValue(typeof(T), out var meta))
-        {
-            throw new InvalidOperationException(
-                $"Entity '{typeof(T).FullName}' was not discovered by the reflection scanner. "
-                    + "Ensure it is exposed as a DbSet on the registered DbContext."
-            );
-        }
+            meta = ClrTypeScanner.Scan(typeof(T));
 
         if (_registeredEntities.Contains(meta))
         {
@@ -132,36 +128,6 @@ public sealed class AdminForgeBuilder
             meta.PrimaryKeyPropertyNames
         );
 
-        _registeredEntities.Add(meta);
-        return this;
-    }
-
-    /// <summary>
-    /// Registers an entity using already-built <see cref="EntityMeta"/> (escape hatch for
-    /// custom providers that don't go through EF reflection).
-    /// </summary>
-    /// <remarks>
-    /// Because the entity has no EF-backed <c>DbSet</c>, the default
-    /// <c>HostScopedDataProvider&lt;T&gt;</c> will throw when AdminForge tries to serve its
-    /// list or view pages. You must register a concrete
-    /// <see cref="AdminForge.Core.Contracts.IAdminDataProvider{T}"/> for the same CLR type
-    /// before the open-generic fallback is reached — use
-    /// <c>services.AddAdminForgeDataProvider&lt;TEntity, TProvider&gt;()</c> (or the raw DI
-    /// overload) in your host's <c>Program.cs</c>.
-    /// </remarks>
-    public AdminForgeBuilder AddTable(EntityMeta meta)
-    {
-        ArgumentNullException.ThrowIfNull(meta);
-        if (_registeredEntities.Any(m => m.ClrType == meta.ClrType))
-        {
-            throw new InvalidOperationException(
-                $"Entity '{meta.ClrType.Name}' is already registered."
-            );
-        }
-        meta.DisplayLabel ??= DisplayLabelResolver.Build(
-            meta.ClrType,
-            meta.PrimaryKeyPropertyNames
-        );
         _registeredEntities.Add(meta);
         return this;
     }

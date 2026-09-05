@@ -1205,7 +1205,9 @@ public sealed class BlazorUIBridge : IAdminUIBridge
         private readonly KeyAccessor _keyAccessor;
         private readonly AdminForgeOptions _options;
         private readonly DbContext _dbContext;
-        private readonly Microsoft.EntityFrameworkCore.Metadata.IEntityType _efEntityType;
+
+        // Null for a type outside the EF model: keys come from the metadata and there are no navigations.
+        private readonly Microsoft.EntityFrameworkCore.Metadata.IEntityType? _efEntityType;
 
         public GenericEntityAdapter(
             EntityMeta meta,
@@ -1218,12 +1220,10 @@ public sealed class BlazorUIBridge : IAdminUIBridge
             _options = options;
             _dbContext = dbContext;
             _provider = sp.GetRequiredService<IAdminDataProvider<TEntity>>();
-            _efEntityType =
-                dbContext.Model.FindEntityType(typeof(TEntity))
-                ?? throw new InvalidOperationException(
-                    $"Entity '{typeof(TEntity).FullName}' is not part of the DbContext model."
-                );
-            _keyAccessor = new KeyAccessor(_efEntityType);
+            _efEntityType = dbContext.Model.FindEntityType(typeof(TEntity));
+            _keyAccessor = _efEntityType is null
+                ? new KeyAccessor(typeof(TEntity), meta.PrimaryKeyPropertyNames)
+                : new KeyAccessor(_efEntityType);
         }
 
         public override async Task<object?> LoadRawAsync(
@@ -1353,13 +1353,14 @@ public sealed class BlazorUIBridge : IAdminUIBridge
             var output = new List<RelatedLinkVM>();
 
             // Auto + override links from collection navigations.
-            foreach (
-                var nav in _efEntityType
+            var navigations = _efEntityType is null
+                ? []
+                : _efEntityType
                     .GetNavigations()
                     .Concat<Microsoft.EntityFrameworkCore.Metadata.INavigationBase>(
                         _efEntityType.GetSkipNavigations()
-                    )
-            )
+                    );
+            foreach (var nav in navigations)
             {
                 if (!nav.IsCollection)
                     continue;
@@ -1457,7 +1458,7 @@ public sealed class BlazorUIBridge : IAdminUIBridge
             CancellationToken cancellationToken
         )
         {
-            var nav = _efEntityType.FindNavigation(sourceNavName);
+            var nav = _efEntityType?.FindNavigation(sourceNavName);
             if (nav is null)
                 return 0;
             var targetClrType = nav.TargetEntityType.ClrType;

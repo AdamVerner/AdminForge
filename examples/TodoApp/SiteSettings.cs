@@ -3,8 +3,8 @@ using AdminForge.Core.Contracts;
 namespace TodoApp;
 
 /// <summary>
-/// Non-EF entity: a singleton set of in-memory settings. Demonstrates
-/// <c>AdminForgeBuilder.AddTable(EntityMeta)</c> with a custom data provider.
+/// Non-EF entity: a singleton set of in-memory settings, registered with
+/// <c>AddTable&lt;SiteSettings&gt;</c> and served by a custom data provider.
 /// </summary>
 public sealed class SiteSettings
 {

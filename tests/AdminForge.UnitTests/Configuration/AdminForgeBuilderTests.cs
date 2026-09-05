@@ -30,10 +30,13 @@ public class AdminForgeBuilderTests
     }
 
     [Fact]
-    public void AddTable_Throws_On_Unknown_Type()
+    public void AddTable_Describes_A_Type_Outside_The_Scan_From_Its_Properties()
     {
         var builder = new AdminForgeBuilder([]); // empty scan
-        Assert.Throws<InvalidOperationException>(() => builder.AddTable<User>());
+        var options = builder.AddTable<User>().Build();
+        var meta = Assert.Single(options.Entities);
+        Assert.Equal(["Id"], meta.PrimaryKeyPropertyNames);
+        Assert.Contains(meta.Columns, c => c.PropertyName == nameof(User.Email));
     }
 
     [Fact]

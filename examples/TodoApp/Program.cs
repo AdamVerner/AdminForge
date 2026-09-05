@@ -1,7 +1,6 @@
 using System.Text.Json.Serialization;
 using AdminForge;
 using AdminForge.Core.Configuration;
-using AdminForge.Core.Metadata;
 using Microsoft.EntityFrameworkCore;
 using TodoApp;
 using TodoApp.Data;
@@ -34,68 +33,10 @@ builder.Services.AddAuthorization(opts =>
     opts.AddPolicy("AdminForge.Demo", p => p.RequireAssertion(_ => true));
 });
 
-// SiteSettings: non-EF entity registered via AddTable(EntityMeta) escape hatch.
-// The singleton store is shared between the scoped provider instances.
+// SiteSettings has no DbSet: AddTable<SiteSettings> describes it from its properties and the
+// registered provider serves it from the in-memory store.
 builder.Services.AddSingleton<SiteSettingsStore>();
 builder.Services.AddAdminForgeDataProvider<SiteSettings, SiteSettingsDataProvider>();
-
-// Hand-built EntityMeta — mirrors what EfCoreReflectionScanner would emit for an EF entity.
-var siteSettingsMeta = new EntityMeta
-{
-    ClrType = typeof(SiteSettings),
-    Name = "SiteSettings",
-    RouteName = "SiteSettings",
-    Label = "Site Settings",
-    PrimaryKeyPropertyNames = ["Id"],
-    Nav = new NavMeta
-    {
-        Group = "System",
-        Order = 0,
-        Label = "Site Settings",
-    },
-    Columns =
-    [
-        new ColumnMeta
-        {
-            PropertyName = "Id",
-            Label = "Id",
-            ClrType = typeof(int),
-            IsNullable = false,
-            Kind = ColumnKind.Scalar,
-            IsPrimaryKey = true,
-            IsGenerated = true,
-        },
-        new ColumnMeta
-        {
-            PropertyName = "MaintenanceMode",
-            Label = "Maintenance Mode",
-            ClrType = typeof(bool),
-            IsNullable = false,
-            Kind = ColumnKind.Scalar,
-            ShowInList = true,
-            IsRequired = true,
-        },
-        new ColumnMeta
-        {
-            PropertyName = "MaxItemsPerPage",
-            Label = "Max Items Per Page",
-            ClrType = typeof(int),
-            IsNullable = false,
-            Kind = ColumnKind.Scalar,
-            ShowInList = true,
-            IsRequired = true,
-        },
-        new ColumnMeta
-        {
-            PropertyName = "WelcomeMessage",
-            Label = "Welcome Message",
-            ClrType = typeof(string),
-            IsNullable = true,
-            Kind = ColumnKind.Scalar,
-            ShowInList = true,
-        },
-    ],
-};
 
 builder.Services.AddAdminForge<AppDbContext>(forge =>
     forge
@@ -283,10 +224,12 @@ builder.Services.AddAdminForge<AppDbContext>(forge =>
                     }
                 )
         )
-        // Non-EF entity via the AddTable(EntityMeta) escape hatch. SiteSettings has no
-        // DbSet — its metadata is hand-built above and its data provider is the in-memory
-        // SiteSettingsDataProvider registered via AddAdminForgeDataProvider<>.
-        .AddTable(siteSettingsMeta)
+        .AddTable<SiteSettings>(e =>
+            e.Nav(n => n.Group("System").Order(0).Label("Site Settings"))
+                .AddColumn(s => s.MaintenanceMode)
+                .AddColumn(s => s.MaxItemsPerPage)
+                .AddColumn(s => s.WelcomeMessage)
+        )
         // generic form exercising every supported field kind. The submit
         // handler just logs + shows a snackbar via the IActionContext; the audit
         // sink captures the serialised values for inspection.

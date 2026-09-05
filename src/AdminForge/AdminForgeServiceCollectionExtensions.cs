@@ -19,8 +19,8 @@ namespace AdminForge;
 public static class AdminForgeServiceCollectionExtensions
 {
     /// <summary>
-    /// Registers a custom <see cref="IAdminDataProvider{TEntity}"/> for an entity that was (or
-    /// will be) added via <c>AdminForgeBuilder.AddTable(EntityMeta)</c>. The specific closed-generic
+    /// Registers a custom <see cref="IAdminDataProvider{TEntity}"/> for a type that is (or will
+    /// be) added via <c>AdminForgeBuilder.AddTable&lt;T&gt;</c>. The specific closed-generic
     /// registration shadows the open-generic <c>HostScopedDataProvider&lt;T&gt;</c> fallback, so
     /// this can be called before or after <see cref="AddAdminForge{TDbContext}"/> — DI ordering
     /// does not matter.
@@ -102,6 +102,11 @@ internal sealed class HostScopedDataProvider<TEntity> : IAdminDataProvider<TEnti
     public HostScopedDataProvider(IServiceProvider serviceProvider, HostDbContextMarker marker)
     {
         var context = (DbContext)serviceProvider.GetRequiredService(marker.ContextType);
+        if (context.Model.FindEntityType(typeof(TEntity)) is null)
+            throw new InvalidOperationException(
+                $"'{typeof(TEntity).Name}' is not on {marker.ContextType.Name}, so EF cannot serve it. "
+                    + $"Register a provider: services.AddAdminForgeDataProvider<{typeof(TEntity).Name}, YourProvider>()."
+            );
         var options = serviceProvider.GetService<AdminForgeOptions>();
         var userAccessor = serviceProvider.GetService<IUserAccessor>();
         var providerType = typeof(EfCoreDataProvider<,>).MakeGenericType(

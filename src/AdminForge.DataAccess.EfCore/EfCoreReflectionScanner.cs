@@ -158,23 +158,7 @@ public sealed class EfCoreReflectionScanner
     /// Best-effort label humaniser: splits PascalCase into spaced words ("DueAt" → "Due At").
     /// Keeps already-spaced or all-lower labels as-is.
     /// </summary>
-    internal static string Humanize(string identifier)
-    {
-        if (string.IsNullOrEmpty(identifier))
-            return identifier;
-        if (identifier.Contains(' '))
-            return identifier;
-
-        var buffer = new System.Text.StringBuilder(identifier.Length + 4);
-        for (var i = 0; i < identifier.Length; i++)
-        {
-            var c = identifier[i];
-            if (i > 0 && char.IsUpper(c) && !char.IsUpper(identifier[i - 1]))
-                buffer.Append(' ');
-            buffer.Append(c);
-        }
-        return buffer.ToString();
-    }
+    internal static string Humanize(string identifier) => ClrTypeScanner.Humanize(identifier);
 }
 
 internal static class EntityTypeExtensions
