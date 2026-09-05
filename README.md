@@ -29,7 +29,7 @@ That's it. No JS toolchain, no separate admin host — Blazor Server components 
 - **Custom server-side columns** projected via `Expression<Func<T,TValue>>` — composes with filter/sort/pagination.
 - **Audit log hook** — a single delegate receives every create/update/delete/custom-action event.
 - **Per-action authorization policies** — `AdminForge:{Entity}:{Action}` policies are materialised on demand.
-- **Authorization required at mount** — `MapAdminForge()` throws at startup unless the host set an umbrella policy or registered its own `IAdminAuthorizationPolicy`. An open panel has to say so: `AllowAnonymousAccess()`.
+- **Authorization required at mount** — `MapAdminForge()` throws at startup unless the host set an umbrella policy or registered its own `IAdminAuthorizationPolicy`. An open panel has to say so: `AllowAnonymousAccess()`. The umbrella policy goes on the panel's endpoints, so the host's authentication scheme handles a rejected request — a cookie scheme redirects to its login page.
 - **Live updates** for single-entity views (polling) and dashboard line charts (polling or `IAsyncEnumerable` streaming) — multiple browser tabs share one upstream stream.
 - **Theming hook** — set a logo and primary / secondary palette colour via `WithTheme(...)`; defaults render MudBlazor's stock palette.
 

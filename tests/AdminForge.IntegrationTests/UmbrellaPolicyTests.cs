@@ -1,56 +1,79 @@
 using System.Net;
+using System.Text.Encodings.Web;
 using AdminForge.Core.Configuration;
 using AdminForge.DataAccess.EfCore;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using TodoApp.Data;
 using TodoApp.Entities;
 
 namespace AdminForge.IntegrationTests;
 
 /// <summary>
-/// Verifies that an umbrella authorization policy actually gates AdminForge endpoints.
+/// The umbrella policy sits on the panel's endpoints, so the host's authentication scheme decides
+/// what a rejected request gets — the same way it would for any other endpoint.
 /// </summary>
-public class UmbrellaPolicyTests : IClassFixture<DenyAllPolicyTodoAppFactory>
+public class UmbrellaPolicyTests
+    : IClassFixture<DenyAllPolicyTodoAppFactory>,
+        IClassFixture<CookieGatedTodoAppFactory>
 {
-    private readonly DenyAllPolicyTodoAppFactory _factory;
+    private readonly DenyAllPolicyTodoAppFactory _denyAll;
+    private readonly CookieGatedTodoAppFactory _cookie;
 
-    public UmbrellaPolicyTests(DenyAllPolicyTodoAppFactory factory) => _factory = factory;
+    public UmbrellaPolicyTests(
+        DenyAllPolicyTodoAppFactory denyAll,
+        CookieGatedTodoAppFactory cookie
+    )
+    {
+        _denyAll = denyAll;
+        _cookie = cookie;
+    }
 
     [Fact]
     public async Task Anonymous_Gets_401_When_Umbrella_Policy_Rejects()
     {
-        var client = _factory.CreateClient(
+        var client = _denyAll.CreateClient(
             new WebApplicationFactoryClientOptions { AllowAutoRedirect = false }
         );
         var response = await client.GetAsync("/admin");
-        // Anonymous principal → 401 per AdminForgeMiddleware behaviour.
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Anonymous_Is_Redirected_To_The_Cookie_Schemes_Login_Page()
+    {
+        var client = _cookie.CreateClient(
+            new WebApplicationFactoryClientOptions { AllowAutoRedirect = false }
+        );
+        var response = await client.GetAsync("/admin");
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        Assert.StartsWith("http://localhost/login", response.Headers.Location!.ToString());
     }
 }
 
-public class DenyAllPolicyTodoAppFactory : WebApplicationFactory<Program>
+/// <summary>TodoApp with the demo policy replaced by one that admits nobody.</summary>
+public abstract class GatedTodoAppFactory : WebApplicationFactory<Program>
 {
     public readonly string DbPath = Path.Combine(
         Path.GetTempPath(),
-        $"adminforge-deny-{Guid.NewGuid():N}.db"
+        $"adminforge-gated-{Guid.NewGuid():N}.db"
     );
+
+    protected abstract void ConfigureAuthentication(IServiceCollection services);
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseSetting("ConnectionStrings:Default", $"Data Source={DbPath}");
         builder.ConfigureServices(services =>
         {
-            // Override the umbrella policy to a deny-all assertion.
-            services.AddAuthorization(o =>
-            {
-                o.AddPolicy("AdminForge.Demo", p => p.RequireAssertion(_ => false));
-            });
+            ConfigureAuthentication(services);
 
-            // Rebuild AdminForgeOptions with the policy configured.
             ServiceCollectionExtensionsForTests.RemoveAll<AdminForgeOptions>(services);
             services.AddSingleton(sp =>
             {
@@ -75,5 +98,42 @@ public class DenyAllPolicyTodoAppFactory : WebApplicationFactory<Program>
                 File.Delete(DbPath);
         }
         catch { }
+    }
+}
+
+public class DenyAllPolicyTodoAppFactory : GatedTodoAppFactory
+{
+    protected override void ConfigureAuthentication(IServiceCollection services)
+    {
+        services
+            .AddAuthentication("Test")
+            .AddScheme<AuthenticationSchemeOptions, NeverAuthenticatesHandler>("Test", _ => { });
+        services.AddAuthorization(o =>
+            o.AddPolicy("AdminForge.Demo", p => p.RequireAssertion(_ => false))
+        );
+    }
+
+    /// <summary>The stock challenge: a bare 401, as a bearer scheme would answer.</summary>
+    private sealed class NeverAuthenticatesHandler(
+        IOptionsMonitor<AuthenticationSchemeOptions> options,
+        ILoggerFactory logger,
+        UrlEncoder encoder
+    ) : AuthenticationHandler<AuthenticationSchemeOptions>(options, logger, encoder)
+    {
+        protected override Task<AuthenticateResult> HandleAuthenticateAsync() =>
+            Task.FromResult(AuthenticateResult.NoResult());
+    }
+}
+
+public class CookieGatedTodoAppFactory : GatedTodoAppFactory
+{
+    protected override void ConfigureAuthentication(IServiceCollection services)
+    {
+        services
+            .AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
+            .AddCookie(o => o.LoginPath = "/login");
+        services.AddAuthorization(o =>
+            o.AddPolicy("AdminForge.Demo", p => p.RequireAuthenticatedUser())
+        );
     }
 }

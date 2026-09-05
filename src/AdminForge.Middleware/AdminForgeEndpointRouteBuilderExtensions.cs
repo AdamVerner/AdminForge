@@ -4,7 +4,6 @@ using AdminForge.Middleware.Authorization;
 using AdminForge.UI.Blazor;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Components.Endpoints;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
@@ -25,21 +24,23 @@ public static class AdminForgeEndpointRouteBuilderExtensions
     {
         ArgumentNullException.ThrowIfNull(endpoints);
 
-        GuardAuthorizationIsConfigured(endpoints.ServiceProvider);
+        var options = GuardAuthorizationIsConfigured(endpoints.ServiceProvider);
 
-        // Insert antiforgery + the umbrella-policy middleware in front of the Razor endpoints.
         // Razor Components in .NET 8+ refuse to serve unless antiforgery middleware is present.
         if (endpoints is IApplicationBuilder appBuilder)
-        {
             appBuilder.UseAntiforgery();
-            appBuilder.UseMiddleware<AdminForgeMiddleware>();
-        }
 
         // Serve _framework/blazor.web.js + _content/{RCL}/* (MudBlazor CSS/JS).
         // Idempotent under .NET 9+: hosts that already call MapStaticAssets get a no-op.
         endpoints.MapStaticAssets();
 
         var builder = endpoints.MapRazorComponents<App>().AddInteractiveServerRenderMode();
+
+        // The umbrella policy goes on the endpoints, so the host's authentication scheme decides
+        // what an unauthorized request gets: a cookie scheme redirects to its login page, a bearer
+        // scheme answers 401. It also covers the Blazor circuit endpoints the render mode adds.
+        if (!string.IsNullOrWhiteSpace(options.AuthorizationPolicy))
+            builder.RequireAuthorization(options.AuthorizationPolicy);
 
         return builder;
     }
@@ -50,7 +51,9 @@ public static class AdminForgeEndpointRouteBuilderExtensions
     /// deny-by-default alternative is an empty grid whose obvious "fix" is re-registering
     /// <see cref="AllowAllAuthorizationPolicy"/>.
     /// </summary>
-    internal static void GuardAuthorizationIsConfigured(IServiceProvider serviceProvider)
+    internal static AdminForgeOptions GuardAuthorizationIsConfigured(
+        IServiceProvider serviceProvider
+    )
     {
         // Scoped, so a host that registered IAdminAuthorizationPolicy per-request still resolves.
         using var scope = serviceProvider.CreateScope();
@@ -61,11 +64,11 @@ public static class AdminForgeEndpointRouteBuilderExtensions
             );
 
         if (options.AllowAnonymousAccess || !string.IsNullOrWhiteSpace(options.AuthorizationPolicy))
-            return;
+            return options;
 
         var perAction = scope.ServiceProvider.GetService<IAdminAuthorizationPolicy>();
         if (perAction is not null and not AllowAllAuthorizationPolicy)
-            return;
+            return options;
 
         throw new InvalidOperationException(
             "AdminForge refuses to mount without authorization: the panel exposes read/write access to every "
