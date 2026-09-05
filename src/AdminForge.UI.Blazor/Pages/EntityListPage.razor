@@ -132,15 +132,21 @@ else
         await Reload();
     }
 
+    // Ascending, then descending, then back to the provider's default order.
     private async Task ChangeSort(string column)
     {
-        if (_sortBy == column)
+        if (_sortBy != column)
         {
-            _sortDescending = !_sortDescending;
+            _sortBy = column;
+            _sortDescending = false;
+        }
+        else if (!_sortDescending)
+        {
+            _sortDescending = true;
         }
         else
         {
-            _sortBy = column;
+            _sortBy = null;
             _sortDescending = false;
         }
         await Reload();

@@ -18,12 +18,19 @@ else
         <HeaderContent>
             @foreach (var col in VisibleColumns)
             {
-                <MudTh>
+                @* A header is one line, whatever its label and whether it carries a sort arrow. *@
+                <MudTh Style="white-space:nowrap">
                     @if (IsSortable(col))
                     {
-                        <MudLink Color="Color.Inherit" Underline="Underline.None"
+                        <MudLink Color="Color.Inherit" Underline="Underline.None" Class="adminforge-sort"
                                  OnClick="@(() => OnSort.InvokeAsync(col.PropertyName))">
-                            @col.Label@(SortBy == col.PropertyName ? (SortDescending ? " ↓" : " ↑") : "")
+                            @col.Label
+                            @if (SortBy == col.PropertyName)
+                            {
+                                <span class="adminforge-sort-arrow" style="margin-left:4px" aria-label="@(SortDescending ? "sorted descending" : "sorted ascending")">
+                                    @(SortDescending ? "\u2193" : "\u2191")
+                                </span>
+                            }
                         </MudLink>
                     }
                     else
