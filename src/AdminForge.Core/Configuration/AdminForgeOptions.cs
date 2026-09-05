@@ -20,6 +20,12 @@ public sealed class AdminForgeOptions
     public string Title { get; set; } = "Admin";
 
     /// <summary>
+    /// Path the app bar's sign-out button posts to (an antiforgery token travels with it).
+    /// Null hides the button; the host owns the endpoint and the session it ends.
+    /// </summary>
+    public string? SignOutPath { get; init; }
+
+    /// <summary>
     /// Optional umbrella authorization policy name. When set, every admin
     /// endpoint requires the user to satisfy this policy in addition to any
     /// per-entity, per-action policies. Null = no umbrella (anonymous OK).

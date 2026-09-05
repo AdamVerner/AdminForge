@@ -51,6 +51,17 @@ public sealed class AdminForgeBuilder
     }
 
     /// <summary>
+    /// Show a sign-out button in the app bar that posts to <paramref name="path"/>. The host maps
+    /// that endpoint and ends the session there; the form carries an antiforgery token.
+    /// </summary>
+    public AdminForgeBuilder WithSignOut(string path)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+        Options.SignOutPath = path;
+        return this;
+    }
+
+    /// <summary>
     /// Require the supplied policy on every admin endpoint. Per-entity, per-action
     /// policies still apply on top.
     /// </summary>
@@ -241,6 +252,7 @@ public sealed class AdminForgeBuilder
         {
             RoutePrefix = Options.RoutePrefix,
             Title = Options.Title,
+            SignOutPath = Options.SignOutPath,
             AuthorizationPolicy = Options.AuthorizationPolicy,
             AllowAnonymousAccess = Options.AllowAnonymousAccess,
             Entities = _registeredEntities.AsReadOnly(),
@@ -277,6 +289,9 @@ public sealed class AdminForgeOptionsDraft
 
     /// <inheritdoc cref="AdminForgeOptions.Title" />
     public string Title { get; set; } = "Admin";
+
+    /// <inheritdoc cref="AdminForgeOptions.SignOutPath" />
+    public string? SignOutPath { get; set; }
 
     /// <inheritdoc cref="AdminForgeOptions.AuthorizationPolicy" />
     public string? AuthorizationPolicy { get; set; }

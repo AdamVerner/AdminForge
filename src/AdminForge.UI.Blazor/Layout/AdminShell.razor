@@ -1,5 +1,7 @@
 @inherits LayoutComponentBase
+@using Microsoft.AspNetCore.Components.Authorization
 @inject AdminForgeOptions Options
+@inject AuthenticationStateProvider AuthenticationState
 
 <MudThemeProvider Theme="_theme" />
 <MudPopoverProvider />
@@ -17,6 +19,19 @@
                       Class="ml-4" />
         }
         <MudText Typo="Typo.h6" Class="ml-4">@Options.Title</MudText>
+        <MudSpacer />
+        @if (_userName is not null)
+        {
+            <MudText Typo="Typo.body2" Class="mr-4">@_userName</MudText>
+        }
+        @if (Options.SignOutPath is not null)
+        {
+            <form method="post" action="@Options.SignOutPath">
+                <AntiforgeryToken />
+                <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Text" Color="Color.Inherit"
+                           StartIcon="@Icons.Material.Filled.Logout">Sign out</MudButton>
+            </form>
+        }
     </MudAppBar>
     <MudDrawer @bind-Open="_drawerOpen" ClipMode="DrawerClipMode.Always" Elevation="2" Variant="DrawerVariant.Mini" OpenMiniOnHover="true">
         <Sidebar />
@@ -31,9 +46,14 @@
 @code {
     private bool _drawerOpen = true;
     private MudTheme _theme = default!;
+    private string? _userName;
 
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
+        var user = (await AuthenticationState.GetAuthenticationStateAsync()).User;
+        if (user.Identity?.IsAuthenticated == true)
+            _userName = user.Identity.Name;
+
         // Default palette: use MudBlazor's stock light palette, then override primary /
         // secondary if the host configured them. Leaving everything null keeps the
         // out-of-the-box experience untouched.
