@@ -1,6 +1,5 @@
 using AdminForge.Core.Configuration;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.Extensions.Options;
 
 namespace AdminForge.Middleware.Authorization;
 
@@ -11,23 +10,21 @@ namespace AdminForge.Middleware.Authorization;
 /// <see cref="AdminForgeOptions.AuthorizationPolicy"/> (or, if that is null, always
 /// succeeds for any authenticated request).
 ///
-/// Consumers override granular policies via the standard
-/// <c>AddAuthorization(o =&gt; o.AddPolicy("AdminForge:User:Delete", ...))</c> path —
-/// those explicit registrations are checked first.
+/// Every other name goes to the provider the host had before AdminForge was added, so the
+/// host's own policies — and a provider of its own — keep working. Consumers override granular
+/// policies via the standard <c>AddAuthorization(o =&gt; o.AddPolicy("AdminForge:User:Delete", ...))</c>
+/// path — those explicit registrations are checked first.
 /// </summary>
 public sealed class AdminPolicyProvider : IAuthorizationPolicyProvider
 {
-    private readonly DefaultAuthorizationPolicyProvider _fallback;
+    private readonly IAuthorizationPolicyProvider _fallback;
     private readonly AdminForgeOptions _options;
 
-    public AdminPolicyProvider(
-        IOptions<AuthorizationOptions> authzOptions,
-        AdminForgeOptions options
-    )
+    public AdminPolicyProvider(IAuthorizationPolicyProvider inner, AdminForgeOptions options)
     {
-        ArgumentNullException.ThrowIfNull(authzOptions);
+        ArgumentNullException.ThrowIfNull(inner);
         ArgumentNullException.ThrowIfNull(options);
-        _fallback = new DefaultAuthorizationPolicyProvider(authzOptions);
+        _fallback = inner;
         _options = options;
     }
 

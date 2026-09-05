@@ -19,7 +19,42 @@ public class AdminPolicyProviderTests
         configure?.Invoke(authzOptions);
         var wrapped = Options.Create(authzOptions);
         var forgeOptions = new AdminForgeOptions { AuthorizationPolicy = umbrella };
-        return new AdminPolicyProvider(wrapped, forgeOptions);
+        return new AdminPolicyProvider(new DefaultAuthorizationPolicyProvider(wrapped), forgeOptions);
+    }
+
+    [Fact]
+    public async Task Registration_Decorates_The_Hosts_Own_Provider()
+    {
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddSingleton<IAuthorizationPolicyProvider, HostPolicyProvider>();
+        services.AddSingleton(new AdminForgeOptions { AuthorizationPolicy = "FromHost" });
+        AdminForge.Middleware.AdminForgeEndpointRouteBuilderExtensions.AddAdminForgeBlazor(services);
+        var provider = services
+            .BuildServiceProvider()
+            .GetRequiredService<IAuthorizationPolicyProvider>();
+
+        Assert.IsType<AdminPolicyProvider>(provider);
+        Assert.NotNull(await provider.GetPolicyAsync("FromHost"));
+        var granular = await provider.GetPolicyAsync("AdminForge:User:Read");
+        Assert.Contains(granular!.Requirements, r => r is ClaimsAuthorizationRequirement);
+    }
+
+    /// <summary>Answers one name of its own; nothing else.</summary>
+    private sealed class HostPolicyProvider : IAuthorizationPolicyProvider
+    {
+        public Task<AuthorizationPolicy> GetDefaultPolicyAsync() =>
+            Task.FromResult(new AuthorizationPolicyBuilder().RequireAuthenticatedUser().Build());
+
+        public Task<AuthorizationPolicy?> GetFallbackPolicyAsync() =>
+            Task.FromResult<AuthorizationPolicy?>(null);
+
+        public Task<AuthorizationPolicy?> GetPolicyAsync(string policyName) =>
+            Task.FromResult(
+                policyName == "FromHost"
+                    ? new AuthorizationPolicyBuilder().RequireClaim("role", "admin").Build()
+                    : null
+            );
     }
 
     [Fact]

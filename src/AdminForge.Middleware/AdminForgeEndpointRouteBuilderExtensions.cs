@@ -97,10 +97,24 @@ public static class AdminForgeEndpointRouteBuilderExtensions
         services.AddScoped<OperationUserAccessor>();
         services.TryAddScoped<IUserAccessor, CurrentUserAccessor>();
 
-        // Replace the default authorization-policy provider with AdminForge's lazy variant.
+        // Decorate whatever provider the host has, so its own policy names keep resolving.
+        var host = services.Last(d => d.ServiceType == typeof(IAuthorizationPolicyProvider));
         services.RemoveAll<IAuthorizationPolicyProvider>();
-        services.AddSingleton<IAuthorizationPolicyProvider, AdminPolicyProvider>();
+        services.AddSingleton<IAuthorizationPolicyProvider>(sp => new AdminPolicyProvider(
+            Instantiate(host, sp),
+            sp.GetRequiredService<AdminForgeOptions>()
+        ));
 
         return services;
     }
+
+    private static IAuthorizationPolicyProvider Instantiate(
+        ServiceDescriptor descriptor,
+        IServiceProvider sp
+    ) =>
+        (IAuthorizationPolicyProvider)(
+            descriptor.ImplementationInstance
+            ?? descriptor.ImplementationFactory?.Invoke(sp)
+            ?? ActivatorUtilities.CreateInstance(sp, descriptor.ImplementationType!)
+        );
 }
