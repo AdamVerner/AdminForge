@@ -22,15 +22,16 @@ That's it. No JS toolchain, no separate admin host — Blazor Server components 
 ## What you get
 
 - Auto-generated CRUD pages for every EF Core entity (list, view, create, edit, delete) — with filter, sort, pagination, and validation. Text filters match substrings, case-insensitively.
-- **Provider-backed tables** — `AddTable<T>` on any keyed class describes it from its properties and serves it through the `IAdminDataProvider<T>` you register; `ReadOnly()` drops the create and edit surface, and a column offers a sort or filter control only once `Sortable()` / `Filterable()` says the provider honours it.
+- **Provider-backed tables** — `AddTable<T>` on any keyed class describes it from its properties and serves it through the `IAdminDataProvider<T>` you register; `ReadOnly()` drops the create and edit surface, and a column offers a sort or filter control only once `Sortable()` / `Filterable()` says the provider honours it. A host with no DbContext at all calls `AddAdminForge(forge => ...)` and registers a provider per table.
+- **One DI scope per operation** — every list, find, save, action and widget resolves its provider and handler in a fresh scope, so a scoped `DbContext` or service lives for one call, not for the hours a Blazor circuit stays open. The scope's `IUserAccessor` names the user the circuit was opened for.
 - **Dashboards** composed in C# from stat cards, line charts, and table widgets, arranged in a row-based grid layout.
 - **Generic forms** with 8 field types (text, number, float, bool, date, datetime, markdown, file upload) and a typed submit handler.
 - **Per-entity custom actions** surfaced as buttons on the entity view (with optional confirmation dialogs).
 - **Related-table links** auto-generated from collection navigations; cross-entity links are configurable.
 - **Custom server-side columns** projected via `Expression<Func<T,TValue>>` — composes with filter/sort/pagination.
 - **Audit log hook** — a single delegate receives every create/update/delete/custom-action event.
-- **Per-action authorization policies** — `AdminForge:{Entity}:{Action}` policies are materialised on demand.
-- **Authorization required at mount** — `MapAdminForge()` throws at startup unless the host set an umbrella policy or registered its own `IAdminAuthorizationPolicy`. An open panel has to say so: `AllowAnonymousAccess()`. The umbrella policy goes on the panel's endpoints, so the host's authentication scheme handles a rejected request — a cookie scheme redirects to its login page.
+- **Per-action authorization policies** — `AdminForge:{Entity}:{Action}` policies are materialised on demand by a provider that wraps the host's own, so the host's policies keep resolving. `IAdminAuthorizationPolicy` is asked before every read and write the bridge performs.
+- **Authorization required at mount** — `MapAdminForge()` throws at startup unless the host set an umbrella policy or registered its own `IAdminAuthorizationPolicy`. An open panel has to say so: `AllowAnonymousAccess()`. The umbrella policy goes on the panel's endpoints, so the host's authentication scheme handles a rejected request — a cookie scheme redirects to its login page. The panel's scripts and styles are served anonymously.
 - **Sign-out button** — `WithSignOut("/admin/logout")` puts a button in the app bar that posts to a host-owned endpoint; the signed-in user's name shows beside it.
 - **Live updates** for single-entity views (polling) and dashboard line charts (polling or `IAsyncEnumerable` streaming) — multiple browser tabs share one upstream stream.
 - **Environment badge** — `WithEnvironment("staging", "#ef6c00")` colours the app bar and labels it, so nobody edits production thinking it is staging.
