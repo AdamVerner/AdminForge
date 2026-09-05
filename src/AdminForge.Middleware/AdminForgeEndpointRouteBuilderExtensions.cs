@@ -94,7 +94,8 @@ public static class AdminForgeEndpointRouteBuilderExtensions
         services.AddAntiforgery();
         services.AddHttpContextAccessor();
         services.AddAuthorization();
-        services.TryAddSingleton<IUserAccessor, HttpContextUserAccessor>();
+        services.AddScoped<OperationUserAccessor>();
+        services.TryAddScoped<IUserAccessor, CurrentUserAccessor>();
 
         // Replace the default authorization-policy provider with AdminForge's lazy variant.
         services.RemoveAll<IAuthorizationPolicyProvider>();

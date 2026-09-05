@@ -11,7 +11,9 @@ using AdminForge.Core.Metadata;
 using AdminForge.Core.ViewModels;
 using AdminForge.DataAccess.EfCore;
 using AdminForge.LiveUpdates;
+using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace AdminForge.UI.Blazor;
@@ -25,9 +27,10 @@ public sealed class BlazorUIBridge : IAdminUIBridge
 {
     private readonly AdminForgeOptions _options;
     private readonly IServiceProvider _serviceProvider;
-    private readonly DbContext _dbContext;
     private readonly IAdminAuthorizationPolicy _authzPolicy;
     private readonly IUserAccessor _userAccessor;
+    private readonly AuthenticationStateProvider? _authenticationState;
+    private readonly IModel? _model;
     private readonly ILiveSourceRegistry? _liveRegistry;
 
     // Cache compiled per-entity adapters keyed by CLR entity type.
@@ -36,23 +39,60 @@ public sealed class BlazorUIBridge : IAdminUIBridge
     public BlazorUIBridge(
         AdminForgeOptions options,
         IServiceProvider serviceProvider,
-        DbContext dbContext,
         IAdminAuthorizationPolicy authzPolicy,
         IUserAccessor userAccessor,
+        AuthenticationStateProvider? authenticationState = null,
+        DbContext? dbContext = null,
         ILiveSourceRegistry? liveRegistry = null
     )
     {
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(serviceProvider);
-        ArgumentNullException.ThrowIfNull(dbContext);
         ArgumentNullException.ThrowIfNull(authzPolicy);
         ArgumentNullException.ThrowIfNull(userAccessor);
         _options = options;
         _serviceProvider = serviceProvider;
-        _dbContext = dbContext;
         _authzPolicy = authzPolicy;
         _userAccessor = userAccessor;
+        _authenticationState = authenticationState;
+        _model = dbContext?.Model;
         _liveRegistry = liveRegistry;
+    }
+
+    /// <summary>
+    /// The user the circuit was opened for. Outside a render — a test resolving the bridge from a
+    /// plain scope — the provider has no state, and the request's user is what there is.
+    /// </summary>
+    private async ValueTask<ClaimsPrincipal> CurrentUserAsync()
+    {
+        if (_authenticationState is not null)
+        {
+            try
+            {
+                var state = await _authenticationState
+                    .GetAuthenticationStateAsync()
+                    .ConfigureAwait(false);
+                return state.User;
+            }
+            catch (InvalidOperationException) { }
+        }
+        return _userAccessor.GetUser();
+    }
+
+    private async ValueTask<string?> CurrentUserIdAsync() =>
+        UserIdentity.IdOf(await CurrentUserAsync().ConfigureAwait(false));
+
+    /// <summary>
+    /// One scope per operation: a provider's or handler's scoped services live exactly as long as
+    /// the call, and the caller travels with them into a scope that has no request.
+    /// </summary>
+    private async Task<IServiceScope> OpenScopeAsync()
+    {
+        var scope = _serviceProvider.CreateScope();
+        scope
+            .ServiceProvider.GetRequiredService<OperationUserAccessor>()
+            .Set(await CurrentUserAsync().ConfigureAwait(false));
+        return scope;
     }
 
     public IReadOnlyList<EntityMeta> Entities => _options.Entities;
@@ -68,23 +108,41 @@ public sealed class BlazorUIBridge : IAdminUIBridge
         );
     }
 
-    public Task<EntityListVM> ListAsync(
+    public async Task<EntityListVM> ListAsync(
         EntityMeta entity,
         ListQuery query,
         CancellationToken cancellationToken = default
-    ) => GetAdapter(entity).ListAsync(query, cancellationToken);
+    )
+    {
+        using var scope = await OpenScopeAsync().ConfigureAwait(false);
+        return await GetAdapter(entity)
+            .ListAsync(scope.ServiceProvider, query, cancellationToken)
+            .ConfigureAwait(false);
+    }
 
-    public Task<EntityViewVM?> FindAsync(
+    public async Task<EntityViewVM?> FindAsync(
         EntityMeta entity,
         string encodedKey,
         CancellationToken cancellationToken = default
-    ) => GetAdapter(entity).FindAsync(encodedKey, cancellationToken);
+    )
+    {
+        using var scope = await OpenScopeAsync().ConfigureAwait(false);
+        return await GetAdapter(entity)
+            .FindAsync(scope.ServiceProvider, encodedKey, cancellationToken)
+            .ConfigureAwait(false);
+    }
 
-    public Task<EntityEditVM?> LoadForEditAsync(
+    public async Task<EntityEditVM?> LoadForEditAsync(
         EntityMeta entity,
         string encodedKey,
         CancellationToken cancellationToken = default
-    ) => GetAdapter(entity).LoadForEditAsync(encodedKey, cancellationToken);
+    )
+    {
+        using var scope = await OpenScopeAsync().ConfigureAwait(false);
+        return await GetAdapter(entity)
+            .LoadForEditAsync(scope.ServiceProvider, encodedKey, cancellationToken)
+            .ConfigureAwait(false);
+    }
 
     public EntityEditVM NewEditModel(EntityMeta entity) => GetAdapter(entity).NewEditModel();
 
@@ -99,32 +157,26 @@ public sealed class BlazorUIBridge : IAdminUIBridge
             .ConfigureAwait(false);
 
         var adapter = GetAdapter(entity);
+        using var scope = await OpenScopeAsync().ConfigureAwait(false);
 
         // No custom handler → preserve the legacy data-provider path verbatim.
         if (entity.CustomCreateHandler is null)
         {
-            return await adapter.CreateAsync(model, cancellationToken).ConfigureAwait(false);
+            return await adapter
+                .CreateAsync(scope.ServiceProvider, model, cancellationToken)
+                .ConfigureAwait(false);
         }
 
         // Custom handler: materialise the typed entity from the form values (same code
-        // path the legacy CreateAsync uses internally), invoke the handler in a fresh
-        // DI scope, then dispatch on the result. Audit is emitted here because the
-        // data provider — which normally fires Create audit — is bypassed entirely.
+        // path the legacy CreateAsync uses internally), invoke the handler, then dispatch
+        // on the result. Audit is emitted here because the data provider — which normally
+        // fires Create audit — is bypassed entirely.
         var instance = adapter.MaterializeFromVM(model);
         var actionContext = context ?? new NullActionContext();
 
-        CreateResult result;
-        using (var scope = _serviceProvider.CreateScope())
-        {
-            result = await entity
-                .CustomCreateHandler(
-                    scope.ServiceProvider,
-                    instance,
-                    actionContext,
-                    cancellationToken
-                )
-                .ConfigureAwait(false);
-        }
+        var result = await entity
+            .CustomCreateHandler(scope.ServiceProvider, instance, actionContext, cancellationToken)
+            .ConfigureAwait(false);
 
         switch (result)
         {
@@ -147,7 +199,7 @@ public sealed class BlazorUIBridge : IAdminUIBridge
                                     kvp => kvp.Key,
                                     kvp => new AuditValueChange(null, kvp.Value)
                                 ),
-                                User = _userAccessor.GetUserId(),
+                                User = await CurrentUserIdAsync().ConfigureAwait(false),
                             },
                             cancellationToken
                         )
@@ -175,11 +227,14 @@ public sealed class BlazorUIBridge : IAdminUIBridge
             .ConfigureAwait(false);
 
         var adapter = GetAdapter(entity);
+        using var scope = await OpenScopeAsync().ConfigureAwait(false);
 
         // No custom handler → preserve the legacy data-provider path verbatim.
         if (entity.CustomUpdateHandler is null)
         {
-            await adapter.UpdateAsync(model, cancellationToken).ConfigureAwait(false);
+            await adapter
+                .UpdateAsync(scope.ServiceProvider, model, cancellationToken)
+                .ConfigureAwait(false);
             return;
         }
 
@@ -191,7 +246,7 @@ public sealed class BlazorUIBridge : IAdminUIBridge
         // Audit is emitted here because the data provider — which normally fires
         // Update audit — is bypassed entirely.
         var original = await adapter
-            .LoadRawAsync(model.Key, cancellationToken)
+            .LoadRawAsync(scope.ServiceProvider, model.Key, cancellationToken)
             .ConfigureAwait(false);
         if (original is null)
             throw new InvalidOperationException(
@@ -202,19 +257,15 @@ public sealed class BlazorUIBridge : IAdminUIBridge
         var patched = adapter.MaterializePatched(original, model);
         var actionContext = context ?? new NullActionContext();
 
-        UpdateResult result;
-        using (var scope = _serviceProvider.CreateScope())
-        {
-            result = await entity
-                .CustomUpdateHandler(
-                    scope.ServiceProvider,
-                    original,
-                    patched,
-                    actionContext,
-                    cancellationToken
-                )
-                .ConfigureAwait(false);
-        }
+        var result = await entity
+            .CustomUpdateHandler(
+                scope.ServiceProvider,
+                original,
+                patched,
+                actionContext,
+                cancellationToken
+            )
+            .ConfigureAwait(false);
 
         switch (result)
         {
@@ -238,7 +289,7 @@ public sealed class BlazorUIBridge : IAdminUIBridge
                                 Action = AuditAction.Update,
                                 EntityId = model.Key,
                                 ChangedValues = changes,
-                                User = _userAccessor.GetUserId(),
+                                User = await CurrentUserIdAsync().ConfigureAwait(false),
                             },
                             cancellationToken
                         )
@@ -271,25 +322,17 @@ public sealed class BlazorUIBridge : IAdminUIBridge
             );
 
         var adapter = GetAdapter(entity);
+        using var scope = await OpenScopeAsync().ConfigureAwait(false);
         var instance = await adapter
-            .LoadRawAsync(encodedKey, cancellationToken)
+            .LoadRawAsync(scope.ServiceProvider, encodedKey, cancellationToken)
             .ConfigureAwait(false);
         if (instance is null)
             return false;
 
         var actionContext = context ?? new NullActionContext();
-        DeleteResult result;
-        using (var scope = _serviceProvider.CreateScope())
-        {
-            result = await entity
-                .CustomDeleteHandler(
-                    scope.ServiceProvider,
-                    instance,
-                    actionContext,
-                    cancellationToken
-                )
-                .ConfigureAwait(false);
-        }
+        var result = await entity
+            .CustomDeleteHandler(scope.ServiceProvider, instance, actionContext, cancellationToken)
+            .ConfigureAwait(false);
 
         switch (result)
         {
@@ -304,7 +347,7 @@ public sealed class BlazorUIBridge : IAdminUIBridge
                                 EntityType = entity.Name,
                                 Action = AuditAction.Delete,
                                 EntityId = encodedKey,
-                                User = _userAccessor.GetUserId(),
+                                User = await CurrentUserIdAsync().ConfigureAwait(false),
                             },
                             cancellationToken
                         )
@@ -337,14 +380,16 @@ public sealed class BlazorUIBridge : IAdminUIBridge
             ?? throw new InvalidOperationException(
                 $"Related entity '{relatedType.Name}' is not registered."
             );
-        var adapter = GetAdapter(meta);
         var query = new ListQuery
         {
             Page = 0,
             PageSize = take,
             Search = search,
         };
-        var list = await adapter.ListAsync(query, cancellationToken).ConfigureAwait(false);
+        using var scope = await OpenScopeAsync().ConfigureAwait(false);
+        var list = await GetAdapter(meta)
+            .ListAsync(scope.ServiceProvider, query, cancellationToken)
+            .ConfigureAwait(false);
         var refs = new List<NavigationRef>(list.Rows.Count);
         foreach (var row in list.Rows)
         {
@@ -371,8 +416,9 @@ public sealed class BlazorUIBridge : IAdminUIBridge
             ?? throw new InvalidOperationException(
                 $"Related entity '{relatedType.Name}' is not registered."
             );
+        using var scope = await OpenScopeAsync().ConfigureAwait(false);
         var view = await GetAdapter(meta)
-            .FindAsync(encodedKey, cancellationToken)
+            .FindAsync(scope.ServiceProvider, encodedKey, cancellationToken)
             .ConfigureAwait(false);
         if (view is null)
             return null;
@@ -456,9 +502,9 @@ public sealed class BlazorUIBridge : IAdminUIBridge
                 $"Action '{actionName}' is not registered on entity '{entity.Name}'."
             );
 
-        var adapter = GetAdapter(entity);
-        var instance = await adapter
-            .LoadRawAsync(encodedKey, cancellationToken)
+        using var scope = await OpenScopeAsync().ConfigureAwait(false);
+        var instance = await GetAdapter(entity)
+            .LoadRawAsync(scope.ServiceProvider, encodedKey, cancellationToken)
             .ConfigureAwait(false);
         if (instance is null)
             throw new InvalidOperationException(
@@ -475,12 +521,7 @@ public sealed class BlazorUIBridge : IAdminUIBridge
             )
             .ConfigureAwait(false);
 
-        // Invoke inside a fresh DI scope so the handler can resolve scoped services
-        // (e.g. its own DbContext) without entangling with the bridge's request scope.
-        using (var scope = _serviceProvider.CreateScope())
-        {
-            await action.Handler(scope.ServiceProvider, instance, context).ConfigureAwait(false);
-        }
+        await action.Handler(scope.ServiceProvider, instance, context).ConfigureAwait(false);
 
         if (_options.AuditSink is not null)
         {
@@ -497,7 +538,7 @@ public sealed class BlazorUIBridge : IAdminUIBridge
                         {
                             ["ActionName"] = new AuditValueChange(null, actionName),
                         },
-                        User = _userAccessor.GetUserId(),
+                        User = await CurrentUserIdAsync().ConfigureAwait(false),
                     },
                     cancellationToken
                 )
@@ -663,7 +704,7 @@ public sealed class BlazorUIBridge : IAdminUIBridge
 
         // Authorize before validating — denial should short-circuit work.
         var entityNameForAuthz = $"Form:{routeName}";
-        var user = _userAccessor.GetUser();
+        var user = await CurrentUserAsync().ConfigureAwait(false);
         var authorized = await _authzPolicy
             .IsAuthorizedAsync(
                 entityNameForAuthz,
@@ -682,8 +723,7 @@ public sealed class BlazorUIBridge : IAdminUIBridge
         if (errors.Count > 0)
             throw new FormValidationException(routeName, errors);
 
-        // Invoke handler in a fresh DI scope.
-        using (var scope = _serviceProvider.CreateScope())
+        using (var scope = await OpenScopeAsync().ConfigureAwait(false))
         {
             var actionContext = context ?? new NullActionContext();
             await meta.Submit(scope.ServiceProvider, submission, actionContext)
@@ -728,7 +768,7 @@ public sealed class BlazorUIBridge : IAdminUIBridge
                         Action = AuditAction.FormSubmit,
                         EntityId = null,
                         ChangedValues = changes,
-                        User = _userAccessor.GetUserId(),
+                        User = await CurrentUserIdAsync().ConfigureAwait(false),
                     },
                     cancellationToken
                 )
@@ -962,7 +1002,7 @@ public sealed class BlazorUIBridge : IAdminUIBridge
         CancellationToken cancellationToken
     )
     {
-        using var scope = _serviceProvider.CreateScope();
+        using var scope = await OpenScopeAsync().ConfigureAwait(false);
         var sp = scope.ServiceProvider;
         switch (widget)
         {
@@ -1026,12 +1066,6 @@ public sealed class BlazorUIBridge : IAdminUIBridge
                 $"Table widget '{meta.Title}' references entity '{meta.EntityType.Name}' which is not registered."
             );
 
-        // Build a fresh adapter using the scoped DbContext so the widget participates
-        // in a request-bound transaction window. Reuses the materialisation logic
-        // from the main entity-list path.
-        var scopedDbContext = scopedSp.GetRequiredService<DbContext>();
-        var adapter = EntityAdapter.Create(entityMeta, scopedSp, scopedDbContext, _options);
-
         var query = new ListQuery
         {
             Page = 0,
@@ -1039,7 +1073,9 @@ public sealed class BlazorUIBridge : IAdminUIBridge
             SortBy = meta.SortBy,
             SortDescending = meta.SortDescending,
         };
-        var listVM = await adapter.ListAsync(query, cancellationToken).ConfigureAwait(false);
+        var listVM = await GetAdapter(entityMeta)
+            .ListAsync(scopedSp, query, cancellationToken)
+            .ConfigureAwait(false);
 
         var columns = (
             meta.VisibleColumns
@@ -1108,7 +1144,7 @@ public sealed class BlazorUIBridge : IAdminUIBridge
         string? actionName = null
     )
     {
-        var user = _userAccessor.GetUser();
+        var user = await CurrentUserAsync().ConfigureAwait(false);
         var ok = await _authzPolicy
             .IsAuthorizedAsync(entity.Name, action, user, instance, actionName, cancellationToken)
             .ConfigureAwait(false);
@@ -1121,7 +1157,7 @@ public sealed class BlazorUIBridge : IAdminUIBridge
         ArgumentNullException.ThrowIfNull(meta);
         return _adapters.GetOrAdd(
             meta.ClrType,
-            _ => EntityAdapter.Create(meta, _serviceProvider, _dbContext, _options)
+            _ => EntityAdapter.Create(meta, _model, _options)
         );
     }
 
@@ -1131,31 +1167,42 @@ public sealed class BlazorUIBridge : IAdminUIBridge
     /// </summary>
     private abstract class EntityAdapter
     {
+        // Every call takes the operation's scope: the provider and anything it needs come from there.
         public abstract Task<EntityListVM> ListAsync(
+            IServiceProvider services,
             ListQuery query,
             CancellationToken cancellationToken
         );
         public abstract Task<EntityViewVM?> FindAsync(
+            IServiceProvider services,
             string encodedKey,
             CancellationToken cancellationToken
         );
         public abstract Task<EntityEditVM?> LoadForEditAsync(
+            IServiceProvider services,
             string encodedKey,
             CancellationToken cancellationToken
         );
         public abstract EntityEditVM NewEditModel();
         public abstract Task<string> CreateAsync(
+            IServiceProvider services,
             EntityEditVM model,
             CancellationToken cancellationToken
         );
-        public abstract Task UpdateAsync(EntityEditVM model, CancellationToken cancellationToken);
+        public abstract Task UpdateAsync(
+            IServiceProvider services,
+            EntityEditVM model,
+            CancellationToken cancellationToken
+        );
         public abstract Task<bool> DeleteAsync(
+            IServiceProvider services,
             string encodedKey,
             CancellationToken cancellationToken
         );
 
         /// <summary>Load the raw entity instance by encoded key, or null when missing.</summary>
         public abstract Task<object?> LoadRawAsync(
+            IServiceProvider services,
             string encodedKey,
             CancellationToken cancellationToken
         );
@@ -1184,16 +1231,10 @@ public sealed class BlazorUIBridge : IAdminUIBridge
         /// </summary>
         public abstract IReadOnlyDictionary<string, object?> SnapshotScalarValues(object instance);
 
-        public static EntityAdapter Create(
-            EntityMeta meta,
-            IServiceProvider sp,
-            DbContext dbContext,
-            AdminForgeOptions options
-        )
+        public static EntityAdapter Create(EntityMeta meta, IModel? model, AdminForgeOptions options)
         {
             var adapterType = typeof(GenericEntityAdapter<>).MakeGenericType(meta.ClrType);
-            return (EntityAdapter)
-                Activator.CreateInstance(adapterType, meta, sp, dbContext, options)!;
+            return (EntityAdapter)Activator.CreateInstance(adapterType, meta, model, options)!;
         }
     }
 
@@ -1201,30 +1242,24 @@ public sealed class BlazorUIBridge : IAdminUIBridge
         where TEntity : class
     {
         private readonly EntityMeta _meta;
-        private readonly IAdminDataProvider<TEntity> _provider;
         private readonly KeyAccessor _keyAccessor;
         private readonly AdminForgeOptions _options;
-        private readonly DbContext _dbContext;
 
         // Null for a type outside the EF model: keys come from the metadata and there are no navigations.
-        private readonly Microsoft.EntityFrameworkCore.Metadata.IEntityType? _efEntityType;
+        private readonly IEntityType? _efEntityType;
 
-        public GenericEntityAdapter(
-            EntityMeta meta,
-            IServiceProvider sp,
-            DbContext dbContext,
-            AdminForgeOptions options
-        )
+        public GenericEntityAdapter(EntityMeta meta, IModel? model, AdminForgeOptions options)
         {
             _meta = meta;
             _options = options;
-            _dbContext = dbContext;
-            _provider = sp.GetRequiredService<IAdminDataProvider<TEntity>>();
-            _efEntityType = dbContext.Model.FindEntityType(typeof(TEntity));
+            _efEntityType = model?.FindEntityType(typeof(TEntity));
             _keyAccessor = _efEntityType is null
                 ? new KeyAccessor(typeof(TEntity), meta.PrimaryKeyPropertyNames)
                 : new KeyAccessor(_efEntityType);
         }
+
+        private static IAdminDataProvider<TEntity> Provider(IServiceProvider services) =>
+            services.GetRequiredService<IAdminDataProvider<TEntity>>();
 
         private void RefuseIfReadOnly()
         {
@@ -1235,15 +1270,19 @@ public sealed class BlazorUIBridge : IAdminUIBridge
         }
 
         public override async Task<object?> LoadRawAsync(
+            IServiceProvider services,
             string encodedKey,
             CancellationToken cancellationToken
         )
         {
             var keyValues = _keyAccessor.DecodeKey(encodedKey);
-            return await _provider.FindAsync(keyValues, cancellationToken).ConfigureAwait(false);
+            return await Provider(services)
+                .FindAsync(keyValues, cancellationToken)
+                .ConfigureAwait(false);
         }
 
         public override async Task<EntityListVM> ListAsync(
+            IServiceProvider services,
             ListQuery query,
             CancellationToken cancellationToken
         )
@@ -1266,7 +1305,7 @@ public sealed class BlazorUIBridge : IAdminUIBridge
                         CustomColumns = customCols,
                     };
 
-            var result = await _provider
+            var result = await Provider(services)
                 .ListAsync(effectiveQuery, cancellationToken)
                 .ConfigureAwait(false);
             var rows = new List<EntityListRowVM>(result.Items.Count);
@@ -1314,18 +1353,19 @@ public sealed class BlazorUIBridge : IAdminUIBridge
         }
 
         public override async Task<EntityViewVM?> FindAsync(
+            IServiceProvider services,
             string encodedKey,
             CancellationToken cancellationToken
         )
         {
             var keyValues = _keyAccessor.DecodeKey(encodedKey);
-            var entity = await _provider
+            var entity = await Provider(services)
                 .FindAsync(keyValues, cancellationToken)
                 .ConfigureAwait(false);
             if (entity is null)
                 return null;
             var values = BuildValueMap(entity, includeNavigations: true);
-            var relatedLinks = await BuildRelatedLinksAsync(entity, cancellationToken)
+            var relatedLinks = await BuildRelatedLinksAsync(services, entity, cancellationToken)
                 .ConfigureAwait(false);
             return new EntityViewVM
             {
@@ -1342,6 +1382,7 @@ public sealed class BlazorUIBridge : IAdminUIBridge
         /// any cross-entity <see cref="RelatedLinkMeta"/> registered explicitly.
         /// </summary>
         private async Task<IReadOnlyList<RelatedLinkVM>> BuildRelatedLinksAsync(
+            IServiceProvider services,
             TEntity sourceInstance,
             CancellationToken cancellationToken
         )
@@ -1416,7 +1457,12 @@ public sealed class BlazorUIBridge : IAdminUIBridge
                 }
                 else
                 {
-                    var count = await CountRelatedAsync(nav.Name, filter, cancellationToken)
+                    var count = await CountRelatedAsync(
+                            services,
+                            nav.Name,
+                            filter,
+                            cancellationToken
+                        )
                         .ConfigureAwait(false);
                     label = $"View {count} {targetMeta.Label}";
                 }
@@ -1461,13 +1507,15 @@ public sealed class BlazorUIBridge : IAdminUIBridge
         /// collection nav, which we accept given typical admin pages have a handful of these.
         /// </summary>
         private async Task<int> CountRelatedAsync(
+            IServiceProvider services,
             string sourceNavName,
             IReadOnlyDictionary<string, object?> filter,
             CancellationToken cancellationToken
         )
         {
             var nav = _efEntityType?.FindNavigation(sourceNavName);
-            if (nav is null)
+            var dbContext = services.GetService<DbContext>();
+            if (nav is null || dbContext is null)
                 return 0;
             var targetClrType = nav.TargetEntityType.ClrType;
             var setMethod = typeof(DbContext)
@@ -1478,7 +1526,7 @@ public sealed class BlazorUIBridge : IAdminUIBridge
                     && m.GetParameters().Length == 0
                 )
                 .MakeGenericMethod(targetClrType);
-            var dbSet = setMethod.Invoke(_dbContext, null);
+            var dbSet = setMethod.Invoke(dbContext, null);
             if (dbSet is not IQueryable queryable)
                 return 0;
 
@@ -1549,12 +1597,13 @@ public sealed class BlazorUIBridge : IAdminUIBridge
         }
 
         public override async Task<EntityEditVM?> LoadForEditAsync(
+            IServiceProvider services,
             string encodedKey,
             CancellationToken cancellationToken
         )
         {
             var keyValues = _keyAccessor.DecodeKey(encodedKey);
-            var entity = await _provider
+            var entity = await Provider(services)
                 .FindAsync(keyValues, cancellationToken)
                 .ConfigureAwait(false);
             if (entity is null)
@@ -1613,13 +1662,14 @@ public sealed class BlazorUIBridge : IAdminUIBridge
         }
 
         public override async Task<string> CreateAsync(
+            IServiceProvider services,
             EntityEditVM model,
             CancellationToken cancellationToken
         )
         {
             RefuseIfReadOnly();
             var entity = (TEntity)MaterializeFromVM(model);
-            var created = await _provider
+            var created = await Provider(services)
                 .CreateAsync(entity, cancellationToken)
                 .ConfigureAwait(false);
             return _keyAccessor.EncodeKey(created);
@@ -1693,6 +1743,7 @@ public sealed class BlazorUIBridge : IAdminUIBridge
         }
 
         public override async Task UpdateAsync(
+            IServiceProvider services,
             EntityEditVM model,
             CancellationToken cancellationToken
         )
@@ -1710,16 +1761,19 @@ public sealed class BlazorUIBridge : IAdminUIBridge
                 pkProp?.SetValue(entity, keyValues[i]);
             }
             ApplyValues(entity, model.Values, includePk: false);
-            await _provider.UpdateAsync(entity, cancellationToken).ConfigureAwait(false);
+            await Provider(services).UpdateAsync(entity, cancellationToken).ConfigureAwait(false);
         }
 
         public override async Task<bool> DeleteAsync(
+            IServiceProvider services,
             string encodedKey,
             CancellationToken cancellationToken
         )
         {
             var keyValues = _keyAccessor.DecodeKey(encodedKey);
-            return await _provider.DeleteAsync(keyValues, cancellationToken).ConfigureAwait(false);
+            return await Provider(services)
+                .DeleteAsync(keyValues, cancellationToken)
+                .ConfigureAwait(false);
         }
 
         private Dictionary<string, object?> BuildValueMap(TEntity entity, bool includeNavigations)

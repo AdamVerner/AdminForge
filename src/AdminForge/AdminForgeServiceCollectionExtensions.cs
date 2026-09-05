@@ -75,7 +75,6 @@ public static class AdminForgeServiceCollectionExtensions
         // Wire up Blazor + auth pieces from the Middleware project.
         services.AddAdminForgeBlazor();
         services.AddAdminForgeLiveUpdates();
-        services.TryAddSingleton<IUserAccessor, HttpContextUserAccessor>();
         services.TryAddSingleton<IAdminAuthorizationPolicy, AllowAllAuthorizationPolicy>();
 
         return services;
