@@ -30,6 +30,16 @@ public sealed class EntityBuilder<T>
         return this;
     }
 
+    /// <summary>
+    /// List and view only. Hides the create and edit buttons and refuses those routes; pair with
+    /// a provider that only reads, such as <see cref="ReadOnlyDataProvider{T}"/>.
+    /// </summary>
+    public EntityBuilder<T> ReadOnly()
+    {
+        _meta.IsReadOnly = true;
+        return this;
+    }
+
     /// <summary>Customise the sidebar nav entry (label, group, order, hidden).</summary>
     public EntityBuilder<T> Nav(Action<NavBuilder> configure)
     {

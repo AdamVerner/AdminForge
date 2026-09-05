@@ -28,10 +28,13 @@ else
                    OnClick="@(() => Nav.NavigateTo($"/admin/entities/{Entity.RouteName}"))">
             Back to list
         </MudButton>
-        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Edit"
-                   OnClick="@(() => Nav.NavigateTo($"/admin/entities/{Entity.RouteName}/{Uri.EscapeDataString(_view.Key)}/edit"))">
-            Edit
-        </MudButton>
+        @if (!Entity.IsReadOnly)
+        {
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Edit"
+                       OnClick="@(() => Nav.NavigateTo($"/admin/entities/{Entity.RouteName}/{Uri.EscapeDataString(_view.Key)}/edit"))">
+                Edit
+            </MudButton>
+        }
     </MudStack>
 
     <MudCard>

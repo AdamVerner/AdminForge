@@ -10,6 +10,10 @@
 {
     <MudAlert Severity="Severity.Error">Unknown entity '@EntityName'.</MudAlert>
 }
+else if (Entity.IsReadOnly)
+{
+    <MudAlert Severity="Severity.Warning">@Entity.Label is read-only.</MudAlert>
+}
 else if (_edit is null)
 {
     <MudProgressCircular Indeterminate="true" />
@@ -35,7 +39,7 @@ else
     protected override async Task OnParametersSetAsync()
     {
         Entity = Bridge.FindEntityByRouteName(EntityName);
-        if (Entity is null) return;
+        if (Entity is null || Entity.IsReadOnly) return;
         _edit = await Bridge.LoadForEditAsync(Entity, Uri.UnescapeDataString(Key));
         _errorMessage = null;
     }

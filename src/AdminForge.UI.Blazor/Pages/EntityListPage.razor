@@ -16,10 +16,13 @@ else
     <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-4">
         <MudText Typo="Typo.h4">@Entity.Label</MudText>
         <MudSpacer />
-        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
-                   OnClick="@(() => Nav.NavigateTo($"/admin/entities/{Entity.RouteName}/new"))">
-            New @Entity.Label
-        </MudButton>
+        @if (!Entity.IsReadOnly)
+        {
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+                       OnClick="@(() => Nav.NavigateTo($"/admin/entities/{Entity.RouteName}/new"))">
+                New @Entity.Label
+            </MudButton>
+        }
     </MudStack>
 
     <FilterBar Entity="@Entity" Filters="_filters" OnApply="ApplyFilters" />

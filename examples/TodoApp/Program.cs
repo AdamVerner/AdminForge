@@ -33,10 +33,13 @@ builder.Services.AddAuthorization(opts =>
     opts.AddPolicy("AdminForge.Demo", p => p.RequireAssertion(_ => true));
 });
 
-// SiteSettings has no DbSet: AddTable<SiteSettings> describes it from its properties and the
-// registered provider serves it from the in-memory store.
+// SiteSettings and AuditLogEntry have no DbSet: AddTable<T> describes each from its properties
+// and the registered provider serves it from an in-memory store.
 builder.Services.AddSingleton<SiteSettingsStore>();
 builder.Services.AddAdminForgeDataProvider<SiteSettings, SiteSettingsDataProvider>();
+var auditLog = new AuditLogStore();
+builder.Services.AddSingleton(auditLog);
+builder.Services.AddAdminForgeDataProvider<AuditLogEntry, AuditLogDataProvider>();
 
 builder.Services.AddAdminForge<AppDbContext>(forge =>
     forge
@@ -65,6 +68,7 @@ builder.Services.AddAdminForge<AppDbContext>(forge =>
                     $"[audit] {evt.Timestamp:O} {evt.Action} {evt.EntityType}#{evt.EntityId} by {evt.User ?? "anonymous"} "
                         + $"({evt.ChangedValues.Count} change(s))"
                 );
+                auditLog.Record(evt);
                 return Task.CompletedTask;
             }
         )
@@ -230,6 +234,19 @@ builder.Services.AddAdminForge<AppDbContext>(forge =>
                 .AddColumn(s => s.MaintenanceMode)
                 .AddColumn(s => s.MaxItemsPerPage)
                 .AddColumn(s => s.WelcomeMessage)
+        )
+        // Read-only and provider-backed: no create or edit surface, and a column offers a sort
+        // control only where the provider honours it.
+        .AddTable<AuditLogEntry>(e =>
+            e.Label("Audit Log")
+                .ReadOnly()
+                .Nav(n => n.Group("System").Order(1))
+                .AddColumn(a => a.Timestamp, c => c.Sortable())
+                .AddColumn(a => a.Action)
+                .AddColumn(a => a.EntityType)
+                .AddColumn(a => a.EntityId)
+                .AddColumn(a => a.User)
+                .AddColumn(a => a.Changes)
         )
         // generic form exercising every supported field kind. The submit
         // handler just logs + shows a snackbar via the IActionContext; the audit

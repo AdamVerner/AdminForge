@@ -47,6 +47,9 @@ public sealed class EntityMeta
     /// <summary>Navigation entry describing where this entity appears in the sidebar.</summary>
     public NavMeta Nav { get; set; } = new();
 
+    /// <summary>List and view only: no create or edit surface. Set via <c>EntityBuilder.ReadOnly()</c>.</summary>
+    public bool IsReadOnly { get; set; }
+
     /// <summary>
     /// Optional resolver returning a short human-readable label for an instance, used when
     /// this entity is referenced as a navigation target. Configured via the fluent builder.

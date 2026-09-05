@@ -1226,6 +1226,14 @@ public sealed class BlazorUIBridge : IAdminUIBridge
                 : new KeyAccessor(_efEntityType);
         }
 
+        private void RefuseIfReadOnly()
+        {
+            if (_meta.IsReadOnly)
+                throw new InvalidOperationException(
+                    $"'{_meta.Name}' is read-only in the admin panel."
+                );
+        }
+
         public override async Task<object?> LoadRawAsync(
             string encodedKey,
             CancellationToken cancellationToken
@@ -1609,6 +1617,7 @@ public sealed class BlazorUIBridge : IAdminUIBridge
             CancellationToken cancellationToken
         )
         {
+            RefuseIfReadOnly();
             var entity = (TEntity)MaterializeFromVM(model);
             var created = await _provider
                 .CreateAsync(entity, cancellationToken)
@@ -1688,6 +1697,7 @@ public sealed class BlazorUIBridge : IAdminUIBridge
             CancellationToken cancellationToken
         )
         {
+            RefuseIfReadOnly();
             if (string.IsNullOrEmpty(model.Key))
                 throw new ArgumentException("Update requires a non-empty key.", nameof(model));
             var keyValues = _keyAccessor.DecodeKey(model.Key);
