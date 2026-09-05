@@ -67,6 +67,10 @@ else
     private string? _polledForKey;
     private DateTimeOffset? _lastRefreshedAt;
 
+    // Polling runs off the renderer's context, so a tick can coincide with an action's refresh; the
+    // scoped services behind the bridge take one operation at a time.
+    private readonly SemaphoreSlim _fetch = new(1, 1);
+
     protected override async Task OnParametersSetAsync()
     {
         Entity = Bridge.FindEntityByRouteName(EntityName);
@@ -104,6 +108,8 @@ else
                 {
                     return;
                 }
+                // A tick that finds a fetch in flight is skipped rather than queued.
+                if (!_fetch.Wait(0)) continue;
                 try
                 {
                     var refreshed = await Bridge.FindAsync(entity, Uri.UnescapeDataString(key), ct).ConfigureAwait(false);
@@ -119,6 +125,10 @@ else
                 {
                     // Best-effort live refresh — transient errors must not tear down the loop.
                 }
+                finally
+                {
+                    _fetch.Release();
+                }
             }
         }
         catch (OperationCanceledException) { }
@@ -127,7 +137,15 @@ else
     private async Task Refresh()
     {
         if (Entity is null) return;
-        _view = await Bridge.FindAsync(Entity, Uri.UnescapeDataString(Key));
+        await _fetch.WaitAsync();
+        try
+        {
+            _view = await Bridge.FindAsync(Entity, Uri.UnescapeDataString(Key));
+        }
+        finally
+        {
+            _fetch.Release();
+        }
         StateHasChanged();
     }
 

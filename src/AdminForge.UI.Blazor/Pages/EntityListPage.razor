@@ -50,6 +50,8 @@ else
     private string? _sortBy;
     private bool _sortDescending;
     private Dictionary<string, object?> _filters = new();
+    private bool _loading;
+    private bool _reloadRequested;
 
     protected override async Task OnParametersSetAsync()
     {
@@ -75,24 +77,45 @@ else
         await Reload();
     }
 
+    // One query at a time: the circuit's scoped services (a DbContext among them) are not safe under
+    // two concurrent operations. A change that lands mid-load runs once, after the current load,
+    // against whatever the page state is by then.
     private async Task Reload()
     {
         if (Entity is null) return;
-        var query = new ListQuery
+        if (_loading)
         {
-            Page = _page,
-            PageSize = _pageSize,
-            SortBy = _sortBy,
-            SortDescending = _sortDescending,
-            Filters = _filters,
-        };
+            _reloadRequested = true;
+            return;
+        }
+
+        _loading = true;
         try
         {
-            _listVM = await Bridge.ListAsync(Entity, query);
+            do
+            {
+                _reloadRequested = false;
+                var query = new ListQuery
+                {
+                    Page = _page,
+                    PageSize = _pageSize,
+                    SortBy = _sortBy,
+                    SortDescending = _sortDescending,
+                    Filters = _filters,
+                };
+                try
+                {
+                    _listVM = await Bridge.ListAsync(Entity, query);
+                }
+                catch (Exception ex)
+                {
+                    Snackbar.Add($"Load failed: {ex.Message}", MudBlazor.Severity.Error);
+                }
+            } while (_reloadRequested);
         }
-        catch (Exception ex)
+        finally
         {
-            Snackbar.Add($"Load failed: {ex.Message}", MudBlazor.Severity.Error);
+            _loading = false;
         }
     }
 
