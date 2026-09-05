@@ -8,7 +8,8 @@
 <MudDialogProvider />
 <MudSnackbarProvider />
 
-<MudLayout>
+@* The class appears once the circuit renders, so a browser can tell when clicks count. *@
+<MudLayout Class="@(RendererInfo.IsInteractive ? "adminforge-interactive" : null)">
     <MudAppBar Elevation="1" Style="@AppBarStyle">
         <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit" Edge="Edge.Start" OnClick="@ToggleDrawer" />
         @if (!string.IsNullOrWhiteSpace(Options.Theme.LogoUrl))
