@@ -91,7 +91,11 @@ task example:todo        # run the host on http://localhost:5xxx/admin
 
 ## Status
 
-**v0.1.0, preview.** APIs may shift between minor versions. The shape is settled, but expect renames and additions as the library hardens.
+**Preview.** APIs may shift between minor versions. The shape is settled, but expect renames and additions as the library hardens.
+
+## Releasing
+
+Push a `v*` tag; CI packs and publishes it to nuget.org. Steps in [docs/releasing.md](docs/releasing.md).
 
 ## Limitations / non-goals
 
