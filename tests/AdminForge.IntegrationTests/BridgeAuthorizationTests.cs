@@ -16,11 +16,37 @@ namespace AdminForge.IntegrationTests;
 /// when the policy denies an action, the bridge throws <see cref="AdminForbiddenException"/>
 /// before the data layer is hit. Custom policy is registered via the host's DI container.
 /// </summary>
-public class BridgeAuthorizationTests : IClassFixture<DenyingTodoAppFactory>
+public class BridgeAuthorizationTests
+    : IClassFixture<DenyingTodoAppFactory>,
+        IClassFixture<ReadDenyingTodoAppFactory>
 {
     private readonly DenyingTodoAppFactory _factory;
+    private readonly ReadDenyingTodoAppFactory _readDenying;
 
-    public BridgeAuthorizationTests(DenyingTodoAppFactory factory) => _factory = factory;
+    public BridgeAuthorizationTests(
+        DenyingTodoAppFactory factory,
+        ReadDenyingTodoAppFactory readDenying
+    )
+    {
+        _factory = factory;
+        _readDenying = readDenying;
+    }
+
+    [Fact]
+    public async Task List_And_Find_Throw_When_Policy_Denies_Read()
+    {
+        using var scope = _readDenying.Services.CreateScope();
+        var bridge = scope.ServiceProvider.GetRequiredService<IAdminUIBridge>();
+        var settings = bridge.FindEntityByRouteName("SiteSettings")!;
+
+        await Assert.ThrowsAsync<AdminForbiddenException>(() =>
+            bridge.ListAsync(settings, new ListQuery())
+        );
+        await Assert.ThrowsAsync<AdminForbiddenException>(() => bridge.FindAsync(settings, "1"));
+        await Assert.ThrowsAsync<AdminForbiddenException>(() =>
+            bridge.LoadForEditAsync(settings, "1")
+        );
+    }
 
     [Fact]
     public async Task Delete_Throws_When_Policy_Denies()
@@ -135,5 +161,29 @@ public class DenyingTodoAppFactory : WebApplicationFactory<Program>
             string? actionName = null,
             CancellationToken cancellationToken = default
         ) => Task.FromResult(action == AdminAction.Read);
+    }
+}
+
+/// <summary>Denies <c>Read</c> for every entity; the in-memory SiteSettings table needs no database.</summary>
+public class ReadDenyingTodoAppFactory : WebApplicationFactory<Program>
+{
+    protected override void ConfigureWebHost(IWebHostBuilder builder)
+    {
+        builder.UseSetting("ConnectionStrings:Default", "Data Source=:memory:");
+        builder.ConfigureServices(services =>
+            services.AddSingleton<IAdminAuthorizationPolicy, DenyReads>()
+        );
+    }
+
+    private sealed class DenyReads : IAdminAuthorizationPolicy
+    {
+        public Task<bool> IsAuthorizedAsync(
+            string entityName,
+            AdminAction action,
+            ClaimsPrincipal user,
+            object? instance = null,
+            string? actionName = null,
+            CancellationToken cancellationToken = default
+        ) => Task.FromResult(action != AdminAction.Read);
     }
 }

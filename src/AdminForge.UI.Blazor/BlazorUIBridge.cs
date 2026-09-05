@@ -114,6 +114,8 @@ public sealed class BlazorUIBridge : IAdminUIBridge
         CancellationToken cancellationToken = default
     )
     {
+        await EnsureAuthorizedAsync(entity, AdminAction.Read, instance: null, cancellationToken)
+            .ConfigureAwait(false);
         using var scope = await OpenScopeAsync().ConfigureAwait(false);
         return await GetAdapter(entity)
             .ListAsync(scope.ServiceProvider, query, cancellationToken)
@@ -126,6 +128,8 @@ public sealed class BlazorUIBridge : IAdminUIBridge
         CancellationToken cancellationToken = default
     )
     {
+        await EnsureAuthorizedAsync(entity, AdminAction.Read, instance: null, cancellationToken)
+            .ConfigureAwait(false);
         using var scope = await OpenScopeAsync().ConfigureAwait(false);
         return await GetAdapter(entity)
             .FindAsync(scope.ServiceProvider, encodedKey, cancellationToken)
@@ -138,6 +142,8 @@ public sealed class BlazorUIBridge : IAdminUIBridge
         CancellationToken cancellationToken = default
     )
     {
+        await EnsureAuthorizedAsync(entity, AdminAction.Read, instance: null, cancellationToken)
+            .ConfigureAwait(false);
         using var scope = await OpenScopeAsync().ConfigureAwait(false);
         return await GetAdapter(entity)
             .LoadForEditAsync(scope.ServiceProvider, encodedKey, cancellationToken)
