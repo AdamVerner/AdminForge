@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <PackageId>AdminForge</PackageId>
-    <Version>0.1.0</Version>
+    <Version>0.2.0</Version>
     <Authors>AdminForge contributors</Authors>
     <Description>
       AdminForge auto-generates an admin panel for ASP.NET Core apps: CRUD pages for EF Core
