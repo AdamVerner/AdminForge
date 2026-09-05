@@ -46,6 +46,14 @@ public class UmbrellaPolicyTests
     }
 
     [Fact]
+    public async Task The_Panels_Scripts_Are_Served_Without_A_Session()
+    {
+        var client = _denyAll.CreateClient();
+        var script = await client.GetAsync("/_framework/blazor.web.js");
+        Assert.Equal(HttpStatusCode.OK, script.StatusCode);
+    }
+
+    [Fact]
     public async Task Anonymous_Is_Redirected_To_The_Cookie_Schemes_Login_Page()
     {
         var client = _cookie.CreateClient(
@@ -109,8 +117,10 @@ public class DenyAllPolicyTodoAppFactory : GatedTodoAppFactory
             .AddAuthentication("Test")
             .AddScheme<AuthenticationSchemeOptions, NeverAuthenticatesHandler>("Test", _ => { });
         services.AddAuthorization(o =>
-            o.AddPolicy("AdminForge.Demo", p => p.RequireAssertion(_ => false))
-        );
+        {
+            o.AddPolicy("AdminForge.Demo", p => p.RequireAssertion(_ => false));
+            o.FallbackPolicy = new AuthorizationPolicyBuilder().RequireAssertion(_ => false).Build();
+        });
     }
 
     /// <summary>The stock challenge: a bare 401, as a bearer scheme would answer.</summary>

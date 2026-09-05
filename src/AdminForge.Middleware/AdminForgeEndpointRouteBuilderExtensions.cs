@@ -30,9 +30,9 @@ public static class AdminForgeEndpointRouteBuilderExtensions
         if (endpoints is IApplicationBuilder appBuilder)
             appBuilder.UseAntiforgery();
 
-        // Serve _framework/blazor.web.js + _content/{RCL}/* (MudBlazor CSS/JS).
-        // Idempotent under .NET 9+: hosts that already call MapStaticAssets get a no-op.
-        endpoints.MapStaticAssets();
+        // Serve _framework/blazor.web.js + _content/{RCL}/* (MudBlazor CSS/JS). Anonymous, or a
+        // host with a fallback authorization policy would challenge the panel's own scripts.
+        endpoints.MapStaticAssets().AllowAnonymous();
 
         var builder = endpoints.MapRazorComponents<App>().AddInteractiveServerRenderMode();
 
