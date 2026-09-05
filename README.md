@@ -32,6 +32,7 @@ That's it. No JS toolchain, no separate admin host — Blazor Server components 
 - **Authorization required at mount** — `MapAdminForge()` throws at startup unless the host set an umbrella policy or registered its own `IAdminAuthorizationPolicy`. An open panel has to say so: `AllowAnonymousAccess()`. The umbrella policy goes on the panel's endpoints, so the host's authentication scheme handles a rejected request — a cookie scheme redirects to its login page.
 - **Sign-out button** — `WithSignOut("/admin/logout")` puts a button in the app bar that posts to a host-owned endpoint; the signed-in user's name shows beside it.
 - **Live updates** for single-entity views (polling) and dashboard line charts (polling or `IAsyncEnumerable` streaming) — multiple browser tabs share one upstream stream.
+- **Environment badge** — `WithEnvironment("staging", "#ef6c00")` colours the app bar and labels it, so nobody edits production thinking it is staging.
 - **Theming hook** — set a logo and primary / secondary palette colour via `WithTheme(...)`; defaults render MudBlazor's stock palette.
 
 ## Configuration sketch

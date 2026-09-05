@@ -58,6 +58,15 @@ public sealed class AdminForgeBuilder
         return this;
     }
 
+    /// <summary>Colour the app bar and label it, so local, staging and production are told apart at a glance.</summary>
+    public AdminForgeBuilder WithEnvironment(string label, string color)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(label);
+        ArgumentException.ThrowIfNullOrWhiteSpace(color);
+        Options.Environment = new EnvironmentBadge(label, color);
+        return this;
+    }
+
     /// <summary>
     /// Show a sign-out button in the app bar that posts to <paramref name="path"/>. The host maps
     /// that endpoint and ends the session there; the form carries an antiforgery token.
@@ -261,6 +270,7 @@ public sealed class AdminForgeBuilder
             RoutePrefix = Options.RoutePrefix,
             Title = Options.Title,
             WelcomeMessage = Options.WelcomeMessage,
+            Environment = Options.Environment,
             SignOutPath = Options.SignOutPath,
             AuthorizationPolicy = Options.AuthorizationPolicy,
             AllowAnonymousAccess = Options.AllowAnonymousAccess,
@@ -301,6 +311,9 @@ public sealed class AdminForgeOptionsDraft
 
     /// <inheritdoc cref="AdminForgeOptions.WelcomeMessage" />
     public string? WelcomeMessage { get; set; }
+
+    /// <inheritdoc cref="AdminForgeOptions.Environment" />
+    public EnvironmentBadge? Environment { get; set; }
 
     /// <inheritdoc cref="AdminForgeOptions.SignOutPath" />
     public string? SignOutPath { get; set; }

@@ -100,6 +100,7 @@ var siteSettingsMeta = new EntityMeta
 builder.Services.AddAdminForge<AppDbContext>(forge =>
     forge
         .WithTitle("Todo Admin")
+        .WithEnvironment("local", "#2e7d32")
         // MapAdminForge() refuses to mount a panel with no authorization at all. This demo
         // satisfies it with an umbrella policy; a host that genuinely wants an open panel
         // declares that instead, with .AllowAnonymousAccess().

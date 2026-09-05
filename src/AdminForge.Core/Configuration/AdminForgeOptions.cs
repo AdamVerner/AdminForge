@@ -22,6 +22,9 @@ public sealed class AdminForgeOptions
     /// <summary>Text shown on the home page. Null renders the registered-entity count.</summary>
     public string? WelcomeMessage { get; init; }
 
+    /// <summary>App bar badge and colour naming the deployment; null leaves the themed app bar.</summary>
+    public EnvironmentBadge? Environment { get; init; }
+
     /// <summary>
     /// Path the app bar's sign-out button posts to (an antiforgery token travels with it).
     /// Null hides the button; the host owns the endpoint and the session it ends.

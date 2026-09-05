@@ -31,6 +31,8 @@ public class AdminPanelBootTests : IClassFixture<TodoAppFactory>
         var body = await response.Content.ReadAsStringAsync();
         Assert.Contains("Blazor", body); // server-rendered comments
         Assert.Contains("Todo Admin", body);
+        Assert.Contains("background-color:#2e7d32", body);
+        Assert.Contains(">local<", body);
     }
 
     [Fact]
