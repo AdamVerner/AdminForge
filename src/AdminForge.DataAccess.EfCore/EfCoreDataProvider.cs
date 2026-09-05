@@ -637,13 +637,18 @@ public class EfCoreDataProvider<TContext, TEntity> : IAdminDataProvider<TEntity>
             var parameter = Expression.Parameter(typeof(TEntity), "e");
             var memberAccess = Expression.Property(parameter, property);
 
-            var typedValue = CoerceToType(rawValue, property.PropertyType);
-            var constant = Expression.Constant(typedValue, property.PropertyType);
-            var predicate = Expression.Lambda<Func<TEntity, bool>>(
-                Expression.Equal(memberAccess, constant),
-                parameter
-            );
-            source = source.Where(predicate);
+            // A typed-in text filter means "contains"; every other type is an exact match.
+            Expression test =
+                property.PropertyType == typeof(string) && rawValue is string term
+                    ? Like(memberAccess, term)
+                    : Expression.Equal(
+                        memberAccess,
+                        Expression.Constant(
+                            CoerceToType(rawValue, property.PropertyType),
+                            property.PropertyType
+                        )
+                    );
+            source = source.Where(Expression.Lambda<Func<TEntity, bool>>(test, parameter));
         }
         return source;
     }
@@ -651,18 +656,44 @@ public class EfCoreDataProvider<TContext, TEntity> : IAdminDataProvider<TEntity>
     private static readonly MethodInfo _efLike =
         typeof(Microsoft.EntityFrameworkCore.DbFunctionsExtensions).GetMethod(
             nameof(Microsoft.EntityFrameworkCore.DbFunctionsExtensions.Like),
-            [typeof(Microsoft.EntityFrameworkCore.DbFunctions), typeof(string), typeof(string)]
+            [
+                typeof(Microsoft.EntityFrameworkCore.DbFunctions),
+                typeof(string),
+                typeof(string),
+                typeof(string),
+            ]
         )!;
+
+    private static readonly MethodInfo _toLower = typeof(string).GetMethod(
+        nameof(string.ToLower),
+        Type.EmptyTypes
+    )!;
+
+    /// <summary>
+    /// lower(column) LIKE '%term%' with the term's own wildcards escaped. Lower-casing both sides
+    /// is what makes the match case-insensitive on Postgres; SQLite and SQL Server already are.
+    /// </summary>
+    private static Expression Like(Expression member, string term)
+    {
+        var escaped = term.ToLowerInvariant()
+            .Replace("\\", "\\\\")
+            .Replace("%", "\\%")
+            .Replace("_", "\\_");
+        return Expression.Call(
+            null,
+            _efLike,
+            Expression.Property(null, typeof(EF), nameof(EF.Functions)),
+            Expression.Call(member, _toLower),
+            Expression.Constant($"%{escaped}%", typeof(string)),
+            Expression.Constant("\\", typeof(string))
+        );
+    }
 
     private static IQueryable<TEntity> ApplySearch(IQueryable<TEntity> source, string? search)
     {
         if (string.IsNullOrWhiteSpace(search))
             return source;
 
-        // Build EF.Functions.Like(e.PropA, "%search%") OR Like(e.PropB, ...) ...
-        // LIKE is the case-insensitive default on SQLite and on SQL Server's
-        // default collation, and translates cleanly without requiring a
-        // ".ToLower()" rewrite on either side.
         var stringProps = typeof(TEntity)
             .GetProperties(BindingFlags.Public | BindingFlags.Instance)
             .Where(p => p.PropertyType == typeof(string) && p.CanRead)
@@ -670,23 +701,14 @@ public class EfCoreDataProvider<TContext, TEntity> : IAdminDataProvider<TEntity>
         if (stringProps.Length == 0)
             return source;
 
-        var escaped = search.Replace("[", "[[]").Replace("%", "[%]").Replace("_", "[_]");
-        var pattern = $"%{escaped}%";
-
         var parameter = Expression.Parameter(typeof(TEntity), "e");
-        var functions = Expression.Property(null, typeof(EF), nameof(EF.Functions));
-        var patternConstant = Expression.Constant(pattern, typeof(string));
         Expression? body = null;
         foreach (var prop in stringProps)
         {
-            var member = Expression.Property(parameter, prop);
-            var like = Expression.Call(null, _efLike, functions, member, patternConstant);
+            var like = Like(Expression.Property(parameter, prop), search);
             body = body is null ? like : Expression.OrElse(body, like);
         }
-        if (body is null)
-            return source;
-        var lambda = Expression.Lambda<Func<TEntity, bool>>(body, parameter);
-        return source.Where(lambda);
+        return source.Where(Expression.Lambda<Func<TEntity, bool>>(body!, parameter));
     }
 
     private static IQueryable<TEntity> ApplySort(

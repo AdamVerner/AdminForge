@@ -84,4 +84,38 @@ public class SearchTests
             conn.Dispose();
         }
     }
+
+    [Fact]
+    public async Task String_Filter_Matches_Substring_And_Escapes_Wildcards()
+    {
+        var (ctx, conn) = TodoContextFactory.CreateSqlite();
+        try
+        {
+            await TodoContextFactory.SeedAsync(ctx);
+            ctx.Todos.Add(new Todo { Title = "100% done", TodoListId = ctx.TodoLists.First().Id });
+            await ctx.SaveChangesAsync();
+            var provider = new EfCoreDataProvider<AppDbContext, Todo>(ctx);
+
+            var contains = await provider.ListAsync(
+                new ListQuery
+                {
+                    Filters = new Dictionary<string, object?> { [nameof(Todo.Title)] = "MILK" },
+                }
+            );
+            var literalPercent = await provider.ListAsync(
+                new ListQuery
+                {
+                    Filters = new Dictionary<string, object?> { [nameof(Todo.Title)] = "0%" },
+                }
+            );
+
+            Assert.Equal("Buy milk", contains.Items.Single().Title);
+            Assert.Equal("100% done", literalPercent.Items.Single().Title);
+        }
+        finally
+        {
+            ctx.Dispose();
+            conn.Dispose();
+        }
+    }
 }

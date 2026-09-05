@@ -21,7 +21,7 @@ That's it. No JS toolchain, no separate admin host — Blazor Server components 
 
 ## What you get
 
-- Auto-generated CRUD pages for every EF Core entity (list, view, create, edit, delete) — with filter, sort, pagination, and validation.
+- Auto-generated CRUD pages for every EF Core entity (list, view, create, edit, delete) — with filter, sort, pagination, and validation. Text filters match substrings, case-insensitively.
 - **Provider-backed tables** — `AddTable<T>` on any keyed class describes it from its properties and serves it through the `IAdminDataProvider<T>` you register; `ReadOnly()` drops the create and edit surface, and a column offers a sort or filter control only once `Sortable()` / `Filterable()` says the provider honours it.
 - **Dashboards** composed in C# from stat cards, line charts, and table widgets, arranged in a row-based grid layout.
 - **Generic forms** with 8 field types (text, number, float, bool, date, datetime, markdown, file upload) and a typed submit handler.

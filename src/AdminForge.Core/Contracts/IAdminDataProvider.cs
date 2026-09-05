@@ -52,8 +52,8 @@ public sealed class ListQuery
     public bool SortDescending { get; init; }
 
     /// <summary>
-    /// Per-property exact-match filters. Values are converted via
-    /// <see cref="Convert.ChangeType(object, Type)"/> to the property's CLR type.
+    /// Per-property filters. A string column matches when it contains the value, case-insensitively;
+    /// every other column matches exactly, after conversion to the property's CLR type.
     /// </summary>
     public IReadOnlyDictionary<string, object?> Filters { get; init; } =
         new Dictionary<string, object?>();
