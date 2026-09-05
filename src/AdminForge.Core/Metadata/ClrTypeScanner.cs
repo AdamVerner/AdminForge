@@ -7,6 +7,7 @@ namespace AdminForge.Core.Metadata;
 /// Describes a plain CLR type — a read model a host-registered <c>IAdminDataProvider&lt;T&gt;</c>
 /// serves — the way <c>EfCoreReflectionScanner</c> describes an EF entity. Only scalar properties
 /// become columns; the key is the <see cref="KeyAttribute"/>-marked properties, else <c>Id</c>.
+/// Nothing is known about what the provider can sort or filter on, so columns start with neither.
 /// </summary>
 public static class ClrTypeScanner
 {
@@ -49,6 +50,8 @@ public static class ClrTypeScanner
                     EnumType = underlying.IsEnum ? underlying : null,
                     IsGenerated = isKey,
                     IsRequired = !isNullable && !isKey,
+                    IsSortable = false,
+                    IsFilterable = false,
                 };
             })
             .ToList();

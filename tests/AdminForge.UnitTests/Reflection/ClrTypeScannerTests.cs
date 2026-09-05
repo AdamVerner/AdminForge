@@ -40,6 +40,9 @@ public class ClrTypeScannerTests
             meta.Columns.Select(c => c.PropertyName)
         );
 
+        // What the provider can sort or filter on is unknown, so nothing offers a control until opted in.
+        Assert.All(meta.Columns, c => Assert.False(c.IsSortable || c.IsFilterable));
+
         var id = meta.Columns.Single(c => c.PropertyName == "Id");
         Assert.True(id.IsPrimaryKey);
         Assert.True(id.IsGenerated);

@@ -102,10 +102,10 @@ public sealed class ColumnMeta
     /// </summary>
     public LambdaExpression? CustomValueSelector { get; init; }
 
-    /// <summary>True if this column participates in <c>ListQuery.SortBy</c>. Default true for scalars; opt-in for custom columns.</summary>
+    /// <summary>True if this column participates in <c>ListQuery.SortBy</c>. On for an EF scalar; opt-in for custom columns and provider-backed types.</summary>
     public bool IsSortable { get; set; } = true;
 
-    /// <summary>True if this column participates in <c>ListQuery.Filters</c>. Default true for scalars; opt-in for custom columns.</summary>
+    /// <summary>True if this column participates in <c>ListQuery.Filters</c>. On for an EF scalar; opt-in for custom columns and provider-backed types.</summary>
     public bool IsFilterable { get; set; } = true;
 
     /// <summary>

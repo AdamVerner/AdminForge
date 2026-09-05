@@ -104,7 +104,9 @@ public sealed class AdminForgeBuilder
     /// <summary>
     /// Registers an entity table page. A <c>DbSet</c> on the host's <c>DbContext</c> is served by
     /// EF; any other type is described by its public scalar properties and served by the
-    /// <see cref="IAdminDataProvider{T}"/> the host registers for it.
+    /// <see cref="IAdminDataProvider{T}"/> the host registers for it. Columns of such a type
+    /// offer no sort or filter control until <c>Sortable()</c> / <c>Filterable()</c> says the
+    /// provider honours it.
     /// </summary>
     public AdminForgeBuilder AddTable<T>(Action<EntityBuilder<T>>? configure = null)
         where T : class

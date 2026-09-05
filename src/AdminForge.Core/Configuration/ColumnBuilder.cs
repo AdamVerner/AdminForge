@@ -37,6 +37,26 @@ public sealed class ColumnBuilder<TProp>
         return this;
     }
 
+    /// <summary>
+    /// Whether the header carries a sort control. On by default for an EF entity, whose provider
+    /// sorts on any column; off for a provider-backed type until the host says its provider does.
+    /// </summary>
+    public ColumnBuilder<TProp> Sortable(bool sortable = true)
+    {
+        _meta.IsSortable = sortable;
+        return this;
+    }
+
+    /// <summary>
+    /// Whether the column appears in the filter bar. On by default for an EF entity, whose provider
+    /// filters on any column; off for a provider-backed type until the host says its provider does.
+    /// </summary>
+    public ColumnBuilder<TProp> Filterable(bool filterable = true)
+    {
+        _meta.IsFilterable = filterable;
+        return this;
+    }
+
     /// <summary>Hide the column from edit forms (still visible in lists).</summary>
     public ColumnBuilder<TProp> HiddenInEdit()
     {

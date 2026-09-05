@@ -62,6 +62,7 @@
         Entity.Columns.Where(c =>
             c.Kind is ColumnKind.Scalar or ColumnKind.Enum
             && c.ShowInList
+            && c.IsFilterable
             && !c.IsPrimaryKey
             && !c.IsForeignKey
         );

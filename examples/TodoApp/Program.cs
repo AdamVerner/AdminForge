@@ -191,7 +191,8 @@ builder.Services.AddAdminForge<AppDbContext>(forge =>
                     t => t.Assignee,
                     c => c.LinkText(u => "Owned by " + (u == null ? "?" : u.DisplayName))
                 )
-                .AddColumn(t => t.DueAt)
+                // An exact-match filter on a timestamp never hits; sorting on it is what people want.
+                .AddColumn(t => t.DueAt, c => c.Filterable(false))
                 .HideColumn(t => t.CreatedAt)
                 // Visiting /admin/entities/Todo/{id} re-fetches the displayed row every 5s.
                 .WithLivePolling(TimeSpan.FromSeconds(5))
