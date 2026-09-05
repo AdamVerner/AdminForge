@@ -50,6 +50,14 @@ public sealed class AdminForgeBuilder
         return this;
     }
 
+    /// <summary>Set the text shown on the home page instead of the registered-entity count.</summary>
+    public AdminForgeBuilder WithWelcomeMessage(string message)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(message);
+        Options.WelcomeMessage = message;
+        return this;
+    }
+
     /// <summary>
     /// Show a sign-out button in the app bar that posts to <paramref name="path"/>. The host maps
     /// that endpoint and ends the session there; the form carries an antiforgery token.
@@ -252,6 +260,7 @@ public sealed class AdminForgeBuilder
         {
             RoutePrefix = Options.RoutePrefix,
             Title = Options.Title,
+            WelcomeMessage = Options.WelcomeMessage,
             SignOutPath = Options.SignOutPath,
             AuthorizationPolicy = Options.AuthorizationPolicy,
             AllowAnonymousAccess = Options.AllowAnonymousAccess,
@@ -289,6 +298,9 @@ public sealed class AdminForgeOptionsDraft
 
     /// <inheritdoc cref="AdminForgeOptions.Title" />
     public string Title { get; set; } = "Admin";
+
+    /// <inheritdoc cref="AdminForgeOptions.WelcomeMessage" />
+    public string? WelcomeMessage { get; set; }
 
     /// <inheritdoc cref="AdminForgeOptions.SignOutPath" />
     public string? SignOutPath { get; set; }

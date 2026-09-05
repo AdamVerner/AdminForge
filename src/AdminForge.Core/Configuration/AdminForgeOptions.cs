@@ -19,6 +19,9 @@ public sealed class AdminForgeOptions
     /// <summary>Display title shown in the admin shell.</summary>
     public string Title { get; set; } = "Admin";
 
+    /// <summary>Text shown on the home page. Null renders the registered-entity count.</summary>
+    public string? WelcomeMessage { get; init; }
+
     /// <summary>
     /// Path the app bar's sign-out button posts to (an antiforgery token travels with it).
     /// Null hides the button; the host owns the endpoint and the session it ends.

@@ -39,6 +39,7 @@ That's it. No JS toolchain, no separate admin host — Blazor Server components 
 ```csharp
 builder.Services.AddAdminForge<AppDbContext>(forge => forge
     .WithTitle("My App Admin")
+    .WithWelcomeMessage("Pick a table from the sidebar.")
     .RequireAuthorizationPolicy("Admins")
     .WithSignOut("/admin/logout")
     .WithAuditLog((evt, ct) => audit.RecordAsync(evt, ct))
