@@ -25,7 +25,7 @@ else
         }
     </MudStack>
 
-    <FilterBar Entity="@Entity" Filters="_filters" OnApply="ApplyFilters" />
+    <FilterBar Entity="@Entity" Filters="_filters" Search="@_search" OnApply="ApplyFilters" />
 
     <EntityTable Entity="@Entity"
                  ListVM="_listVM"
@@ -50,6 +50,7 @@ else
     private string? _sortBy;
     private bool _sortDescending;
     private Dictionary<string, object?> _filters = new();
+    private string? _search;
     private bool _loading;
     private bool _reloadRequested;
 
@@ -64,6 +65,7 @@ else
             _sortBy = null;
             _sortDescending = false;
             _filters = new();
+            _search = null;
         }
         // Seed filters from `?filter:{col}={value}` query-string entries on first load
         // (the contract URL produced by related-link buttons).
@@ -102,6 +104,7 @@ else
                     SortBy = _sortBy,
                     SortDescending = _sortDescending,
                     Filters = _filters,
+                    Search = _search,
                 };
                 try
                 {
@@ -152,9 +155,10 @@ else
         await Reload();
     }
 
-    private async Task ApplyFilters(Dictionary<string, object?> filters)
+    private async Task ApplyFilters(FilterState state)
     {
-        _filters = filters;
+        _filters = state.Filters;
+        _search = state.Search;
         _page = 0;
         await Reload();
     }

@@ -1,6 +1,28 @@
-<MudExpansionPanels Class="mb-4">
-    <MudExpansionPanel Text="Filters">
-        <MudGrid>
+@* Search is always offered — every provider matches it against the string columns; per-column
+   filters appear only for columns that can be filtered. *@
+<MudPaper Class="pa-3 mb-4" Elevation="1">
+    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+        <MudTextField T="string" @bind-Value="_search" Placeholder="Search" Immediate="true" Clearable="true"
+                      Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search"
+                      OnKeyDown="@SearchKeyDown" Class="adminforge-search" Style="max-width:24rem" />
+        @if (FilterableColumns.Any())
+        {
+            <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Filled.FilterList"
+                       OnClick="@(() => _filtersOpen = !_filtersOpen)" Class="adminforge-filters-toggle">
+                Filters@(ActiveFilterCount > 0 ? $" ({ActiveFilterCount})" : "")
+            </MudButton>
+        }
+        <MudSpacer />
+        @if (ActiveFilterCount > 0 || HasValue(_search) || Filters.Count > 0 || HasValue(Search))
+        {
+            <MudButton Variant="Variant.Text" OnClick="ClearAll" Class="adminforge-clear">Clear</MudButton>
+        }
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Apply" Class="adminforge-apply">Apply</MudButton>
+    </MudStack>
+
+    @if (_filtersOpen && FilterableColumns.Any())
+    {
+        <MudGrid Class="mt-2 adminforge-filters">
             @foreach (var col in FilterableColumns)
             {
                 <MudItem xs="12" sm="6" md="4">
@@ -33,29 +55,31 @@
                     else
                     {
                         <MudTextField T="string" Label="@col.Label" Value="@(cur?.ToString())"
-                                      ValueChanged="@(v => _local[col.PropertyName] = v)" Clearable="true" />
+                                      ValueChanged="@(v => _local[col.PropertyName] = v)" Clearable="true"
+                                      Immediate="true" OnKeyDown="@SearchKeyDown" />
                     }
                 </MudItem>
             }
         </MudGrid>
-        <MudStack Row="true" Class="mt-2">
-            <MudButton OnClick="ClearAll">Clear</MudButton>
-            <MudSpacer />
-            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Apply">Apply</MudButton>
-        </MudStack>
-    </MudExpansionPanel>
-</MudExpansionPanels>
+    }
+</MudPaper>
 
 @code {
     [Parameter, EditorRequired] public EntityMeta Entity { get; set; } = default!;
     [Parameter] public Dictionary<string, object?> Filters { get; set; } = new();
-    [Parameter] public EventCallback<Dictionary<string, object?>> OnApply { get; set; }
+    [Parameter] public string? Search { get; set; }
+    [Parameter] public EventCallback<FilterState> OnApply { get; set; }
 
     private Dictionary<string, object?> _local = new();
+    private string? _search;
+    private bool _filtersOpen;
 
     protected override void OnParametersSet()
     {
         _local = new Dictionary<string, object?>(Filters);
+        _search = Search;
+        // Filters that arrived with the URL are worth seeing.
+        if (Filters.Count > 0) _filtersOpen = true;
     }
 
     private IEnumerable<ColumnMeta> FilterableColumns =>
@@ -67,18 +91,27 @@
             && !c.IsForeignKey
         );
 
+    private int ActiveFilterCount => _local.Count(kvp => HasValue(kvp.Value));
+
+    private static bool HasValue(object? value) =>
+        value is not null && !(value is string s && string.IsNullOrWhiteSpace(s));
+
+    private async Task SearchKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await Apply();
+    }
+
     private async Task Apply()
     {
-        // Strip nulls / empty strings.
-        var cleaned = _local
-            .Where(kvp => kvp.Value is not null && !(kvp.Value is string s && string.IsNullOrWhiteSpace(s)))
-            .ToDictionary(k => k.Key, k => k.Value);
-        await OnApply.InvokeAsync(cleaned);
+        var cleaned = _local.Where(kvp => HasValue(kvp.Value)).ToDictionary(k => k.Key, k => k.Value);
+        var search = string.IsNullOrWhiteSpace(_search) ? null : _search.Trim();
+        await OnApply.InvokeAsync(new FilterState(cleaned, search));
     }
 
     private async Task ClearAll()
     {
         _local = new();
-        await OnApply.InvokeAsync(new());
+        _search = null;
+        await OnApply.InvokeAsync(new FilterState(new(), null));
     }
 }
