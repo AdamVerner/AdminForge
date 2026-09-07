@@ -1161,10 +1161,7 @@ public sealed class BlazorUIBridge : IAdminUIBridge
     private EntityAdapter GetAdapter(EntityMeta meta)
     {
         ArgumentNullException.ThrowIfNull(meta);
-        return _adapters.GetOrAdd(
-            meta.ClrType,
-            _ => EntityAdapter.Create(meta, _model, _options)
-        );
+        return _adapters.GetOrAdd(meta.ClrType, _ => EntityAdapter.Create(meta, _model, _options));
     }
 
     /// <summary>
@@ -1237,7 +1234,11 @@ public sealed class BlazorUIBridge : IAdminUIBridge
         /// </summary>
         public abstract IReadOnlyDictionary<string, object?> SnapshotScalarValues(object instance);
 
-        public static EntityAdapter Create(EntityMeta meta, IModel? model, AdminForgeOptions options)
+        public static EntityAdapter Create(
+            EntityMeta meta,
+            IModel? model,
+            AdminForgeOptions options
+        )
         {
             var adapterType = typeof(GenericEntityAdapter<>).MakeGenericType(meta.ClrType);
             return (EntityAdapter)Activator.CreateInstance(adapterType, meta, model, options)!;
@@ -1850,22 +1851,9 @@ public sealed class BlazorUIBridge : IAdminUIBridge
             var meta = _options.Entities.FirstOrDefault(e => e.ClrType == relatedType);
             if (meta is null)
                 return null;
-            // Use KeyAccessor on the related type via the EF model — borrow it from this adapter's _keyAccessor's source.
-            // Simpler: use reflection over the meta.PrimaryKeyPropertyNames.
-            var keyParts = new string[meta.PrimaryKeyPropertyNames.Count];
-            for (var i = 0; i < meta.PrimaryKeyPropertyNames.Count; i++)
-            {
-                var pkName = meta.PrimaryKeyPropertyNames[i];
-                var pkProp = relatedType.GetProperty(
-                    pkName,
-                    BindingFlags.Public | BindingFlags.Instance
-                );
-                var raw = pkProp?.GetValue(relatedInstance);
-                keyParts[i] = Uri.EscapeDataString(
-                    Convert.ToString(raw, CultureInfo.InvariantCulture) ?? string.Empty
-                );
-            }
-            var encodedKey = string.Join('-', keyParts);
+            var encodedKey = new KeyAccessor(relatedType, meta.PrimaryKeyPropertyNames).EncodeKey(
+                relatedInstance
+            );
             // Source-side LinkText override beats the related entity's DisplayLabel.
             var label =
                 linkTextResolver?.Invoke(relatedInstance)

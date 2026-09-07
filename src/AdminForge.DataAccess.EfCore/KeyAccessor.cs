@@ -6,12 +6,13 @@ using Microsoft.EntityFrameworkCore.Metadata;
 namespace AdminForge.DataAccess.EfCore;
 
 /// <summary>
-/// Materialises and (de)serialises primary-key values for an entity. Composite
-/// keys are joined with "-" and URL-component encoded so they survive routing.
+/// Materialises and (de)serialises primary-key values for an entity. Each part is URL-component
+/// encoded, which never lets a comma through, so a composite key is joined with "," and splits
+/// cleanly whatever the parts hold.
 /// </summary>
 public sealed class KeyAccessor
 {
-    private const char Separator = '-';
+    private const char Separator = ',';
 
     private readonly IReadOnlyList<KeyProperty> _keyProperties;
 
@@ -65,7 +66,7 @@ public sealed class KeyAccessor
         return values;
     }
 
-    /// <summary>Encodes the key as a routable string (composite keys joined with "-").</summary>
+    /// <summary>Encodes the key as a routable string.</summary>
     public string EncodeKey(object entity)
     {
         var values = GetKeyValues(entity);
@@ -84,15 +85,11 @@ public sealed class KeyAccessor
             );
         }
 
-        var parts = new string[values.Length];
-        for (var i = 0; i < values.Length; i++)
-        {
-            parts[i] = Uri.EscapeDataString(
-                Convert.ToString(values[i], CultureInfo.InvariantCulture) ?? string.Empty
-            );
-        }
-        return string.Join(Separator, parts);
+        return string.Join(Separator, values.Select(EncodePart));
     }
+
+    public static string EncodePart(object? value) =>
+        Uri.EscapeDataString(Convert.ToString(value, CultureInfo.InvariantCulture) ?? string.Empty);
 
     /// <summary>
     /// Decodes a routable string key back into typed key values suitable for
