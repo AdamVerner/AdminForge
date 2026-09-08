@@ -22,6 +22,11 @@ tasks:
     cmds:
       - dotnet run --project examples/TodoApp
 
+  example:crm:
+    desc: Run the CrmApp example (no DbContext; every table is provider-backed)
+    cmds:
+      - dotnet run --project examples/CrmApp
+
   example:todo:seed:
     desc: Seed the TodoApp SQLite database
     cmds:

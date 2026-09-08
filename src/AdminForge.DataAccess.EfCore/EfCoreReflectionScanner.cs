@@ -151,6 +151,7 @@ public sealed class EfCoreReflectionScanner
             Columns = columns,
             PrimaryKeyPropertyNames = pkPropertyNames,
             IsJoinEntity = isJoinEntity,
+            IsSearchable = true,
         };
     }
 

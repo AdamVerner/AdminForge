@@ -21,6 +21,9 @@ public class OperationScopeTests : IClassFixture<ScopeProbeTodoAppFactory>
     public async Task Each_Operation_Gets_Its_Own_Scope_Carrying_The_Caller()
     {
         var probe = _factory.Services.GetRequiredService<ScopeProbe>();
+        // The boot guard resolved one of these already; this test is about the bridge's calls.
+        probe.Providers.Clear();
+        probe.Callers.Clear();
         using var circuit = _factory.Services.CreateScope();
         var alice = new ClaimsPrincipal(
             new ClaimsIdentity([new Claim(ClaimTypes.Name, "alice")], "Test")
@@ -79,7 +82,11 @@ public sealed class ProbingSiteSettingsProvider : IAdminDataProvider<SiteSetting
 {
     private readonly SiteSettingsDataProvider _inner;
 
-    public ProbingSiteSettingsProvider(SiteSettingsStore store, IUserAccessor user, ScopeProbe probe)
+    public ProbingSiteSettingsProvider(
+        SiteSettingsStore store,
+        IUserAccessor user,
+        ScopeProbe probe
+    )
     {
         _inner = new SiteSettingsDataProvider(store);
         probe.Providers.Add(this);

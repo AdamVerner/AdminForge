@@ -25,6 +25,7 @@ public static class AdminForgeEndpointRouteBuilderExtensions
         ArgumentNullException.ThrowIfNull(endpoints);
 
         var options = GuardAuthorizationIsConfigured(endpoints.ServiceProvider);
+        GuardEveryTableHasAProvider(endpoints.ServiceProvider, options);
 
         // Razor Components in .NET 8+ refuse to serve unless antiforgery middleware is present.
         if (endpoints is IApplicationBuilder appBuilder)
@@ -79,6 +80,46 @@ public static class AdminForgeEndpointRouteBuilderExtensions
                 + "with AddAdminForge<T>(f => f.AllowAnonymousAccess()). Do not silence this by registering "
                 + "AllowAllAuthorizationPolicy — that reads as a real policy and hides the same hole."
         );
+    }
+
+    /// <summary>
+    /// Resolves every registered table's provider at boot, so a table nobody serves fails the
+    /// startup rather than the first page load. A provider whose constructor does real work
+    /// does it here.
+    /// </summary>
+    internal static void GuardEveryTableHasAProvider(
+        IServiceProvider serviceProvider,
+        AdminForgeOptions options
+    )
+    {
+        using var scope = serviceProvider.CreateScope();
+        var failures = new List<string>();
+        foreach (var entity in options.Entities)
+        {
+            var providerType = typeof(IAdminDataProvider<>).MakeGenericType(entity.ClrType);
+            try
+            {
+                scope.ServiceProvider.GetRequiredService(providerType);
+            }
+            catch (Exception ex)
+            {
+                failures.Add($"  • {entity.Name}: {Innermost(ex).Message}");
+            }
+        }
+
+        if (failures.Count > 0)
+        {
+            throw new InvalidOperationException(
+                "AdminForge cannot serve every registered table:\n" + string.Join('\n', failures)
+            );
+        }
+    }
+
+    private static Exception Innermost(Exception exception)
+    {
+        while (exception.InnerException is { } inner)
+            exception = inner;
+        return exception;
     }
 
     /// <summary>

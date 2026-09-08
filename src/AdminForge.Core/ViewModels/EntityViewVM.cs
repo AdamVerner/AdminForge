@@ -37,4 +37,10 @@ public sealed class RelatedLinkVM
 
     /// <summary>Resolved filter dictionary applied to the target list page.</summary>
     public required IReadOnlyDictionary<string, object?> Filter { get; init; }
+
+    /// <summary>Render the target's table here rather than a button to it.</summary>
+    public bool Inline { get; init; }
+
+    /// <summary>Columns the inline table shows, in order. Null shows the target's own list columns.</summary>
+    public IReadOnlyList<string>? Columns { get; init; }
 }

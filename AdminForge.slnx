@@ -1,5 +1,6 @@
 <Solution>
   <Folder Name="/examples/">
+    <Project Path="examples/CrmApp/CrmApp.csproj" />
     <Project Path="examples/TodoApp/TodoApp.csproj" />
   </Folder>
   <Folder Name="/src/">

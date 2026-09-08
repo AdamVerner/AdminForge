@@ -109,6 +109,25 @@ public sealed class ColumnMeta
     public bool IsFilterable { get; set; } = true;
 
     /// <summary>
+    /// Position in the list view, stamped by the call order of <c>AddColumn</c>. Null for a
+    /// column reflection found but nobody added, which sorts after every stamped one.
+    /// </summary>
+    public int? ListOrder { get; set; }
+
+    /// <summary>
+    /// Format string handed to the value's <c>ToString</c> when rendering. Set via
+    /// <c>ColumnBuilder.Format(...)</c>; null uses the renderer's default per CLR type.
+    /// </summary>
+    public string? Format { get; set; }
+
+    /// <summary>
+    /// CLR type of the entity this column's value identifies. Set via
+    /// <c>ColumnBuilder.LinksTo&lt;TTarget&gt;()</c>; the renderer turns the cell into a link to
+    /// that entity's detail page, keyed by the column's value.
+    /// </summary>
+    public Type? LinkTargetType { get; set; }
+
+    /// <summary>
     /// For navigation-reference columns: optional override producing the link text from
     /// the related instance. Set via <c>ColumnBuilder.LinkText(...)</c>. When null the
     /// renderer falls back to the related entity's <c>DisplayLabel</c>.

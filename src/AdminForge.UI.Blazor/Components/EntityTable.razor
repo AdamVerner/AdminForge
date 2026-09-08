@@ -47,7 +47,7 @@ else
                 <MudTd DataLabel="@col.Label">
                     @if (row.Values.TryGetValue(col.PropertyName, out var raw))
                     {
-                        @RenderCell(raw)
+                        @RenderCell(raw, col)
                     }
                 </MudTd>
             }
@@ -79,9 +79,21 @@ else
     [Parameter] public string? SortBy { get; set; }
     [Parameter] public bool SortDescending { get; set; }
 
-    private IEnumerable<ColumnMeta> VisibleColumns =>
-        Entity?.Columns.Where(c => c.ShowInList && c.Kind != ColumnKind.NavigationCollection)
-        ?? Enumerable.Empty<ColumnMeta>();
+    /// <summary>Property names to show, in this order. Null shows the entity's own list columns.</summary>
+    [Parameter] public IReadOnlyList<string>? Columns { get; set; }
+
+    private IEnumerable<ColumnMeta> VisibleColumns
+    {
+        get
+        {
+            if (Entity is null) return [];
+            if (Columns is null)
+                return Entity.OrderedColumns.Where(c => c.ShowInList && c.Kind != ColumnKind.NavigationCollection);
+            return Columns
+                .Select(name => Entity.Columns.FirstOrDefault(c => c.PropertyName == name))
+                .Where(c => c is not null && c.Kind != ColumnKind.NavigationCollection)!;
+        }
+    }
 
     private bool IsSortable(ColumnMeta col)
     {
@@ -89,7 +101,7 @@ else
         return col.Kind is ColumnKind.Scalar or ColumnKind.Enum && !col.IsForeignKey && col.IsSortable;
     }
 
-    private RenderFragment RenderCell(object? raw) => builder =>
+    private RenderFragment RenderCell(object? raw, ColumnMeta col) => builder =>
     {
         if (raw is null)
         {
@@ -106,16 +118,15 @@ else
             builder.AddContent(0, string.Join(", ", navs.Select(n => n.DisplayLabel)));
             return;
         }
-        if (raw is DateTime dt)
+        var text = ValueFormatter.Format(raw, col);
+        if (Bridge.Entities.FirstOrDefault(e => e.ClrType == col.LinkTargetType) is { } target)
         {
-            builder.AddContent(0, dt.ToString("yyyy-MM-dd HH:mm"));
+            builder.OpenComponent<MudLink>(0);
+            builder.AddAttribute(1, "Href", $"/admin/entities/{target.RouteName}/{Uri.EscapeDataString(raw.ToString() ?? string.Empty)}");
+            builder.AddAttribute(2, "ChildContent", (RenderFragment)(b => b.AddContent(0, text)));
+            builder.CloseComponent();
             return;
         }
-        if (raw is bool b)
-        {
-            builder.AddContent(0, b ? "yes" : "no");
-            return;
-        }
-        builder.AddContent(0, raw.ToString());
+        builder.AddContent(0, text);
     };
 }

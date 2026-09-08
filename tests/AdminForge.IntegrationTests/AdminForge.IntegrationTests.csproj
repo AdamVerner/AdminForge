@@ -22,6 +22,7 @@
     <ProjectReference Include="../../src/AdminForge.LiveUpdates/AdminForge.LiveUpdates.csproj" />
     <ProjectReference Include="../../src/AdminForge.UI.Blazor/AdminForge.UI.Blazor.csproj" />
     <ProjectReference Include="../../src/AdminForge.Middleware/AdminForge.Middleware.csproj" />
+    <ProjectReference Include="../../examples/CrmApp/CrmApp.csproj" />
     <ProjectReference Include="../../examples/TodoApp/TodoApp.csproj" />
   </ItemGroup>
 

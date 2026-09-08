@@ -1457,10 +1457,14 @@ public sealed class BlazorUIBridge : IAdminUIBridge
                 // Build label: explicit override wins; otherwise "View N {label}".
                 string label;
                 string? icon = null;
+                var inline = false;
+                IReadOnlyList<string>? columns = null;
                 if (explicitBySourceNav.TryGetValue(nav.Name, out var explicitMeta))
                 {
                     label = explicitMeta.Label;
                     icon = explicitMeta.Icon;
+                    inline = explicitMeta.Inline;
+                    columns = explicitMeta.Columns;
                 }
                 else
                 {
@@ -1481,6 +1485,8 @@ public sealed class BlazorUIBridge : IAdminUIBridge
                         Icon = icon,
                         RouteName = targetMeta.RouteName,
                         Filter = filter,
+                        Inline = inline,
+                        Columns = columns,
                     }
                 );
             }
@@ -1501,6 +1507,8 @@ public sealed class BlazorUIBridge : IAdminUIBridge
                         Icon = link.Icon,
                         RouteName = targetMeta.RouteName,
                         Filter = filter,
+                        Inline = link.Inline,
+                        Columns = link.Columns,
                     }
                 );
             }

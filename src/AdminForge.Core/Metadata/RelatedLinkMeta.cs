@@ -19,6 +19,18 @@ public sealed class RelatedLinkMeta
     public string? Icon { get; set; }
 
     /// <summary>
+    /// Render the target's table on the source's detail page instead of a button to it.
+    /// Set via <c>RelatedLinkBuilder.Inline()</c>.
+    /// </summary>
+    public bool Inline { get; set; }
+
+    /// <summary>
+    /// Property names to show in an inline table, in this order. Null shows the target table's
+    /// own list columns. Set via <c>RelatedLinkBuilder&lt;TTarget&gt;.Columns(...)</c>.
+    /// </summary>
+    public IReadOnlyList<string>? Columns { get; set; }
+
+    /// <summary>
     /// Compiled function producing the query-string filter dictionary from the source
     /// entity instance. Auto-links produce a single FK-equality entry; user-defined
     /// links may produce several.

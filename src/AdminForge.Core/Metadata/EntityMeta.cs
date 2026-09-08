@@ -51,6 +51,20 @@ public sealed class EntityMeta
     public bool IsReadOnly { get; set; }
 
     /// <summary>
+    /// True when the provider honours <c>ListQuery.Search</c>, which puts the search box on the
+    /// table. On for an EF entity; opt-in for a provider-backed type via
+    /// <c>EntityBuilder.Searchable()</c>.
+    /// </summary>
+    public bool IsSearchable { get; set; }
+
+    /// <summary>
+    /// <see cref="Columns"/> in the order <c>AddColumn</c> named them, with the columns nobody
+    /// added following in reflection order.
+    /// </summary>
+    public IEnumerable<ColumnMeta> OrderedColumns =>
+        Columns.OrderBy(c => c.ListOrder ?? int.MaxValue);
+
+    /// <summary>
     /// Optional resolver returning a short human-readable label for an instance, used when
     /// this entity is referenced as a navigation target. Configured via the fluent builder.
     /// </summary>

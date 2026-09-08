@@ -1,0 +1,222 @@
+@* The table surface: filter bar, table, pagination and the state behind them. The list page is one
+   caller; a detail page embedding a related table is the other, with the parent's key pinned. *@
+@inject IAdminUIBridge Bridge
+@inject NavigationManager Nav
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-4">
+    @if (Embedded)
+    {
+        <MudText Typo="Typo.h6">@(Title ?? Entity.Label)</MudText>
+    }
+    else
+    {
+        <MudText Typo="Typo.h4">@Entity.Label</MudText>
+    }
+    <MudSpacer />
+    @if (!Entity.IsReadOnly && !Embedded)
+    {
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+                   OnClick="@(() => Nav.NavigateTo($"/admin/entities/{Entity.RouteName}/new"))">
+            New @Entity.Label
+        </MudButton>
+    }
+</MudStack>
+
+<FilterBar Entity="@Entity" Filters="_filters" Search="@_search" OnApply="ApplyFilters"
+           Collapsed="@Embedded" PinnedColumns="@FixedFilters?.Keys.ToList()" />
+
+<EntityTable Entity="@Entity"
+             ListVM="_listVM"
+             Columns="@Columns"
+             OnRowClick="OpenRow"
+             OnEdit="EditRow"
+             OnDelete="ConfirmDelete"
+             OnSort="ChangeSort"
+             SortBy="@_sortBy"
+             SortDescending="@_sortDescending" />
+
+<Pagination Page="_page" PageSize="_pageSize" TotalCount="_listVM?.TotalCount ?? 0"
+            OnPageChange="ChangePage" OnPageSizeChange="ChangePageSize" />
+
+@code {
+    [Parameter, EditorRequired] public EntityMeta Entity { get; set; } = default!;
+
+    /// <summary>Applied to every query and not editable in the filter bar.</summary>
+    [Parameter] public IReadOnlyDictionary<string, object?>? FixedFilters { get; set; }
+
+    /// <summary>Property names to show, in this order. Null shows the entity's own list columns.</summary>
+    [Parameter] public IReadOnlyList<string>? Columns { get; set; }
+
+    /// <summary>Heading shown when embedded; defaults to the entity's label.</summary>
+    [Parameter] public string? Title { get; set; }
+
+    /// <summary>On a detail page: smaller heading, no create button, filter bar behind a button.</summary>
+    [Parameter] public bool Embedded { get; set; }
+
+    private EntityListVM? _listVM;
+    private int _page;
+    private int _pageSize = 25;
+    private string? _sortBy;
+    private bool _sortDescending;
+    private Dictionary<string, object?> _filters = new();
+    private string? _search;
+    private bool _loading;
+    private bool _reloadRequested;
+    private string? _loadedFor;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        // Reset paging and sort when the table or its pinned filter changes.
+        var identity = Entity.Name + "|" + string.Join(',', FixedFilters?.Select(f => $"{f.Key}={f.Value}") ?? []);
+        var changed = _loadedFor is not null && _loadedFor != identity;
+        _loadedFor = identity;
+        if (changed)
+        {
+            _page = 0;
+            _sortBy = null;
+            _sortDescending = false;
+            _filters = new();
+            _search = null;
+        }
+        // Seed filters from `?filter:{col}={value}` query-string entries (the URL a related-link
+        // button produces). An embedded table takes its filter from the parent instead.
+        if (!Embedded)
+        {
+            var urlFilters = FilterUrlParser.Parse(Nav.Uri);
+            if (urlFilters.Count > 0)
+            {
+                foreach (var (k, v) in urlFilters)
+                    _filters[k] = v;
+                _page = 0;
+            }
+        }
+        await Reload();
+    }
+
+    // One query at a time: the circuit's scoped services (a DbContext among them) are not safe under
+    // two concurrent operations. A change that lands mid-load runs once, after the current load,
+    // against whatever the page state is by then.
+    private async Task Reload()
+    {
+        if (_loading)
+        {
+            _reloadRequested = true;
+            return;
+        }
+
+        _loading = true;
+        try
+        {
+            do
+            {
+                _reloadRequested = false;
+                var filters = _filters;
+                if (FixedFilters is { Count: > 0 })
+                {
+                    filters = new Dictionary<string, object?>(_filters);
+                    foreach (var (k, v) in FixedFilters)
+                        filters[k] = v;
+                }
+                var query = new ListQuery
+                {
+                    Page = _page,
+                    PageSize = _pageSize,
+                    SortBy = _sortBy,
+                    SortDescending = _sortDescending,
+                    Filters = filters,
+                    Search = _search,
+                };
+                try
+                {
+                    _listVM = await Bridge.ListAsync(Entity, query);
+                }
+                catch (Exception ex)
+                {
+                    Snackbar.Add($"Load failed: {ex.Message}", MudBlazor.Severity.Error);
+                }
+            } while (_reloadRequested);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task ChangePage(int newPage)
+    {
+        _page = newPage;
+        await Reload();
+    }
+
+    private async Task ChangePageSize(int newSize)
+    {
+        _pageSize = newSize;
+        _page = 0;
+        await Reload();
+    }
+
+    // Ascending, then descending, then back to the provider's default order.
+    private async Task ChangeSort(string column)
+    {
+        if (_sortBy != column)
+        {
+            _sortBy = column;
+            _sortDescending = false;
+        }
+        else if (!_sortDescending)
+        {
+            _sortDescending = true;
+        }
+        else
+        {
+            _sortBy = null;
+            _sortDescending = false;
+        }
+        await Reload();
+    }
+
+    private async Task ApplyFilters(FilterState state)
+    {
+        _filters = state.Filters;
+        _search = state.Search;
+        _page = 0;
+        await Reload();
+    }
+
+    private void OpenRow(EntityListRowVM row) =>
+        Nav.NavigateTo($"/admin/entities/{Entity.RouteName}/{Uri.EscapeDataString(row.Key)}");
+
+    private void EditRow(EntityListRowVM row) =>
+        Nav.NavigateTo($"/admin/entities/{Entity.RouteName}/{Uri.EscapeDataString(row.Key)}/edit");
+
+    private async Task ConfirmDelete(EntityListRowVM row)
+    {
+        var parameters = new DialogParameters
+        {
+            ["ContentText"] = $"Delete this {Entity.Label}? This cannot be undone.",
+            ["ButtonText"] = "Delete",
+            ["Color"] = MudBlazor.Color.Error,
+        };
+        var dialog = await DialogService.ShowAsync<ConfirmDialog>("Confirm delete", parameters);
+        var result = await dialog.Result;
+        if (result is null || result.Canceled) return;
+
+        try
+        {
+            var actionContext = new BlazorActionContext(Snackbar, Nav, DialogService, Reload);
+            await Bridge.DeleteAsync(Entity, row.Key, actionContext);
+            Snackbar.Add("Deleted.", MudBlazor.Severity.Success);
+            await Reload();
+        }
+        catch (EntityDeleteFailedException ex)
+        {
+            Snackbar.Add(ex.Message, MudBlazor.Severity.Error);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Delete failed: {ex.Message}", MudBlazor.Severity.Error);
+        }
+    }
+}
