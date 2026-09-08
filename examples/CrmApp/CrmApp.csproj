@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <RootNamespace>CrmApp</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/AdminForge/AdminForge.csproj" />
+    <ProjectReference Include="../../src/AdminForge.Core/AdminForge.Core.csproj" />
+    <ProjectReference Include="../../src/AdminForge.UI.Blazor/AdminForge.UI.Blazor.csproj" />
+    <ProjectReference Include="../../src/AdminForge.Middleware/AdminForge.Middleware.csproj" />
+  </ItemGroup>
+</Project>

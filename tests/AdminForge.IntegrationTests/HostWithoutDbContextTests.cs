@@ -34,11 +34,27 @@ public class HostWithoutDbContextTests
             bridge.FindEntityByRouteName("SiteSettings")!,
             new ListQuery()
         );
-        Assert.Equal("Welcome to Todo Admin!", Assert.Single(settings.Rows).Values["WelcomeMessage"]);
+        Assert.Equal(
+            "Welcome to Todo Admin!",
+            Assert.Single(settings.Rows).Values["WelcomeMessage"]
+        );
 
         var unserved = await Assert.ThrowsAsync<InvalidOperationException>(() =>
             bridge.ListAsync(bridge.FindEntityByRouteName("AuditLogEntry")!, new ListQuery())
         );
         Assert.Contains("AddAdminForgeDataProvider<AuditLogEntry", unserved.Message);
+    }
+
+    [Fact]
+    public void Mounting_Refuses_A_Table_Nobody_Serves()
+    {
+        var builder = WebApplication.CreateBuilder();
+        builder.WebHost.UseTestServer();
+        builder.Services.AddAdminForge(f => f.AllowAnonymousAccess().AddTable<AuditLogEntry>());
+        using var app = builder.Build();
+
+        var failure = Assert.Throws<InvalidOperationException>(() => app.MapAdminForge());
+        Assert.Contains("AuditLogEntry", failure.Message);
+        Assert.Contains("AddAdminForgeDataProvider<AuditLogEntry", failure.Message);
     }
 }

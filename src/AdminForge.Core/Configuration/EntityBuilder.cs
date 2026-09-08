@@ -16,6 +16,7 @@ public sealed class EntityBuilder<T>
 {
     private readonly EntityMeta _meta;
     private readonly Dictionary<string, ColumnMeta> _columnsByName;
+    private int _nextListOrder;
 
     internal EntityBuilder(EntityMeta meta)
     {
@@ -37,6 +38,17 @@ public sealed class EntityBuilder<T>
     public EntityBuilder<T> ReadOnly()
     {
         _meta.IsReadOnly = true;
+        return this;
+    }
+
+    /// <summary>
+    /// Whether the table carries a search box. On by default for an EF entity, whose provider
+    /// searches every string column; off for a provider-backed type until the host says its
+    /// provider honours <c>ListQuery.Search</c>.
+    /// </summary>
+    public EntityBuilder<T> Searchable(bool searchable = true)
+    {
+        _meta.IsSearchable = searchable;
         return this;
     }
 
@@ -107,6 +119,7 @@ public sealed class EntityBuilder<T>
             );
         }
         column.ShowInList = true;
+        column.ListOrder ??= _nextListOrder++;
         configure?.Invoke(new ColumnBuilder<TProp>(column));
         return this;
     }
@@ -219,6 +232,9 @@ public sealed class EntityBuilder<T>
             CustomValueSelector = builder.Selector,
             IsSortable = column.IsSortable,
             IsFilterable = column.IsFilterable,
+            ListOrder = _nextListOrder++,
+            Format = column.Format,
+            LinkTargetType = column.LinkTargetType,
         };
         _meta.Columns.Add(finalMeta);
         _columnsByName[name] = finalMeta;
@@ -465,10 +481,15 @@ public sealed class EntityBuilder<T>
     /// must decompose into a conjunction of <c>target.Prop == source.X</c> equalities;
     /// the source-side expressions are evaluated against the source instance at runtime
     /// to produce a filter dictionary keyed by the target's property names.
+    /// <para>
+    /// <paramref name="configure"/> reaches the link's icon and, through <c>Inline()</c>, the
+    /// target's whole table rendered on this entity's detail page under that filter.
+    /// </para>
     /// </summary>
     public EntityBuilder<T> RelatedLink<TTarget>(
         string label,
-        Expression<Func<T, Expression<Func<TTarget, bool>>>> predicateBuilder
+        Expression<Func<T, Expression<Func<TTarget, bool>>>> predicateBuilder,
+        Action<RelatedLinkBuilder<TTarget>>? configure = null
     )
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(label);
@@ -567,6 +588,7 @@ public sealed class EntityBuilder<T>
             FilterBuilder = filterBuilder,
             SourceNavigationName = null, // cross-entity, no source nav
         };
+        configure?.Invoke(new RelatedLinkBuilder<TTarget>(meta));
         _meta.RelatedLinks.Add(meta);
         return this;
     }

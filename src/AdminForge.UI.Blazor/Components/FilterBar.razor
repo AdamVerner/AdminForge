@@ -1,68 +1,89 @@
-@* Search is always offered — every provider matches it against the string columns; per-column
-   filters appear only for columns that can be filtered. *@
-<MudPaper Class="pa-3 mb-4" Elevation="1">
-    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
-        <MudTextField T="string" @bind-Value="_search" Placeholder="Search" Immediate="true" Clearable="true"
-                      Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search"
-                      OnKeyDown="@SearchKeyDown" Class="adminforge-search" Style="max-width:24rem" />
-        @if (FilterableColumns.Any())
-        {
-            <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Filled.FilterList"
-                       OnClick="@(() => _filtersOpen = !_filtersOpen)" Class="adminforge-filters-toggle">
-                Filters@(ActiveFilterCount > 0 ? $" ({ActiveFilterCount})" : "")
-            </MudButton>
-        }
-        <MudSpacer />
-        @if (ActiveFilterCount > 0 || HasValue(_search) || Filters.Count > 0 || HasValue(Search))
-        {
-            <MudButton Variant="Variant.Text" OnClick="ClearAll" Class="adminforge-clear">Clear</MudButton>
-        }
-        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Apply" Class="adminforge-apply">Apply</MudButton>
-    </MudStack>
-
-    @if (_filtersOpen && FilterableColumns.Any())
+@* Search shows only where the provider honours it; per-column filters only for columns that can
+   be filtered. Embedded in a detail page the whole bar hides behind one button. *@
+@if (HasSearch || FilterableColumns.Any())
+{
+    @if (Collapsed && !_open)
     {
-        <MudGrid Class="mt-2 adminforge-filters">
-            @foreach (var col in FilterableColumns)
-            {
-                <MudItem xs="12" sm="6" md="4">
-                    @{
-                        _local.TryGetValue(col.PropertyName, out var cur);
-                        var underlying = Nullable.GetUnderlyingType(col.ClrType) ?? col.ClrType;
-                    }
-                    @if (col.Kind == ColumnKind.Enum && col.EnumType is not null)
-                    {
-                        var names = Enum.GetNames(col.EnumType);
-                        <MudSelect T="string" Label="@col.Label" Value="@(cur?.ToString())"
-                                   ValueChanged="@(v => _local[col.PropertyName] = v)" Clearable="true">
-                            <MudSelectItem T="string" Value="@(null!)">(any)</MudSelectItem>
-                            @foreach (var n in names)
-                            {
-                                <MudSelectItem T="string" Value="@n">@n</MudSelectItem>
-                            }
-                        </MudSelect>
-                    }
-                    else if (underlying == typeof(bool))
-                    {
-                        var sel = cur?.ToString();
-                        <MudSelect T="string" Label="@col.Label" Value="@sel"
-                                   ValueChanged="@(v => _local[col.PropertyName] = v)">
-                            <MudSelectItem T="string" Value="@(null!)">(any)</MudSelectItem>
-                            <MudSelectItem T="string" Value="@("True")">Yes</MudSelectItem>
-                            <MudSelectItem T="string" Value="@("False")">No</MudSelectItem>
-                        </MudSelect>
-                    }
-                    else
-                    {
-                        <MudTextField T="string" Label="@col.Label" Value="@(cur?.ToString())"
-                                      ValueChanged="@(v => _local[col.PropertyName] = v)" Clearable="true"
-                                      Immediate="true" OnKeyDown="@SearchKeyDown" />
-                    }
-                </MudItem>
-            }
-        </MudGrid>
+        <MudButton Variant="Variant.Text" Size="Size.Small" StartIcon="@Icons.Material.Filled.FilterList"
+                   OnClick="@(() => _open = true)" Class="adminforge-filters-toggle mb-2">
+            Filter@(ActiveFilterCount > 0 ? $" ({ActiveFilterCount})" : "")
+        </MudButton>
     }
-</MudPaper>
+    else
+    {
+        <MudPaper Class="pa-3 mb-4" Elevation="1">
+            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                @if (HasSearch)
+                {
+                    <MudTextField T="string" @bind-Value="_search" Placeholder="Search" Immediate="true" Clearable="true"
+                                  Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search"
+                                  OnKeyDown="@SearchKeyDown" Class="adminforge-search" Style="max-width:24rem" />
+                }
+                @if (FilterableColumns.Any())
+                {
+                    <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Filled.FilterList"
+                               OnClick="@(() => _filtersOpen = !_filtersOpen)" Class="adminforge-filters-toggle">
+                        Filters@(ActiveFilterCount > 0 ? $" ({ActiveFilterCount})" : "")
+                    </MudButton>
+                }
+                <MudSpacer />
+                @if (ActiveFilterCount > 0 || HasValue(_search) || Filters.Count > 0 || HasValue(Search))
+                {
+                    <MudButton Variant="Variant.Text" OnClick="ClearAll" Class="adminforge-clear">Clear</MudButton>
+                }
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Apply" Class="adminforge-apply">Apply</MudButton>
+                @if (Collapsed)
+                {
+                    <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small"
+                                   OnClick="@(() => _open = false)" Class="adminforge-filters-close" />
+                }
+            </MudStack>
+
+            @if (_filtersOpen && FilterableColumns.Any())
+            {
+                <MudGrid Class="mt-2 adminforge-filters">
+                    @foreach (var col in FilterableColumns)
+                    {
+                        <MudItem xs="12" sm="6" md="4">
+                            @{
+                                _local.TryGetValue(col.PropertyName, out var cur);
+                                var underlying = Nullable.GetUnderlyingType(col.ClrType) ?? col.ClrType;
+                            }
+                            @if (col.Kind == ColumnKind.Enum && col.EnumType is not null)
+                            {
+                                var names = Enum.GetNames(col.EnumType);
+                                <MudSelect T="string" Label="@col.Label" Value="@(cur?.ToString())"
+                                           ValueChanged="@(v => _local[col.PropertyName] = v)" Clearable="true">
+                                    <MudSelectItem T="string" Value="@(null!)">(any)</MudSelectItem>
+                                    @foreach (var n in names)
+                                    {
+                                        <MudSelectItem T="string" Value="@n">@n</MudSelectItem>
+                                    }
+                                </MudSelect>
+                            }
+                            else if (underlying == typeof(bool))
+                            {
+                                var sel = cur?.ToString();
+                                <MudSelect T="string" Label="@col.Label" Value="@sel"
+                                           ValueChanged="@(v => _local[col.PropertyName] = v)">
+                                    <MudSelectItem T="string" Value="@(null!)">(any)</MudSelectItem>
+                                    <MudSelectItem T="string" Value="@("True")">Yes</MudSelectItem>
+                                    <MudSelectItem T="string" Value="@("False")">No</MudSelectItem>
+                                </MudSelect>
+                            }
+                            else
+                            {
+                                <MudTextField T="string" Label="@col.Label" Value="@(cur?.ToString())"
+                                              ValueChanged="@(v => _local[col.PropertyName] = v)" Clearable="true"
+                                              Immediate="true" OnKeyDown="@SearchKeyDown" />
+                            }
+                        </MudItem>
+                    }
+                </MudGrid>
+            }
+        </MudPaper>
+    }
+}
 
 @code {
     [Parameter, EditorRequired] public EntityMeta Entity { get; set; } = default!;
@@ -70,25 +91,35 @@
     [Parameter] public string? Search { get; set; }
     [Parameter] public EventCallback<FilterState> OnApply { get; set; }
 
+    /// <summary>Hide the bar behind one button until the user asks for it.</summary>
+    [Parameter] public bool Collapsed { get; set; }
+
+    /// <summary>Columns the caller pins itself — a nested table's parent key has no filter control.</summary>
+    [Parameter] public IReadOnlyCollection<string>? PinnedColumns { get; set; }
+
     private Dictionary<string, object?> _local = new();
     private string? _search;
     private bool _filtersOpen;
+    private bool _open;
 
     protected override void OnParametersSet()
     {
         _local = new Dictionary<string, object?>(Filters);
         _search = Search;
         // Filters that arrived with the URL are worth seeing.
-        if (Filters.Count > 0) _filtersOpen = true;
+        if (Filters.Count > 0) { _filtersOpen = true; _open = true; }
     }
 
+    private bool HasSearch => Entity.IsSearchable;
+
     private IEnumerable<ColumnMeta> FilterableColumns =>
-        Entity.Columns.Where(c =>
+        Entity.OrderedColumns.Where(c =>
             c.Kind is ColumnKind.Scalar or ColumnKind.Enum
             && c.ShowInList
             && c.IsFilterable
             && !c.IsPrimaryKey
             && !c.IsForeignKey
+            && PinnedColumns?.Contains(c.PropertyName) != true
         );
 
     private int ActiveFilterCount => _local.Count(kvp => HasValue(kvp.Value));

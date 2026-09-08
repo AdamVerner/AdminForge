@@ -22,13 +22,16 @@ That's it. No JS toolchain, no separate admin host — Blazor Server components 
 ## What you get
 
 - Auto-generated CRUD pages for every EF Core entity (list, view, create, edit, delete) — with filter, sort, pagination, and validation. Text filters match substrings, case-insensitively.
-- **Provider-backed tables** — `AddTable<T>` on any keyed class describes it from its properties and serves it through the `IAdminDataProvider<T>` you register; `ReadOnly()` drops the create and edit surface, and a column offers a sort or filter control only once `Sortable()` / `Filterable()` says the provider honours it. A host with no DbContext at all calls `AddAdminForge(forge => ...)` and registers a provider per table.
+- **Provider-backed tables** — `AddTable<T>` on any keyed class describes it from its properties and serves it through the `IAdminDataProvider<T>` you register; `ReadOnly()` drops the create and edit surface, and a column offers a sort or filter control only once `Sortable()` / `Filterable()` says the provider honours it, as the table offers a search box only once `Searchable()` does. A host with no DbContext at all calls `AddAdminForge(forge => ...)` and registers a provider per table.
+- **Every table has a provider at boot** — `MapAdminForge()` resolves one per registered table and names the ones it cannot serve, rather than failing on the first page load.
 - **One DI scope per operation** — every list, find, save, action and widget resolves its provider and handler in a fresh scope, so a scoped `DbContext` or service lives for one call, not for the hours a Blazor circuit stays open. The scope's `IUserAccessor` names the user the circuit was opened for.
 - **Dashboards** composed in C# from stat cards, line charts, and table widgets, arranged in a row-based grid layout.
 - **Generic forms** with 8 field types (text, number, float, bool, date, datetime, markdown, file upload) and a typed submit handler.
 - **Per-entity custom actions** surfaced as buttons on the entity view (with optional confirmation dialogs).
-- **Related-table links** auto-generated from collection navigations; cross-entity links are configurable.
+- **Related tables** auto-generated from collection navigations; cross-entity links are configurable. `Inline()` renders the related table *on* the detail page — its own sort, paging and filters, pinned to the parent row, with its filter bar tucked behind one button — and `Columns(...)` picks which columns it shows.
+- **Cell links** — `LinksTo<TTarget>()` turns a column carrying another table's id into a link to that row, for read models that have no navigation to follow.
 - **Custom server-side columns** projected via `Expression<Func<T,TValue>>` — composes with filter/sort/pagination.
+- **Columns render in `AddColumn` order**, and one value formatter serves the list and the detail page; `Format("yyyy-MM-dd")` overrides the pattern per column.
 - **Audit log hook** — a single delegate receives every create/update/delete/custom-action event.
 - **Per-action authorization policies** — `AdminForge:{Entity}:{Action}` policies are materialised on demand by a provider that wraps the host's own, so the host's policies keep resolving. `IAdminAuthorizationPolicy` is asked before every read and write the bridge performs.
 - **Authorization required at mount** — `MapAdminForge()` throws at startup unless the host set an umbrella policy or registered its own `IAdminAuthorizationPolicy`. An open panel has to say so: `AllowAnonymousAccess()`. The umbrella policy goes on the panel's endpoints, so the host's authentication scheme handles a rejected request — a cookie scheme redirects to its login page. The panel's scripts and styles are served anonymously.
@@ -81,13 +84,20 @@ builder.Services.AddAdminForge<AppDbContext>(forge => forge
         .OnSubmit((sp, values, ctx) => SendAsync(values))));
 ```
 
-## Example
+## Examples
 
-A full working sample lives in `examples/TodoApp` (EF Core + SQLite). Run it locally:
+`examples/TodoApp` — EF Core + SQLite, the DbContext path:
 
 ```
 task example:todo:seed   # one-shot DB seed
 task example:todo        # run the host on http://localhost:5xxx/admin
+```
+
+`examples/CrmApp` — no DbContext at all: four flat read models, one provider each, with the
+nested tables, cell links and per-table search that path needs:
+
+```
+task example:crm
 ```
 
 ## Status

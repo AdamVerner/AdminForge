@@ -57,6 +57,29 @@ public sealed class ColumnBuilder<TProp>
         return this;
     }
 
+    /// <summary>
+    /// Format string for the rendered value — a date/time pattern, a numeric format. Overrides
+    /// the renderer's default for the column's CLR type.
+    /// </summary>
+    public ColumnBuilder<TProp> Format(string format)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(format);
+        _meta.Format = format;
+        return this;
+    }
+
+    /// <summary>
+    /// Render this column's value as a link to <typeparamref name="TTarget"/>'s detail page,
+    /// keyed by the value. For a flat read model carrying another table's id, where there is no
+    /// navigation for the scanner to find.
+    /// </summary>
+    public ColumnBuilder<TProp> LinksTo<TTarget>()
+        where TTarget : class
+    {
+        _meta.LinkTargetType = typeof(TTarget);
+        return this;
+    }
+
     /// <summary>Hide the column from edit forms (still visible in lists).</summary>
     public ColumnBuilder<TProp> HiddenInEdit()
     {

@@ -154,13 +154,17 @@ builder.Services.AddAdminForge<AppDbContext>(forge =>
                 // as an exact-match filter.
                 .RelatedLink<Todo>(
                     "Active Tasks",
-                    source => target => target.AssigneeId == source.Id
+                    source => target => target.AssigneeId == source.Id,
+                    // Inline: the user's tasks render as a table on the user's page rather than
+                    // a button to a pre-filtered list.
+                    link => link.Inline().Columns(t => t.Title, t => t.Status, t => t.DueAt)
                 )
                 // Opt-out of the (low value) auto-link to TodoLists owned by this user.
                 .HideRelatedLink(u => u.TodoLists)
         )
         .AddTable<TodoList>(e =>
             e.Nav(n => n.Group("Work").Order(1).Label("Lists"))
+                .RelatedLink(l => l.Todos, link => link.Label("Tasks in this list").Inline())
                 .AddColumn(l => l.Name)
                 .AddColumn(l => l.Owner)
                 .AddColumn(l => l.IsArchived)
@@ -196,7 +200,7 @@ builder.Services.AddAdminForge<AppDbContext>(forge =>
                     c => c.LinkText(u => "Owned by " + (u == null ? "?" : u.DisplayName))
                 )
                 // An exact-match filter on a timestamp never hits; sorting on it is what people want.
-                .AddColumn(t => t.DueAt, c => c.Filterable(false))
+                .AddColumn(t => t.DueAt, c => c.Filterable(false).Format("yyyy-MM-dd"))
                 .HideColumn(t => t.CreatedAt)
                 // Visiting /admin/entities/Todo/{id} re-fetches the displayed row every 5s.
                 .WithLivePolling(TimeSpan.FromSeconds(5))
@@ -241,6 +245,9 @@ builder.Services.AddAdminForge<AppDbContext>(forge =>
             e.Label("Audit Log")
                 .ReadOnly()
                 .Nav(n => n.Group("System").Order(1))
+                // This provider matches Search against entity type and user; SiteSettings, one row
+                // that ignores it, says nothing and gets no search box.
+                .Searchable()
                 .AddColumn(a => a.Timestamp, c => c.Sortable())
                 .AddColumn(a => a.Action)
                 .AddColumn(a => a.EntityType)

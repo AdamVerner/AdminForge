@@ -39,7 +39,7 @@ else
 
     <MudCard>
         <MudCardContent>
-            @foreach (var column in Entity.Columns)
+            @foreach (var column in Entity.OrderedColumns)
             {
                 if (column.Kind == ColumnKind.NavigationCollection) continue;
                 if (!_view.Values.TryGetValue(column.PropertyName, out var raw)) continue;
@@ -52,8 +52,20 @@ else
         </MudCardContent>
     </MudCard>
 
-    <RelatedLinksSection Links="_view.RelatedLinks" />
+    <RelatedLinksSection Links="@_view.RelatedLinks.Where(l => !l.Inline).ToList()" />
     <EntityActionsBar Entity="@Entity" EncodedKey="@_view.Key" OnInvoked="Refresh" />
+
+    @foreach (var link in _view.RelatedLinks.Where(l => l.Inline))
+    {
+        var target = Bridge.FindEntityByRouteName(link.RouteName);
+        if (target is null) continue;
+        <MudCard Class="mt-4" @key="link.Label">
+            <MudCardContent>
+                <EntityListView Entity="@target" Title="@link.Label" Embedded="true"
+                                FixedFilters="@link.Filter" Columns="@link.Columns" />
+            </MudCardContent>
+        </MudCard>
+    }
 }
 
 @code {
@@ -205,6 +217,14 @@ else
             }
             return;
         }
-        builder.AddContent(0, raw.ToString());
+        if (Bridge.Entities.FirstOrDefault(e => e.ClrType == column.LinkTargetType) is { } target)
+        {
+            builder.OpenComponent<MudLink>(0);
+            builder.AddAttribute(1, "Href", $"/admin/entities/{target.RouteName}/{Uri.EscapeDataString(raw.ToString() ?? string.Empty)}");
+            builder.AddAttribute(2, "ChildContent", (RenderFragment)(b => b.AddContent(0, ValueFormatter.Format(raw, column))));
+            builder.CloseComponent();
+            return;
+        }
+        builder.AddContent(0, ValueFormatter.Format(raw, column));
     };
 }
