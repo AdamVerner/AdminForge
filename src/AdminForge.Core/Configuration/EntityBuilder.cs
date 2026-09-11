@@ -16,7 +16,7 @@ public sealed class EntityBuilder<T>
 {
     private readonly EntityMeta _meta;
     private readonly Dictionary<string, ColumnMeta> _columnsByName;
-    private int _nextListOrder;
+    private int _nextDisplayOrder;
 
     internal EntityBuilder(EntityMeta meta)
     {
@@ -61,45 +61,12 @@ public sealed class EntityBuilder<T>
     }
 
     /// <summary>
-    /// Tweak a single column (label, helper text, validators, visibility). Note:
-    /// this does <em>not</em> opt the column into list views — use the
-    /// <see cref="AddColumn{TProp}(Expression{Func{T, TProp}}, Action{ColumnBuilder{TProp}}?)"/>
-    /// overload for that. (Both surfaces accept a <see cref="ColumnBuilder{TProp}"/>
-    /// so they're functionally interchangeable apart from list opt-in semantics.)
+    /// Configure a discovered column: label, helper text, format, validators, per-surface
+    /// visibility. Naming a column here is also what puts it in the table — no discovered column
+    /// is listed until it is named — unless the callback calls <c>HiddenInList()</c>. Declaration
+    /// order is the display order on every surface.
     /// </summary>
     public EntityBuilder<T> Column<TProp>(
-        Expression<Func<T, TProp>> selector,
-        Action<ColumnBuilder<TProp>> configure
-    )
-    {
-        ArgumentNullException.ThrowIfNull(selector);
-        ArgumentNullException.ThrowIfNull(configure);
-
-        var propertyName = GetPropertyName(selector);
-        if (!_columnsByName.TryGetValue(propertyName, out var column))
-        {
-            throw new InvalidOperationException(
-                $"Column '{propertyName}' was not discovered on entity '{typeof(T).Name}'."
-            );
-        }
-
-        configure(new ColumnBuilder<TProp>(column));
-        return this;
-    }
-
-    /// <summary>
-    /// Opt an auto-discovered column into the list view (and the filter bar). Lists
-    /// are opt-in: by default no auto-discovered column appears in the table — the
-    /// host calls <c>AddColumn(t =&gt; t.Title)</c> for each column it wants visible.
-    /// The optional <paramref name="configure"/> callback tweaks the same surface
-    /// area as <see cref="Column{TProp}"/> (label, description, validators, etc.).
-    /// <para>
-    /// Custom computed columns (added via the
-    /// <see cref="AddColumn{TValue}(string, Action{CustomColumnBuilder{T, TValue}})"/>
-    /// overload) are list-visible automatically.
-    /// </para>
-    /// </summary>
-    public EntityBuilder<T> AddColumn<TProp>(
         Expression<Func<T, TProp>> selector,
         Action<ColumnBuilder<TProp>>? configure = null
     )
@@ -119,7 +86,7 @@ public sealed class EntityBuilder<T>
             );
         }
         column.ShowInList = true;
-        column.ListOrder ??= _nextListOrder++;
+        column.DisplayOrder ??= _nextDisplayOrder++;
         configure?.Invoke(new ColumnBuilder<TProp>(column));
         return this;
     }
@@ -142,8 +109,8 @@ public sealed class EntityBuilder<T>
     }
 
     /// <summary>
-    /// Hide a single auto-discovered column from list and edit surfaces (the column is
-    /// still part of the entity model and is editable through the underlying provider).
+    /// Hide a single discovered column from every surface — list, view and edit. The column is
+    /// still part of the entity model and still written through the provider.
     /// </summary>
     public EntityBuilder<T> HideColumn<TProp>(Expression<Func<T, TProp>> selector)
     {
@@ -156,16 +123,17 @@ public sealed class EntityBuilder<T>
             );
         }
         column.ShowInList = false;
+        column.HiddenInView = true;
         column.HiddenInEdit = true;
         return this;
     }
 
     /// <summary>
-    /// Add a custom computed column. <paramref name="name"/> doubles as the property key
-    /// (used for sort/filter routing); the configure callback must call
-    /// <c>From(...)</c> with a server-side projection — failing to do so throws.
+    /// Add a computed column that has no backing property. <paramref name="name"/> doubles as the
+    /// key used for sort/filter routing. The callback must name exactly one value source:
+    /// <c>From(...)</c> for a server-side projection or <c>Resolve(...)</c> for an in-process call.
     /// </summary>
-    public EntityBuilder<T> AddColumn<TValue>(
+    public EntityBuilder<T> Column<TValue>(
         string name,
         Action<CustomColumnBuilder<T, TValue>> configure
     )
@@ -189,11 +157,7 @@ public sealed class EntityBuilder<T>
                 || Nullable.GetUnderlyingType(typeof(TValue)) is not null,
             Kind = ColumnKind.Scalar,
             IsCustom = true,
-            // Custom (computed) columns are list-visible by default — the user added
-            // them precisely so they'd render in the table.
-            ShowInList = true,
-            // Computed columns default to opt-in for sort/filter — the user enables
-            // each per call so the SQL surface stays predictable.
+            // Sort/filter is opt-in per call so the SQL surface stays predictable.
             IsSortable = false,
             IsFilterable = false,
         };
@@ -201,15 +165,25 @@ public sealed class EntityBuilder<T>
         var builder = new CustomColumnBuilder<T, TValue>(column);
         configure(builder);
 
-        if (builder.Selector is null)
+        if (builder.Selector is null == (builder.Resolver is null))
         {
             throw new InvalidOperationException(
-                $"Custom column '{name}' on entity '{typeof(T).Name}' is missing a .From(...) selector."
+                $"Computed column '{name}' on entity '{typeof(T).Name}' must name exactly one value "
+                    + "source: From(...) to project it server-side, or Resolve(...) to compute it in-process."
             );
         }
+        if (builder.Resolver is not null && (column.IsSortable || column.IsFilterable))
+        {
+            throw new InvalidOperationException(
+                $"Computed column '{name}' on entity '{typeof(T).Name}' resolves in-process, so the "
+                    + "database cannot sort or filter on it. Project it with From(...) instead."
+            );
+        }
+        // A projection is cheap enough for a table by default; a resolver costs one call per row,
+        // so it stays on the detail page until the host asks for it with ShownInList().
+        if (!builder.ListVisibilitySet)
+            column.ShowInList = builder.Resolver is null;
 
-        // Stamp the lambda onto the meta in a non-strongly-typed slot so the provider
-        // can consume it without knowing TValue.
         var finalMeta = new ColumnMeta
         {
             PropertyName = column.PropertyName,
@@ -227,12 +201,14 @@ public sealed class EntityBuilder<T>
             IsRequired = false,
             Description = column.Description,
             ShowInList = column.ShowInList,
+            HiddenInView = column.HiddenInView,
             HiddenInEdit = true, // computed columns are read-only
             IsCustom = true,
             CustomValueSelector = builder.Selector,
+            ValueResolver = builder.Resolver,
             IsSortable = column.IsSortable,
             IsFilterable = column.IsFilterable,
-            ListOrder = _nextListOrder++,
+            DisplayOrder = _nextDisplayOrder++,
             Format = column.Format,
             LinkTargetType = column.LinkTargetType,
         };

@@ -87,6 +87,13 @@ public sealed class ColumnBuilder<TProp>
         return this;
     }
 
+    /// <summary>Hide the column from the entity view page (still visible in lists and forms).</summary>
+    public ColumnBuilder<TProp> HiddenInView()
+    {
+        _meta.HiddenInView = true;
+        return this;
+    }
+
     /// <summary>
     /// Adds a custom validator. <paramref name="predicate"/> returns true for valid values;
     /// when it returns false the supplied <paramref name="message"/> is surfaced.

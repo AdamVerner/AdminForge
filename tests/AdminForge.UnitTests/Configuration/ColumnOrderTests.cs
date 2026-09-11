@@ -20,9 +20,7 @@ public class ColumnOrderTests
     {
         var builder = new AdminForgeBuilder(Scan());
         builder.AddTable<Todo>(e =>
-            e.AddColumn(t => t.Status)
-                .AddColumn(t => t.Title)
-                .AddColumn<int>("Age", c => c.From(t => t.Id))
+            e.Column(t => t.Status).Column(t => t.Title).Column<int>("Age", c => c.From(t => t.Id))
         );
         var todo = builder.Build().Entities.Single();
 
@@ -42,7 +40,7 @@ public class ColumnOrderTests
     {
         var builder = new AdminForgeBuilder(Scan());
         builder.AddTable<Todo>(e =>
-            e.AddColumn(t => t.Title).AddColumn(t => t.Status).AddColumn(t => t.Title)
+            e.Column(t => t.Title).Column(t => t.Status).Column(t => t.Title)
         );
         var todo = builder.Build().Entities.Single();
         Assert.Equal(

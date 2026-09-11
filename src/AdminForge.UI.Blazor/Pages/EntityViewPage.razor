@@ -42,6 +42,7 @@ else
             @foreach (var column in Entity.OrderedColumns)
             {
                 if (column.Kind == ColumnKind.NavigationCollection) continue;
+                if (column.HiddenInView) continue;
                 if (!_view.Values.TryGetValue(column.PropertyName, out var raw)) continue;
 
                 <MudStack Row="true" Class="mb-3">

@@ -19,7 +19,10 @@ public class AdminPolicyProviderTests
         configure?.Invoke(authzOptions);
         var wrapped = Options.Create(authzOptions);
         var forgeOptions = new AdminForgeOptions { AuthorizationPolicy = umbrella };
-        return new AdminPolicyProvider(new DefaultAuthorizationPolicyProvider(wrapped), forgeOptions);
+        return new AdminPolicyProvider(
+            new DefaultAuthorizationPolicyProvider(wrapped),
+            forgeOptions
+        );
     }
 
     [Fact]
@@ -29,7 +32,9 @@ public class AdminPolicyProviderTests
         services.AddLogging();
         services.AddSingleton<IAuthorizationPolicyProvider, HostPolicyProvider>();
         services.AddSingleton(new AdminForgeOptions { AuthorizationPolicy = "FromHost" });
-        AdminForge.Middleware.AdminForgeEndpointRouteBuilderExtensions.AddAdminForgeBlazor(services);
+        AdminForge.Middleware.AdminForgeEndpointRouteBuilderExtensions.AddAdminForgeBlazor(
+            services
+        );
         var provider = services
             .BuildServiceProvider()
             .GetRequiredService<IAuthorizationPolicyProvider>();

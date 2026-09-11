@@ -13,7 +13,9 @@ namespace AdminForge.DataAccess.EfCore;
 /// single <see cref="IQueryable{T}"/> chain so providers like SQLite and
 /// SQL Server can translate them server-side.
 /// </summary>
-public class EfCoreDataProvider<TContext, TEntity> : IAdminDataProvider<TEntity>
+public class EfCoreDataProvider<TContext, TEntity>
+    : IAdminDataProvider<TEntity>,
+        IAdminColumnProjector<TEntity>
     where TContext : DbContext
     where TEntity : class
 {
@@ -131,6 +133,22 @@ public class EfCoreDataProvider<TContext, TEntity> : IAdminDataProvider<TEntity>
             TotalCount = total,
             CustomValues = customValues,
         };
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyDictionary<string, object?>> ProjectAsync(
+        TEntity instance,
+        IReadOnlyDictionary<string, CustomColumnSpec> columns,
+        CancellationToken cancellationToken = default
+    )
+    {
+        ArgumentNullException.ThrowIfNull(instance);
+        ArgumentNullException.ThrowIfNull(columns);
+        if (columns.Count == 0)
+            return new Dictionary<string, object?>(StringComparer.Ordinal);
+        var rows = await ProjectCustomColumns([instance], columns, cancellationToken)
+            .ConfigureAwait(false);
+        return rows[0];
     }
 
     /// <summary>

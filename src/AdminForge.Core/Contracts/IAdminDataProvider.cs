@@ -101,3 +101,23 @@ public sealed class ListResult<T>
     public IReadOnlyList<IReadOnlyDictionary<string, object?>> CustomValues { get; init; } =
         Array.Empty<IReadOnlyDictionary<string, object?>>();
 }
+
+/// <summary>
+/// Optional capability: compute a single instance's <c>From(...)</c> columns, so they render on
+/// the entity view page and not only in the table. Implement it on a provider that can translate
+/// the stored selector expressions — the EF Core provider does. A provider that does not
+/// implement it simply has no projected columns on the detail page.
+/// </summary>
+public interface IAdminColumnProjector<in T>
+    where T : class
+{
+    /// <summary>
+    /// Returns column name → projected value for <paramref name="columns"/>, evaluated against
+    /// <paramref name="instance"/> on the server.
+    /// </summary>
+    Task<IReadOnlyDictionary<string, object?>> ProjectAsync(
+        T instance,
+        IReadOnlyDictionary<string, CustomColumnSpec> columns,
+        CancellationToken cancellationToken = default
+    );
+}

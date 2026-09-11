@@ -30,8 +30,9 @@ That's it. No JS toolchain, no separate admin host — Blazor Server components 
 - **Per-entity custom actions** surfaced as buttons on the entity view (with optional confirmation dialogs).
 - **Related tables** auto-generated from collection navigations; cross-entity links are configurable. `Inline()` renders the related table *on* the detail page — its own sort, paging and filters, pinned to the parent row, with its filter bar tucked behind one button — and `Columns(...)` picks which columns it shows.
 - **Cell links** — `LinksTo<TTarget>()` turns a column carrying another table's id into a link to that row, for read models that have no navigation to follow.
-- **Custom server-side columns** projected via `Expression<Func<T,TValue>>` — composes with filter/sort/pagination.
-- **Columns render in `AddColumn` order**, and one value formatter serves the list and the detail page; `Format("yyyy-MM-dd")` overrides the pattern per column.
+- **Computed columns**, in two kinds. `From(expr)` projects server-side, so it sorts, filters and pages with everything else; `Resolve((sp, row, ct) => …)` computes in-process — another service, another database, an expensive call — and is therefore detail-only until `ShownInList()` says one call per row is acceptable. Both render on the list and the detail page.
+- **Per-surface visibility** — `HiddenInList()`, `HiddenInView()` and `HiddenInEdit()` each hide a column from one surface; `HideColumn(...)` hides it from all three.
+- **Columns render in `Column` order**, and one value formatter serves the list and the detail page; `Format("yyyy-MM-dd")` overrides the pattern per column.
 - **Audit log hook** — a single delegate receives every create/update/delete/custom-action event.
 - **Per-action authorization policies** — `AdminForge:{Entity}:{Action}` policies are materialised on demand by a provider that wraps the host's own, so the host's policies keep resolving. `IAdminAuthorizationPolicy` is asked before every read and write the bridge performs.
 - **Authorization required at mount** — `MapAdminForge()` throws at startup unless the host set an umbrella policy or registered its own `IAdminAuthorizationPolicy`. An open panel has to say so: `AllowAnonymousAccess()`. The umbrella policy goes on the panel's endpoints, so the host's authentication scheme handles a rejected request — a cookie scheme redirects to its login page. The panel's scripts and styles are served anonymously.
@@ -66,8 +67,10 @@ builder.Services.AddAdminForge<AppDbContext>(forge => forge
     // Not on the DbContext: served by services.AddAdminForgeDataProvider<AuditEntry, AuditProvider>()
     .AddTable<AuditEntry>(e => e
         .ReadOnly()
-        .AddColumn(a => a.At, c => c.Sortable())
-        .AddColumn(a => a.Action))
+        .Column(a => a.At, c => c.Sortable())
+        .Column(a => a.Action)
+        .Column<int>("Retries", c => c
+            .Resolve((sp, entry, ct) => sp.GetRequiredService<IRetryLog>().CountAsync(entry.Id, ct))))
 
     .AddDashboard("ops", d => d
         .WithTitle("Operations")

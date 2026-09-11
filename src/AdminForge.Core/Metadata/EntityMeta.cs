@@ -58,11 +58,11 @@ public sealed class EntityMeta
     public bool IsSearchable { get; set; }
 
     /// <summary>
-    /// <see cref="Columns"/> in the order <c>AddColumn</c> named them, with the columns nobody
+    /// <see cref="Columns"/> in the order <c>Column</c> named them, with the columns nobody
     /// added following in reflection order.
     /// </summary>
     public IEnumerable<ColumnMeta> OrderedColumns =>
-        Columns.OrderBy(c => c.ListOrder ?? int.MaxValue);
+        Columns.OrderBy(c => c.DisplayOrder ?? int.MaxValue);
 
     /// <summary>
     /// Optional resolver returning a short human-readable label for an instance, used when

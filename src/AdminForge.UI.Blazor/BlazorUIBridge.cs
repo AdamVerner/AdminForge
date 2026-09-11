@@ -1325,6 +1325,14 @@ public sealed class BlazorUIBridge : IAdminUIBridge
                     foreach (var (colName, value) in result.CustomValues[i])
                         rowValues[colName] = value;
                 }
+                await AddResolvedValuesAsync(
+                        services,
+                        item,
+                        rowValues,
+                        listedOnly: true,
+                        cancellationToken
+                    )
+                    .ConfigureAwait(false);
                 rows.Add(
                     new EntityListRowVM { Key = _keyAccessor.EncodeKey(item), Values = rowValues }
                 );
@@ -1372,6 +1380,16 @@ public sealed class BlazorUIBridge : IAdminUIBridge
             if (entity is null)
                 return null;
             var values = BuildValueMap(entity, includeNavigations: true);
+            await AddProjectedValuesAsync(services, entity, values, cancellationToken)
+                .ConfigureAwait(false);
+            await AddResolvedValuesAsync(
+                    services,
+                    entity,
+                    values,
+                    listedOnly: false,
+                    cancellationToken
+                )
+                .ConfigureAwait(false);
             var relatedLinks = await BuildRelatedLinksAsync(services, entity, cancellationToken)
                 .ConfigureAwait(false);
             return new EntityViewVM
@@ -1381,6 +1399,54 @@ public sealed class BlazorUIBridge : IAdminUIBridge
                 Values = values,
                 RelatedLinks = relatedLinks,
             };
+        }
+
+        /// <summary>
+        /// Fill in the <c>From(...)</c> columns for a single instance. Their expressions are
+        /// written for the database, not for a loaded object — <c>FindAsync</c> leaves collection
+        /// navigations empty — so they are re-projected server-side rather than compiled here.
+        /// A provider that cannot project them leaves the columns off the page, as before.
+        /// </summary>
+        private async Task AddProjectedValuesAsync(
+            IServiceProvider services,
+            TEntity instance,
+            Dictionary<string, object?> values,
+            CancellationToken cancellationToken
+        )
+        {
+            var specs = BuildCustomColumnSpecs();
+            if (specs.Count == 0)
+                return;
+            if (Provider(services) is not IAdminColumnProjector<TEntity> projector)
+                return;
+            var projected = await projector
+                .ProjectAsync(instance, specs, cancellationToken)
+                .ConfigureAwait(false);
+            foreach (var (name, value) in projected)
+                values[name] = value;
+        }
+
+        /// <summary>
+        /// Run the <c>Resolve(...)</c> columns for one instance, one after another: they share the
+        /// operation's DI scope, so two that reach for the same scoped DbContext must not overlap.
+        /// On a list page this is one call per resolved column per row.
+        /// </summary>
+        private async Task AddResolvedValuesAsync(
+            IServiceProvider services,
+            TEntity instance,
+            Dictionary<string, object?> values,
+            bool listedOnly,
+            CancellationToken cancellationToken
+        )
+        {
+            foreach (var column in _meta.Columns)
+            {
+                if (column.ValueResolver is null || (listedOnly && !column.ShowInList))
+                    continue;
+                values[column.PropertyName] = await column
+                    .ValueResolver(services, instance, cancellationToken)
+                    .ConfigureAwait(false);
+            }
         }
 
         /// <summary>
