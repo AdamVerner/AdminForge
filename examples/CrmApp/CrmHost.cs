@@ -35,12 +35,12 @@ public static class CrmHost
                         .Searchable()
                         .DisplayMember(o => o.Name)
                         // Column order follows these calls, not the record's property order.
-                        .AddColumn(o => o.Name, c => c.Sortable().Filterable())
-                        .AddColumn(o => o.Plan, c => c.Filterable())
-                        .AddColumn(o => o.Seats, c => c.Sortable())
-                        .AddColumn(o => o.SuspendedReason)
-                        .AddColumn(o => o.CreatedAt, c => c.Sortable().Format("yyyy-MM-dd"))
-                        .AddColumn(o => o.Id)
+                        .Column(o => o.Name, c => c.Sortable().Filterable())
+                        .Column(o => o.Plan, c => c.Filterable())
+                        .Column(o => o.Seats, c => c.Sortable())
+                        .Column(o => o.SuspendedReason)
+                        .Column(o => o.CreatedAt, c => c.Sortable().Format("yyyy-MM-dd"))
+                        .Column(o => o.Id)
                         // The members of this organization, rendered on its detail page.
                         .RelatedLink<Member>(
                             "Members",
@@ -67,38 +67,38 @@ public static class CrmHost
                         .Nav(n => n.Group("Customers").Order(1))
                         .Searchable()
                         .DisplayMember(a => a.DisplayName)
-                        .AddColumn(a => a.DisplayName, c => c.Sortable())
-                        .AddColumn(a => a.Email, c => c.Sortable().Filterable())
-                        .AddColumn(a => a.CreatedAt, c => c.Sortable())
-                        .AddColumn(a => a.Id)
+                        .Column(a => a.DisplayName, c => c.Sortable())
+                        .Column(a => a.Email, c => c.Sortable().Filterable())
+                        .Column(a => a.CreatedAt, c => c.Sortable())
+                        .Column(a => a.Id)
                 )
                 .AddTable<Member>(e =>
                     e.Label("Members")
                         .ReadOnly()
                         .Nav(n => n.Group("Customers").Order(2))
                         .Searchable()
-                        .AddColumn(m => m.AccountId, c => c.Label("Account").LinksTo<Account>())
-                        .AddColumn(
+                        .Column(m => m.AccountId, c => c.Label("Account").LinksTo<Account>())
+                        .Column(
                             m => m.OrgId,
                             c => c.Label("Organization").Filterable().LinksTo<Organization>()
                         )
-                        .AddColumn(m => m.Role, c => c.Filterable())
-                        .AddColumn(m => m.JoinedAt, c => c.Sortable())
-                        .AddColumn(m => m.IsActive)
+                        .Column(m => m.Role, c => c.Filterable())
+                        .Column(m => m.JoinedAt, c => c.Sortable())
+                        .Column(m => m.IsActive)
                 )
                 // No Searchable(): this provider ignores ListQuery.Search, so no search box appears.
                 .AddTable<ApiKey>(e =>
                     e.Label("API keys")
                         .ReadOnly()
                         .Nav(n => n.Group("Customers").Order(3))
-                        .AddColumn(k => k.Name, c => c.Sortable())
-                        .AddColumn(
+                        .Column(k => k.Name, c => c.Sortable())
+                        .Column(
                             k => k.OrgId,
                             c => c.Label("Organization").Filterable().LinksTo<Organization>()
                         )
-                        .AddColumn(k => k.CreatedAt, c => c.Sortable().Format("yyyy-MM-dd"))
-                        .AddColumn(k => k.ExpiresAt, c => c.Format("yyyy-MM-dd"))
-                        .AddColumn(k => k.IsRevoked)
+                        .Column(k => k.CreatedAt, c => c.Sortable().Format("yyyy-MM-dd"))
+                        .Column(k => k.ExpiresAt, c => c.Format("yyyy-MM-dd"))
+                        .Column(k => k.IsRevoked)
                 )
         );
 

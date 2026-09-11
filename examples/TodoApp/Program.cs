@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json.Serialization;
 using AdminForge;
 using AdminForge.Core.Configuration;
@@ -76,10 +77,10 @@ builder.Services.AddAdminForge<AppDbContext>(forge =>
             e.Nav(n => n.Group("People").Order(1))
                 .DisplayMember(u => u.DisplayName)
                 // List view is opt-in: name the columns to render.
-                .AddColumn(u => u.Email)
-                .AddColumn(u => u.DisplayName)
-                .AddColumn(u => u.Role)
-                .AddColumn(u => u.CreatedAt)
+                .Column(u => u.Email)
+                .Column(u => u.DisplayName)
+                .Column(u => u.Role)
+                .Column(u => u.CreatedAt)
                 .OnDelete(
                     async (sp, user, ctx, ct) =>
                     {
@@ -165,10 +166,10 @@ builder.Services.AddAdminForge<AppDbContext>(forge =>
         .AddTable<TodoList>(e =>
             e.Nav(n => n.Group("Work").Order(1).Label("Lists"))
                 .RelatedLink(l => l.Todos, link => link.Label("Tasks in this list").Inline())
-                .AddColumn(l => l.Name)
-                .AddColumn(l => l.Owner)
-                .AddColumn(l => l.IsArchived)
-                .AddColumn(l => l.CreatedAt)
+                .Column(l => l.Name)
+                .Column(l => l.Owner)
+                .Column(l => l.IsArchived)
+                .Column(l => l.CreatedAt)
                 .OnDelete(
                     async (sp, list, ctx, ct) =>
                     {
@@ -181,7 +182,7 @@ builder.Services.AddAdminForge<AppDbContext>(forge =>
         )
         .AddTable<Todo>(e =>
             e.Nav(n => n.Group("Work").Order(2).Label("Tasks"))
-                .AddColumn(
+                .Column(
                     t => t.Title,
                     c =>
                         c.Label("Headline")
@@ -191,16 +192,55 @@ builder.Services.AddAdminForge<AppDbContext>(forge =>
                                 "Title must be at least 3 characters."
                             )
                 )
-                .AddColumn(t => t.Status)
-                .AddColumn(t => t.Priority)
+                .Column(t => t.Status)
+                .Column(t => t.Priority)
                 // Typed LinkText: parameter type matches the column's CLR type at
                 // compile time — no LambdaExpression cast required.
-                .AddColumn(
+                .Column(
                     t => t.Assignee,
                     c => c.LinkText(u => "Owned by " + (u == null ? "?" : u.DisplayName))
                 )
                 // An exact-match filter on a timestamp never hits; sorting on it is what people want.
-                .AddColumn(t => t.DueAt, c => c.Filterable(false).Format("yyyy-MM-dd"))
+                // The table sorts on the raw timestamp; the detail page shows the phrasing below instead.
+                .Column(t => t.DueAt, c => c.Filterable(false).Format("yyyy-MM-dd").HiddenInView())
+                // Resolved in-process from the loaded row, so it can say things SQL cannot phrase.
+                // Detail-only by default — no ShownInList() here.
+                .Column<string>(
+                    "DuePhrase",
+                    c =>
+                        c.Label("Due")
+                            .Resolve(
+                                (sp, todo, ct) =>
+                                    Task.FromResult(
+                                        todo.DueAt is not { } due ? "no date"
+                                        : due.Date < DateTime.UtcNow.Date
+                                            ? $"overdue by {(DateTime.UtcNow.Date - due.Date).Days}d"
+                                        : due.Date == DateTime.UtcNow.Date ? "today"
+                                        : $"in {(due.Date - DateTime.UtcNow.Date).Days}d"
+                                    )
+                            )
+                )
+                // A resolver reading a different store entirely, and shown in the table too —
+                // ShownInList() is the opt-in that says one call per row is acceptable here.
+                .Column<int>(
+                    "AdminEdits",
+                    c =>
+                        c.Label("Admin edits")
+                            .Description("Audit entries recorded against this row.")
+                            .ShownInList()
+                            .Resolve(
+                                (sp, todo, ct) =>
+                                {
+                                    var id = todo.Id.ToString(CultureInfo.InvariantCulture);
+                                    var count = sp.GetRequiredService<AuditLogStore>()
+                                        .Snapshot()
+                                        .Count(a =>
+                                            a.EntityType == nameof(Todo) && a.EntityId == id
+                                        );
+                                    return Task.FromResult(count);
+                                }
+                            )
+                )
                 .HideColumn(t => t.CreatedAt)
                 // Visiting /admin/entities/Todo/{id} re-fetches the displayed row every 5s.
                 .WithLivePolling(TimeSpan.FromSeconds(5))
@@ -216,10 +256,11 @@ builder.Services.AddAdminForge<AppDbContext>(forge =>
         )
         .AddTable<Tag>(e =>
             e.Nav(n => n.Group("Work").Order(3))
-                .AddColumn(t => t.Name)
-                .AddColumn(t => t.Color)
-                // Custom columns are list-visible by default; no opt-in needed.
-                .AddColumn<int>(
+                .Column(t => t.Name)
+                .Column(t => t.Color)
+                // A projected column: the database computes it, so it sorts — and the detail page
+                // re-projects it through the provider rather than counting an unloaded collection.
+                .Column<int>(
                     "TodoCount",
                     c => c.Label("# Todos").From(t => t.Todos.Count).Sortable()
                 )
@@ -235,9 +276,9 @@ builder.Services.AddAdminForge<AppDbContext>(forge =>
         )
         .AddTable<SiteSettings>(e =>
             e.Nav(n => n.Group("System").Order(0).Label("Site Settings"))
-                .AddColumn(s => s.MaintenanceMode)
-                .AddColumn(s => s.MaxItemsPerPage)
-                .AddColumn(s => s.WelcomeMessage)
+                .Column(s => s.MaintenanceMode)
+                .Column(s => s.MaxItemsPerPage)
+                .Column(s => s.WelcomeMessage)
         )
         // Read-only and provider-backed: no create or edit surface, and a column offers a sort
         // control only where the provider honours it.
@@ -248,12 +289,12 @@ builder.Services.AddAdminForge<AppDbContext>(forge =>
                 // This provider matches Search against entity type and user; SiteSettings, one row
                 // that ignores it, says nothing and gets no search box.
                 .Searchable()
-                .AddColumn(a => a.Timestamp, c => c.Sortable())
-                .AddColumn(a => a.Action)
-                .AddColumn(a => a.EntityType)
-                .AddColumn(a => a.EntityId)
-                .AddColumn(a => a.User)
-                .AddColumn(a => a.Changes)
+                .Column(a => a.Timestamp, c => c.Sortable())
+                .Column(a => a.Action)
+                .Column(a => a.EntityType)
+                .Column(a => a.EntityId)
+                .Column(a => a.User)
+                .Column(a => a.Changes)
         )
         // generic form exercising every supported field kind. The submit
         // handler just logs + shows a snackbar via the IActionContext; the audit

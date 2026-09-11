@@ -38,7 +38,7 @@ public class EntityBuilderPowerupTests
     {
         var builder = new AdminForgeBuilder(Scan());
         builder.AddTable<Tag>(e =>
-            e.AddColumn<int>(
+            e.Column<int>(
                 "TodoCount",
                 c => c.Label("# Todos").From(t => t.Todos.Count()).Sortable()
             )
@@ -59,7 +59,7 @@ public class EntityBuilderPowerupTests
     {
         var builder = new AdminForgeBuilder(Scan());
         Assert.Throws<InvalidOperationException>(() =>
-            builder.AddTable<Tag>(e => e.AddColumn<int>("X", _ => { }))
+            builder.AddTable<Tag>(e => e.Column<int>("X", _ => { }))
         );
     }
 
@@ -68,7 +68,7 @@ public class EntityBuilderPowerupTests
     {
         var builder = new AdminForgeBuilder(Scan());
         Assert.Throws<InvalidOperationException>(() =>
-            builder.AddTable<Tag>(e => e.AddColumn<string>("Name", c => c.From(t => t.Name)))
+            builder.AddTable<Tag>(e => e.Column<string>("Name", c => c.From(t => t.Name)))
         );
     }
 
@@ -201,7 +201,7 @@ public class EntityBuilderPowerupTests
     public void AddColumn_With_Selector_Opts_Column_Into_List()
     {
         var builder = new AdminForgeBuilder(Scan());
-        builder.AddTable<Todo>(e => e.AddColumn(t => t.Title));
+        builder.AddTable<Todo>(e => e.Column(t => t.Title));
         var meta = builder.Build().Entities.Single();
         var col = meta.Columns.Single(c => c.PropertyName == nameof(Todo.Title));
         Assert.True(col.ShowInList);
@@ -211,7 +211,7 @@ public class EntityBuilderPowerupTests
     public void AddColumn_With_Selector_Honours_Configure_Callback()
     {
         var builder = new AdminForgeBuilder(Scan());
-        builder.AddTable<Todo>(e => e.AddColumn(t => t.Title, c => c.Label("Headline")));
+        builder.AddTable<Todo>(e => e.Column(t => t.Title, c => c.Label("Headline")));
         var meta = builder.Build().Entities.Single();
         var col = meta.Columns.Single(c => c.PropertyName == nameof(Todo.Title));
         Assert.True(col.ShowInList);
@@ -223,7 +223,7 @@ public class EntityBuilderPowerupTests
     {
         var builder = new AdminForgeBuilder(Scan());
         Assert.Throws<InvalidOperationException>(() =>
-            builder.AddTable<Tag>(e => e.AddColumn(t => t.Todos))
+            builder.AddTable<Tag>(e => e.Column(t => t.Todos))
         );
     }
 

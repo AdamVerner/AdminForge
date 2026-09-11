@@ -119,7 +119,9 @@ public class DenyAllPolicyTodoAppFactory : GatedTodoAppFactory
         services.AddAuthorization(o =>
         {
             o.AddPolicy("AdminForge.Demo", p => p.RequireAssertion(_ => false));
-            o.FallbackPolicy = new AuthorizationPolicyBuilder().RequireAssertion(_ => false).Build();
+            o.FallbackPolicy = new AuthorizationPolicyBuilder()
+                .RequireAssertion(_ => false)
+                .Build();
         });
     }
 

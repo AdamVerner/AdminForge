@@ -66,13 +66,14 @@ public sealed class ColumnMeta
     /// <para>
     /// Default semantics — <b>list views are opt-in</b>: auto-discovered scalar
     /// columns default to <c>false</c>; the host opts each desired column in via
-    /// <c>EntityBuilder&lt;T&gt;.AddColumn(selector, ...)</c>. Custom computed
-    /// columns added via <c>AddColumn&lt;TValue&gt;(name, ...)</c> default to <c>true</c>.
+    /// <c>EntityBuilder&lt;T&gt;.Column(selector, ...)</c>. A computed column added via
+    /// <c>Column&lt;TValue&gt;(name, ...)</c> defaults to <c>true</c> when it projects with
+    /// <c>From</c> and to <c>false</c> when it resolves in-process with <c>Resolve</c>.
     /// </para>
     /// <para>
-    /// <c>HideColumn(selector)</c> flips this back to <c>false</c> (and also sets
-    /// <see cref="HiddenInEdit"/>). Entity view + edit visibility is governed by
-    /// <see cref="HiddenInEdit"/> and is opt-out by default.
+    /// <c>HideColumn(selector)</c> flips this back to <c>false</c> and hides the column from
+    /// the view and edit surfaces too. Those two are governed by <see cref="HiddenInView"/>
+    /// and <see cref="HiddenInEdit"/>, both opt-out.
     /// </para>
     /// </summary>
     public bool ShowInList { get; set; }
@@ -83,24 +84,39 @@ public sealed class ColumnMeta
     /// </summary>
     public bool HiddenInEdit { get; set; }
 
+    /// <summary>Hide this column from the entity view page. Opt-out, like <see cref="HiddenInEdit"/>.</summary>
+    public bool HiddenInView { get; set; }
+
     /// <summary>
     /// User-supplied validators. Each returns null on success or an error message on failure.
     /// </summary>
     public List<ColumnValidator> Validators { get; } = [];
 
     /// <summary>
-    /// True if this column was added via <c>AddColumn&lt;TValue&gt;</c> on the fluent builder
-    /// (i.e. it does not correspond to a real CLR property — the value is computed by
-    /// projecting <see cref="CustomValueSelector"/> through the underlying provider).
+    /// True if this column was added via <c>Column&lt;TValue&gt;(name, ...)</c> on the fluent
+    /// builder — it has no backing CLR property, and its value comes from either
+    /// <see cref="CustomValueSelector"/> or <see cref="ValueResolver"/>.
     /// </summary>
     public bool IsCustom { get; init; }
 
     /// <summary>
-    /// For custom columns: the user-provided <c>Expression&lt;Func&lt;TEntity, TValue&gt;&gt;</c>
-    /// stored as a <see cref="LambdaExpression"/> so the data provider can translate it
-    /// into a server-side projection.
+    /// For custom columns registered with <c>From</c>: the user-provided
+    /// <c>Expression&lt;Func&lt;TEntity, TValue&gt;&gt;</c> stored as a <see cref="LambdaExpression"/>
+    /// so the data provider can translate it into a server-side projection.
     /// </summary>
     public LambdaExpression? CustomValueSelector { get; init; }
+
+    /// <summary>
+    /// For custom columns registered with <c>Resolve</c>: computes the value in-process from
+    /// the materialised instance. Boxed to <c>object?</c> so the bridge can invoke it without
+    /// knowing the value type.
+    /// </summary>
+    public Func<
+        IServiceProvider,
+        object,
+        CancellationToken,
+        Task<object?>
+    >? ValueResolver { get; init; }
 
     /// <summary>True if this column participates in <c>ListQuery.SortBy</c>. On for an EF scalar; opt-in for custom columns and provider-backed types.</summary>
     public bool IsSortable { get; set; } = true;
@@ -109,10 +125,10 @@ public sealed class ColumnMeta
     public bool IsFilterable { get; set; } = true;
 
     /// <summary>
-    /// Position in the list view, stamped by the call order of <c>AddColumn</c>. Null for a
-    /// column reflection found but nobody added, which sorts after every stamped one.
+    /// Position on every surface, stamped by the call order of <c>Column</c>. Null for a
+    /// column reflection found but nobody configured, which sorts after every stamped one.
     /// </summary>
-    public int? ListOrder { get; set; }
+    public int? DisplayOrder { get; set; }
 
     /// <summary>
     /// Format string handed to the value's <c>ToString</c> when rendering. Set via

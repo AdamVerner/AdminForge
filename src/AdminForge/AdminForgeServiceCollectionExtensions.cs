@@ -120,7 +120,9 @@ internal sealed record HostDbContextMarker(Type ContextType);
 /// delegates to <see cref="EfCoreDataProvider{TContext, TEntity}"/> with the host's
 /// <c>DbContext</c> type resolved via the registered <see cref="HostDbContextMarker"/>.
 /// </summary>
-internal sealed class HostScopedDataProvider<TEntity> : IAdminDataProvider<TEntity>
+internal sealed class HostScopedDataProvider<TEntity>
+    : IAdminDataProvider<TEntity>,
+        IAdminColumnProjector<TEntity>
     where TEntity : class
 {
     private readonly IAdminDataProvider<TEntity> _inner;
@@ -156,6 +158,17 @@ internal sealed class HostScopedDataProvider<TEntity> : IAdminDataProvider<TEnti
         ListQuery query,
         CancellationToken cancellationToken = default
     ) => _inner.ListAsync(query, cancellationToken);
+
+    public Task<IReadOnlyDictionary<string, object?>> ProjectAsync(
+        TEntity instance,
+        IReadOnlyDictionary<string, CustomColumnSpec> columns,
+        CancellationToken cancellationToken = default
+    ) =>
+        _inner is IAdminColumnProjector<TEntity> projector
+            ? projector.ProjectAsync(instance, columns, cancellationToken)
+            : Task.FromResult<IReadOnlyDictionary<string, object?>>(
+                new Dictionary<string, object?>(StringComparer.Ordinal)
+            );
 
     public Task<TEntity?> FindAsync(
         object?[] keyValues,
