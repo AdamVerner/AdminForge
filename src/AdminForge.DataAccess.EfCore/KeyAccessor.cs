@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Reflection;
+using AdminForge.Core.Metadata;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata;
 
@@ -120,14 +121,8 @@ public sealed class KeyAccessor
         return values;
     }
 
-    private static object ConvertValue(string raw, Type targetType)
-    {
-        if (targetType == typeof(string))
-            return raw;
-        if (targetType == typeof(Guid))
-            return Guid.Parse(raw);
-        return Convert.ChangeType(raw, targetType, CultureInfo.InvariantCulture)!;
-    }
+    private static object ConvertValue(string raw, Type targetType) =>
+        ScalarTypes.Parse(raw, targetType);
 }
 
 /// <summary>One primary-key property. <paramref name="PropertyInfo"/> is null for an EF shadow property.</summary>

@@ -1,6 +1,8 @@
 @inherits LayoutComponentBase
 @using Microsoft.AspNetCore.Components.Authorization
 @inject AdminForgeOptions Options
+@inject IAdminUIBridge Bridge
+@inject NavigationManager Nav
 @inject AuthenticationStateProvider AuthenticationState
 
 <MudThemeProvider Theme="_theme" />
@@ -26,6 +28,29 @@
                      Style="color:inherit;border-color:currentColor">@env.Label</MudChip>
         }
         <MudSpacer />
+        @if (Bridge.Entities.Any(e => e.IsSearchable && !e.IsJoinEntity))
+        {
+            <MudAutocomplete T="SearchHit"
+                             Class="adminforge-global-search mr-4"
+                             Style="max-width:360px"
+                             Placeholder="Search everywhere…"
+                             Adornment="Adornment.Start"
+                             AdornmentIcon="@Icons.Material.Filled.Search"
+                             SearchFunc="SearchAsync"
+                             ToStringFunc="@(h => h?.Row.DisplayLabel ?? string.Empty)"
+                             ValueChanged="OpenHit"
+                             ResetValueOnEmptyText="true"
+                             CoerceText="false"
+                             DebounceInterval="300"
+                             Dense="true"
+                             Margin="Margin.Dense"
+                             Variant="Variant.Outlined">
+                <ItemTemplate Context="hit">
+                    <MudText Typo="Typo.body2">@hit.Row.DisplayLabel</MudText>
+                    <MudText Typo="Typo.caption" Class="mud-text-secondary">@hit.EntityLabel</MudText>
+                </ItemTemplate>
+            </MudAutocomplete>
+        }
         @if (_userName is not null)
         {
             <MudText Typo="Typo.body2" Class="mr-4">@_userName</MudText>
@@ -76,6 +101,25 @@
     }
 
     private void ToggleDrawer() => _drawerOpen = !_drawerOpen;
+
+    private async Task<IEnumerable<SearchHit>> SearchAsync(string? text, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return [];
+        try
+        {
+            return await Bridge.SearchAsync(text, cancellationToken: ct);
+        }
+        catch
+        {
+            return [];
+        }
+    }
+
+    private void OpenHit(SearchHit? hit)
+    {
+        if (hit is null) return;
+        Nav.NavigateTo($"/{Options.RoutePrefix.Trim('/')}/entities/{hit.EntityRouteName}/{Uri.EscapeDataString(hit.Row.Key)}");
+    }
 
     private string? AppBarStyle =>
         Options.Environment is { } env ? $"background-color:{env.Color}" : null;

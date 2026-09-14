@@ -136,6 +136,16 @@ public interface IAdminUIBridge
     );
 
     /// <summary>
+    /// Free-text search across every searchable table the caller may read, at most
+    /// <paramref name="takePerEntity"/> hits per table, in registration order.
+    /// </summary>
+    Task<IReadOnlyList<SearchHit>> SearchAsync(
+        string search,
+        int takePerEntity = 5,
+        CancellationToken cancellationToken = default
+    );
+
+    /// <summary>
     /// Returns the <see cref="NavigationRef"/> for a single related-entity row by its
     /// encoded key — used by the navigation-property picker to display the current
     /// value when editing.

@@ -67,20 +67,7 @@ public static class ClrTypeScanner
         };
     }
 
-    private static bool IsScalar(Type type)
-    {
-        var t = Nullable.GetUnderlyingType(type) ?? type;
-        return t.IsPrimitive
-            || t.IsEnum
-            || t == typeof(string)
-            || t == typeof(decimal)
-            || t == typeof(Guid)
-            || t == typeof(DateTime)
-            || t == typeof(DateTimeOffset)
-            || t == typeof(DateOnly)
-            || t == typeof(TimeOnly)
-            || t == typeof(TimeSpan);
-    }
+    private static bool IsScalar(Type type) => ScalarTypes.IsScalar(type);
 
     /// <summary>"CreatedAt" → "Created At"; an identifier already containing spaces is kept.</summary>
     public static string Humanize(string identifier)

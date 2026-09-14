@@ -22,9 +22,40 @@ public class ClrTypeScannerTests
 
     private sealed record Membership([property: Key] int OrgId, [property: Key] int UserId);
 
+    // A strongly typed id: parses itself, prints itself, and is a column and a key like an int.
+    private readonly record struct Ref(int Value) : IParsable<Ref>
+    {
+        public override string ToString() => $"ref_{Value}";
+
+        public static Ref Parse(string s, IFormatProvider? provider) => new(int.Parse(s[4..]));
+
+        public static bool TryParse(string? s, IFormatProvider? provider, out Ref result)
+        {
+            result = default;
+            if (s is null || !s.StartsWith("ref_"))
+                return false;
+            result = Parse(s, provider);
+            return true;
+        }
+    }
+
+    private sealed record Tagged(Ref Id, Ref? Parent, string Name);
+
     private sealed class Keyless
     {
         public string Name { get; set; } = "";
+    }
+
+    [Fact]
+    public void A_SelfParsing_Type_Is_A_Column_And_A_Key()
+    {
+        var meta = ClrTypeScanner.Scan(typeof(Tagged));
+
+        Assert.Equal(["Id"], meta.PrimaryKeyPropertyNames);
+        Assert.Equal(["Id", "Parent", "Name"], meta.Columns.Select(c => c.PropertyName));
+        Assert.True(meta.Columns.Single(c => c.PropertyName == "Parent").IsNullable);
+        Assert.Equal(new Ref(7), ScalarTypes.Parse("ref_7", typeof(Ref)));
+        Assert.Equal(new Ref(7), ScalarTypes.Parse("ref_7", typeof(Ref?)));
     }
 
     [Fact]

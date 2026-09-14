@@ -63,6 +63,24 @@ public class CrmPanelTests : IClassFixture<CrmPanelFixture>
     }
 
     [Fact]
+    public async Task The_Global_Search_Bar_Finds_Rows_Across_Every_Searchable_Table()
+    {
+        using var scope = _panel.Services.CreateScope();
+        var bridge = scope.ServiceProvider.GetRequiredService<IAdminUIBridge>();
+
+        var hits = await bridge.SearchAsync("northwind", takePerEntity: 3);
+
+        // The organization itself, and the accounts on its domain; the members table matches
+        // nothing (its strings are roles), and the keys table is not searchable at all.
+        var org = Assert.Single(hits, h => h.EntityRouteName == "Organization");
+        Assert.Equal("Northwind", org.Row.DisplayLabel);
+        Assert.Equal(3, hits.Count(h => h.EntityRouteName == "Account"));
+        Assert.DoesNotContain(hits, h => h.EntityRouteName == "ApiKey");
+
+        Assert.Contains("adminforge-global-search", await _panel.Client.GetStringAsync("/admin"));
+    }
+
+    [Fact]
     public async Task Columns_Render_In_The_Order_AddColumn_Named_Them()
     {
         var html = await _panel.Client.GetStringAsync("/admin/entities/Organization");

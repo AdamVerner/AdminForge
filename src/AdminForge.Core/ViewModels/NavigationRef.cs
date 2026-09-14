@@ -10,3 +10,6 @@ namespace AdminForge.Core.ViewModels;
 /// <param name="DisplayLabel">Human-readable label resolved via <c>DisplayLabelResolver</c>.</param>
 /// <param name="EntityName">Logical name of the related entity (matches <c>EntityMeta.Name</c>).</param>
 public sealed record NavigationRef(string Key, string DisplayLabel, string EntityName);
+
+/// <summary>One global-search hit: a row, and the table it belongs to.</summary>
+public sealed record SearchHit(string EntityRouteName, string EntityLabel, NavigationRef Row);

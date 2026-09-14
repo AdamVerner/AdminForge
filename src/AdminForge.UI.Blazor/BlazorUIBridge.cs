@@ -408,6 +408,39 @@ public sealed class BlazorUIBridge : IAdminUIBridge
         return refs;
     }
 
+    public async Task<IReadOnlyList<SearchHit>> SearchAsync(
+        string search,
+        int takePerEntity = 5,
+        CancellationToken cancellationToken = default
+    )
+    {
+        var hits = new List<SearchHit>();
+        if (string.IsNullOrWhiteSpace(search))
+            return hits;
+        var query = new ListQuery { PageSize = takePerEntity, Search = search };
+        foreach (var meta in _options.Entities.Where(e => e.IsSearchable && !e.IsJoinEntity))
+        {
+            EntityListVM list;
+            try
+            {
+                list = await ListAsync(meta, query, cancellationToken).ConfigureAwait(false);
+            }
+            catch (AdminForbiddenException)
+            {
+                continue;
+            }
+            foreach (var row in list.Rows)
+                hits.Add(
+                    new SearchHit(
+                        meta.RouteName,
+                        meta.Label,
+                        new NavigationRef(row.Key, ResolveDisplayLabel(meta, row), meta.Name)
+                    )
+                );
+        }
+        return hits;
+    }
+
     public async Task<NavigationRef?> FindRelatedAsync(
         Type relatedType,
         string encodedKey,
@@ -1983,9 +2016,7 @@ public sealed class BlazorUIBridge : IAdminUIBridge
             {
                 if (string.IsNullOrEmpty(str) && Nullable.GetUnderlyingType(targetType) is not null)
                     return null;
-                if (underlying == typeof(Guid))
-                    return Guid.Parse(str);
-                return Convert.ChangeType(str, underlying, CultureInfo.InvariantCulture);
+                return ScalarTypes.Parse(str, underlying);
             }
             return Convert.ChangeType(value, underlying, CultureInfo.InvariantCulture);
         }
