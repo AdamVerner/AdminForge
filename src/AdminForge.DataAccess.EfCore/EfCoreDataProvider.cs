@@ -778,11 +778,7 @@ public class EfCoreDataProvider<TContext, TEntity>
         if (underlying.IsEnum && value is string s)
             return Enum.Parse(underlying, s, ignoreCase: true);
         if (value is string str)
-        {
-            if (underlying == typeof(Guid))
-                return Guid.Parse(str);
-            return Convert.ChangeType(str, underlying, CultureInfo.InvariantCulture);
-        }
+            return ScalarTypes.Parse(str, underlying);
         return Convert.ChangeType(value, underlying, CultureInfo.InvariantCulture);
     }
 }
