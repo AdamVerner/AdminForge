@@ -99,6 +99,8 @@ public class CustomActionTests : IClassFixture<CustomActionTodoAppFactory>
 
         public void ShowError(string message) { }
 
+        public void ShowResult(string markdown) { }
+
         public void NavigateTo(string url) { }
 
         public void Refresh() { }

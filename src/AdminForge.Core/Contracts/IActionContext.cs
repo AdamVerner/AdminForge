@@ -19,6 +19,9 @@ public interface IActionContext
     /// <summary>Surfaces an error message in the renderer's notification surface.</summary>
     void ShowError(string message);
 
+    /// <summary>Shows a Markdown document as the operation's result.</summary>
+    void ShowResult(string markdown);
+
     /// <summary>Navigates the user to an absolute or app-relative URL.</summary>
     void NavigateTo(string url);
 

@@ -145,6 +145,15 @@ builder.Services.AddAdminForge<AppDbContext>(forge =>
                             return;
                         // No real SMTP wired — this just exercises the surface.
                         ctx.ShowSuccess($"Welcome email sent to {u.DisplayName}.");
+                        ctx.ShowResult(
+                            $"""
+                            ### Delivery report
+
+                            | To | Status |
+                            |---|---|
+                            | `{u.Email}` | **queued** |
+                            """
+                        );
                     },
                     cfg => cfg.Icon("Email").Color("Primary").RequireConfirmation()
                 )
@@ -339,6 +348,18 @@ builder.Services.AddAdminForge<AppDbContext>(forge =>
                         {
                             var title = submission.Get<string>("Title");
                             ctx.ShowSuccess($"Queued notification: {title}");
+                            var rows = submission.Values.Select(kv =>
+                                $"| {kv.Key} | `{$"{kv.Value ?? "null"}".ReplaceLineEndings(" ")}` |"
+                            );
+                            ctx.ShowResult(
+                                $"""
+                                ## Queued: {title}
+
+                                | Field | Value |
+                                |---|---|
+                                {string.Join('\n', rows)}
+                                """
+                            );
                             return Task.CompletedTask;
                         }
                     )
@@ -482,6 +503,7 @@ using (var scope = app.Services.CreateScope())
 app.UseAuthorization();
 
 app.MapAdminForge();
+app.MapGet("/", () => Results.Redirect("/admin"));
 
 app.MapGet(
     "/todos",

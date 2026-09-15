@@ -12,6 +12,7 @@
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <PackageReference Include="MudBlazor" />
+    <PackageReference Include="Markdig" />
     <!--
       Ships _framework/blazor.web.js as a static web asset. The Web SDK auto-references it for
       Blazor host projects, but here the host (TodoApp) is plain Web SDK while the components

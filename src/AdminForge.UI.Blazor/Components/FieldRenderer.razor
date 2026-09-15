@@ -91,7 +91,7 @@
         <MudTextField T="string" Label="@label" Value="@s"
                       HelperText="@Column.Description"
                       Error="@(error is not null)" ErrorText="@error"
-                      MaxLength="@(Column.MaxLength ?? 0)"
+                      MaxLength="@(Column.MaxLength ?? int.MaxValue)"
                       Lines="@lines"
                       ValueChanged="@(v => Model.Values[Column.PropertyName] = v)" />
     }
