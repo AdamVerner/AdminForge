@@ -1,10 +1,7 @@
-@* Line chart widget. MudBlazor's MudChart needs a flat double[] per series plus
-   string[] labels for the X axis; we project the materialised LineChartVM.Points
-   into those shapes here so the meta side can stay strongly typed. *@
-
 @implements IDisposable
 @inject IAdminUIBridge Bridge
 @using AdminForge.Core.LiveUpdates
+@using MudBlazor.Charts
 
 <MudPaper Class="pa-4" Elevation="2" Style="height:100%">
     <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-1">
@@ -28,9 +25,11 @@
     }
     else
     {
-        <MudChart ChartType="ChartType.Line"
+        <MudChart ChartType="@(_options is TimeSeriesChartOptions ? ChartType.Timeseries : ChartType.Line)"
                   ChartSeries="@_series"
                   ChartLabels="@_xLabels"
+                  ChartOptions="@_options"
+                  MatchBoundsToSize="true"
                   Width="100%"
                   Height="240px"
                   T="double" />
@@ -49,6 +48,7 @@
 
     private List<ChartSeries<double>> _series = new();
     private string[] _xLabels = Array.Empty<string>();
+    private DefaultAxisLineChartOptions _options = new LineChartOptions();
     // Buffer of points currently rendered — seeded from the initial VM and trimmed to window size.
     private List<LineChartPoint> _points = new();
     private LiveMode _mode = LiveMode.Static;
@@ -87,8 +87,8 @@
                     }
                 }
             }
+            RebuildSeries();
         }
-        RebuildSeries();
     }
 
     private void StartStreaming()
@@ -104,8 +104,11 @@
             {
                 await foreach (var update in subscription.WithCancellation(token).ConfigureAwait(false))
                 {
-                    MergeUpdate(update);
-                    await InvokeAsync(StateHasChanged);
+                    await InvokeAsync(() =>
+                    {
+                        MergeUpdate(update);
+                        StateHasChanged();
+                    });
                 }
             }
             catch (OperationCanceledException) { }
@@ -139,9 +142,12 @@
                         var refreshed = await Bridge.LoadLineChartAsync(dashboard, widgetId, token).ConfigureAwait(false);
                         if (refreshed is null || refreshed.Error is not null)
                             continue;
-                        _points = refreshed.Points.TakeLast(_windowSize).ToList();
-                        RebuildSeries();
-                        await InvokeAsync(StateHasChanged);
+                        await InvokeAsync(() =>
+                        {
+                            _points = refreshed.Points.TakeLast(_windowSize).ToList();
+                            RebuildSeries();
+                            StateHasChanged();
+                        });
                     }
                     catch (OperationCanceledException) { return; }
                     catch (Exception)
@@ -177,22 +183,46 @@
 
     private void RebuildSeries()
     {
-        if (VM is null || _points.Count == 0)
+        _series = new();
+        _xLabels = Array.Empty<string>();
+        if (VM is null || _points.Count == 0) return;
+
+        var name = VM.YAxisLabel ?? VM.Title;
+        var timed = new List<(DateTime T, double Y)>();
+        foreach (var p in _points)
+            if (ToDateTime(p.X) is { } t) timed.Add((t, p.Y));
+
+        if (timed.Count == _points.Count)
         {
-            _series = new();
-            _xLabels = Array.Empty<string>();
-            return;
-        }
-        _series = new List<ChartSeries<double>>
-        {
-            new ChartSeries<double>
+            _series.Add(new ChartSeries<double> { Name = name, Data = timed });
+            var spacing = TimeAxis.LabelSpacing(timed.Max(d => d.T) - timed.Min(d => d.T));
+            _options = new TimeSeriesChartOptions
             {
-                Name = VM.YAxisLabel ?? VM.Title,
-                Data = _points.Select(p => p.Y).ToArray(),
-            },
-        };
-        _xLabels = _points.Select(p => FormatX(p.X)).ToArray();
+                TimeLabelSpacing = spacing,
+                TimeLabelSpacingRounding = true,
+                TimeLabelFormat = TimeAxis.LabelFormat(spacing),
+                TooltipTimeLabelFormat = "yyyy-MM-dd HH:mm:ss",
+            };
+        }
+        else
+        {
+            _options = new LineChartOptions();
+            _series.Add(new ChartSeries<double> { Name = name, Data = _points.Select(p => p.Y).ToArray() });
+            // MudChart draws every label; blank all but every n-th so ~8 remain.
+            var step = (int)Math.Ceiling(_points.Count / 8.0);
+            _xLabels = _points.Select((p, i) => i % step == 0 ? ValueFormatter.Format(p.X) ?? "" : "").ToArray();
+        }
+        // A lone point draws no line, so it needs a marker to be seen at all.
+        _options.ShowDataMarkers = _points.Count == 1;
     }
+
+    private static DateTime? ToDateTime(object? x) => x switch
+    {
+        DateTime dt => dt,
+        DateTimeOffset dto => dto.DateTime,
+        DateOnly d => d.ToDateTime(TimeOnly.MinValue),
+        _ => null,
+    };
 
     public void Dispose() => StopLive();
 
@@ -207,14 +237,5 @@
         _cts = null;
         _liveTask = null;
         _mode = LiveMode.Static;
-    }
-
-    private static string FormatX(object? x)
-    {
-        if (x is null) return "";
-        if (x is DateTime dt) return dt.ToString("HH:mm:ss");
-        if (x is DateTimeOffset dto) return dto.ToString("HH:mm:ss");
-        if (x is DateOnly d) return d.ToString("MM-dd");
-        return x.ToString() ?? "";
     }
 }
