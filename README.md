@@ -26,7 +26,7 @@ That's it. No JS toolchain, no separate admin host — Blazor Server components 
 - **Every table has a provider at boot** — `MapAdminForge()` resolves one per registered table and names the ones it cannot serve, rather than failing on the first page load.
 - **One DI scope per operation** — every list, find, save, action and widget resolves its provider and handler in a fresh scope, so a scoped `DbContext` or service lives for one call, not for the hours a Blazor circuit stays open. The scope's `IUserAccessor` names the user the circuit was opened for.
 - **Dashboards** composed in C# from stat cards, line charts, and table widgets, arranged in a row-based grid layout.
-- **Generic forms** with 8 field types (text, number, float, bool, date, datetime, markdown, file upload) and a typed submit handler.
+- **Generic forms** with 8 field types (text, number, float, bool, date, datetime, markdown, file upload) and a typed submit handler. The handler's `ctx.ShowResult(markdown)` renders a Markdown document below the form — tables, lists, code blocks; from an entity action it opens in a dialog.
 - **Per-entity custom actions** surfaced as buttons on the entity view (with optional confirmation dialogs).
 - **Related tables** auto-generated from collection navigations; cross-entity links are configurable. `Inline()` renders the related table *on* the detail page — its own sort, paging and filters, pinned to the parent row, with its filter bar tucked behind one button — and `Columns(...)` picks which columns it shows.
 - **Cell links** — `LinksTo<TTarget>()` turns a column carrying another table's id into a link to that row, for read models that have no navigation to follow.

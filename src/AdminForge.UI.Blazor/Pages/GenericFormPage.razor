@@ -35,6 +35,13 @@ else
             </MudButton>
         </MudCardActions>
     </MudCard>
+
+    @if (_result is not null)
+    {
+        <MudPaper Class="pa-4 mt-4" data-testid="form-result">
+            <MarkdownView Markdown="@_result" />
+        </MudPaper>
+    }
 }
 
 @code {
@@ -42,6 +49,7 @@ else
 
     private FormVM? _form;
     private bool _submitting;
+    private string? _result;
     private readonly Dictionary<string, FormFileUpload> _files = new(StringComparer.Ordinal);
 
     protected override void OnParametersSet()
@@ -61,6 +69,7 @@ else
         if (_form is null || _submitting) return;
         _submitting = true;
         _form.Errors.Clear();
+        _result = null;
         try
         {
             var submission = new FormSubmission(
@@ -68,7 +77,8 @@ else
                 new Dictionary<string, FormFileUpload>(_files, StringComparer.Ordinal)
             );
             var ctx = new BlazorActionContext(
-                Snackbar, Nav, Dialogs, refresh: () => Task.CompletedTask);
+                Snackbar, Nav, Dialogs, refresh: () => Task.CompletedTask,
+                showResult: md => _result = md);
             await Bridge.SubmitFormAsync(RouteName, submission, ctx);
             Snackbar.Add($"Form '{_form.Title}' submitted.", Severity.Success);
         }

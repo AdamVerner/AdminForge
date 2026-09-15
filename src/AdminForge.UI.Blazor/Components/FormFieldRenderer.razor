@@ -26,7 +26,7 @@
                 <MudTextField T="string" Label="@label" Value="@s"
                               HelperText="@Field.Description"
                               Error="@(error is not null)" ErrorText="@error"
-                              MaxLength="@(opts.MaxLength ?? 0)"
+                              MaxLength="@(opts.MaxLength ?? int.MaxValue)"
                               Lines="@(opts.Multiline ? 4 : 1)"
                               ValueChanged="@(v => Form.Values[Field.Name] = v)" />
                 break;

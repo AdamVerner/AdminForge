@@ -9,6 +9,12 @@
     <base href="/" />
     <title>AdminForge</title>
     <link href="_content/MudBlazor/MudBlazor.min.css" rel="stylesheet" />
+    <style>
+        .adminforge-markdown table { border-collapse: collapse; margin: 8px 0; }
+        .adminforge-markdown th, .adminforge-markdown td { border: 1px solid var(--mud-palette-lines-default); padding: 4px 8px; text-align: left; }
+        .adminforge-markdown pre { background: var(--mud-palette-background-gray); padding: 8px; overflow: auto; }
+        .adminforge-markdown > :first-child { margin-top: 0; }
+    </style>
     <HeadOutlet @rendermode="RenderMode.InteractiveServer" />
 </head>
 <body>

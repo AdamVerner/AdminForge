@@ -16,12 +16,15 @@ public sealed class BlazorActionContext : IActionContext
     private readonly NavigationManager _nav;
     private readonly IDialogService _dialogs;
     private readonly Func<Task> _refresh;
+    private readonly Action<string>? _showResult;
 
+    /// <param name="showResult">Where a result renders; a dialog when null.</param>
     public BlazorActionContext(
         ISnackbar snackbar,
         NavigationManager nav,
         IDialogService dialogs,
-        Func<Task> refresh
+        Func<Task> refresh,
+        Action<string>? showResult = null
     )
     {
         ArgumentNullException.ThrowIfNull(snackbar);
@@ -32,6 +35,7 @@ public sealed class BlazorActionContext : IActionContext
         _nav = nav;
         _dialogs = dialogs;
         _refresh = refresh;
+        _showResult = showResult;
     }
 
     public async Task<bool> ConfirmAsync(string message)
@@ -52,6 +56,17 @@ public sealed class BlazorActionContext : IActionContext
     public void ShowSuccess(string message) => _snackbar.Add(message, Severity.Success);
 
     public void ShowError(string message) => _snackbar.Add(message, Severity.Error);
+
+    public void ShowResult(string markdown)
+    {
+        if (_showResult is { } show) show(markdown);
+        else _ = _dialogs.ShowMessageBoxAsync(new MessageBoxOptions
+        {
+            Title = "Result",
+            MarkupMessage = (MarkupString)$"<div class=\"adminforge-markdown\">{MarkdownRenderer.ToHtml(markdown)}</div>",
+            YesText = "Close",
+        });
+    }
 
     public void NavigateTo(string url) => _nav.NavigateTo(url);
 

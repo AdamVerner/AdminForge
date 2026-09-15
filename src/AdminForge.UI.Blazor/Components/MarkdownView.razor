@@ -1,0 +1,5 @@
+<div class="adminforge-markdown">@((MarkupString)MarkdownRenderer.ToHtml(Markdown))</div>
+
+@code {
+    [Parameter] public string Markdown { get; set; } = string.Empty;
+}
