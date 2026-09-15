@@ -44,14 +44,17 @@ public static class ScalarTypes
     // IParsable<T>.Parse(string, IFormatProvider) as the type implements it; null for the CLR
     // primitives, which Convert.ChangeType already handles.
     private static MethodInfo? ParseMethod(Type t) =>
-        t.IsPrimitive || t == typeof(decimal) || t == typeof(DateTime) || t == typeof(DateTimeOffset)
+        t.IsPrimitive
+        || t == typeof(decimal)
+        || t == typeof(DateTime)
+        || t == typeof(DateTimeOffset)
             ? null
-            : t.GetInterfaces()
-                .Any(i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IParsable<>))
-                ? t.GetMethod(
-                    "Parse",
-                    BindingFlags.Public | BindingFlags.Static,
-                    [typeof(string), typeof(IFormatProvider)]
-                )
-                : null;
+        : t.GetInterfaces()
+            .Any(i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IParsable<>))
+            ? t.GetMethod(
+                "Parse",
+                BindingFlags.Public | BindingFlags.Static,
+                [typeof(string), typeof(IFormatProvider)]
+            )
+        : null;
 }

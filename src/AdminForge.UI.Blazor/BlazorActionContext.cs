@@ -59,13 +59,18 @@ public sealed class BlazorActionContext : IActionContext
 
     public void ShowResult(string markdown)
     {
-        if (_showResult is { } show) show(markdown);
-        else _ = _dialogs.ShowMessageBoxAsync(new MessageBoxOptions
-        {
-            Title = "Result",
-            MarkupMessage = (MarkupString)$"<div class=\"adminforge-markdown\">{MarkdownRenderer.ToHtml(markdown)}</div>",
-            YesText = "Close",
-        });
+        if (_showResult is { } show)
+            show(markdown);
+        else
+            _ = _dialogs.ShowMessageBoxAsync(
+                new MessageBoxOptions
+                {
+                    Title = "Result",
+                    MarkupMessage = (MarkupString)
+                        $"<div class=\"adminforge-markdown\">{MarkdownRenderer.ToHtml(markdown)}</div>",
+                    YesText = "Close",
+                }
+            );
     }
 
     public void NavigateTo(string url) => _nav.NavigateTo(url);
