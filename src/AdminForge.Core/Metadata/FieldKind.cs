@@ -13,4 +13,5 @@ public enum FieldKind
     DateTime,
     Markdown,
     FileUpload,
+    Select,
 }

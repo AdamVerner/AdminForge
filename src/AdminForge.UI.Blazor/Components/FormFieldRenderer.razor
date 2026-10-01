@@ -95,6 +95,11 @@
                                 ValueChanged="@(v => Form.Values[Field.Name] = v)" />
                 break;
             }
+        case FieldKind.Select:
+            {
+                <SelectField Field="@Field" Form="@Form" Label="@label" Error="@error" />
+                break;
+            }
         case FieldKind.FileUpload:
             {
                 var opts = Field.Options as FileUploadFieldOptions ?? new FileUploadFieldOptions();

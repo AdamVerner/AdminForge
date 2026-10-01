@@ -35,6 +35,27 @@ public class FormBuilderTests
     }
 
     [Fact]
+    public void A_Select_Needs_Choices_And_Records_Multiple()
+    {
+        var builder = new AdminForgeBuilder();
+        Assert.Throws<InvalidOperationException>(() =>
+            builder.AddForm(
+                "no-choices",
+                f => f.AddField(x => x.Select("X")).OnSubmit((sp, sub, ctx) => Task.CompletedTask)
+            )
+        );
+        builder.AddForm(
+            "pick",
+            f =>
+                f.AddField(x => x.Select("Many").Options("a", "b").Multiple())
+                    .OnSubmit((sp, sub, ctx) => Task.CompletedTask)
+        );
+        var field = Assert.Single(Assert.Single(builder.Build().Forms).Fields);
+        Assert.Equal(FieldKind.Select, field.Kind);
+        Assert.True(Assert.IsType<SelectFieldOptions>(field.Options).Multiple);
+    }
+
+    [Fact]
     public void AddForm_Throws_On_Duplicate_RouteName()
     {
         var builder = new AdminForgeBuilder();

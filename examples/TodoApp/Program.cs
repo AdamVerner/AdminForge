@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text.Json.Serialization;
 using AdminForge;
 using AdminForge.Core.Configuration;
+using AdminForge.Core.Metadata;
 using Microsoft.EntityFrameworkCore;
 using TodoApp;
 using TodoApp.Data;
@@ -343,13 +344,28 @@ builder.Services.AddAdminForge<AppDbContext>(forge =>
                             .MaxSizeBytes(5 * 1024 * 1024)
                             .AcceptedExtensions(".pdf", ".png", ".jpg")
                     )
+                    .AddField(f => f.Select("Channel").Options("inbox", "email", "sms").Required())
+                    .AddField(f =>
+                        f.Select("Recipients")
+                            .Label("Recipients")
+                            .Description("Choices come from the users table when the form opens.")
+                            .Multiple()
+                            .Options(
+                                async (sp, ct) =>
+                                    (IReadOnlyList<SelectOption>)
+                                        await sp.GetRequiredService<AppDbContext>()
+                                            .Users.OrderBy(u => u.Email)
+                                            .Select(u => new SelectOption(u.Id.ToString(), u.Email))
+                                            .ToListAsync(ct)
+                            )
+                    )
                     .OnSubmit(
                         (sp, submission, ctx) =>
                         {
                             var title = submission.Get<string>("Title");
                             ctx.ShowSuccess($"Queued notification: {title}");
                             var rows = submission.Values.Select(kv =>
-                                $"| {kv.Key} | `{$"{kv.Value ?? "null"}".ReplaceLineEndings(" ")}` |"
+                                $"| {kv.Key} | `{Show(kv.Value)}` |"
                             );
                             ctx.ShowResult(
                                 $"""
@@ -588,4 +604,13 @@ public sealed record DailyCompletion(DateTime Day, int Count);
 public sealed record OpenTodoSnapshot(DateTime At, int Count);
 
 // Required for WebApplicationFactory<TodoApp> in integration tests.
-public partial class Program { }
+public partial class Program
+{
+    private static string Show(object? value) =>
+        value switch
+        {
+            null => "null",
+            IEnumerable<string> many => string.Join(", ", many),
+            _ => $"{value}".ReplaceLineEndings(" "),
+        };
+}

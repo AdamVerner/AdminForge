@@ -722,6 +722,18 @@ public sealed class BlazorUIBridge : IAdminUIBridge
         };
     }
 
+    public async Task<IReadOnlyList<SelectOption>> LoadSelectOptionsAsync(
+        FieldMeta field,
+        CancellationToken cancellationToken = default
+    )
+    {
+        ArgumentNullException.ThrowIfNull(field);
+        if (field.Options is not SelectFieldOptions { Options: { } options })
+            throw new InvalidOperationException($"Field '{field.Name}' is not a select.");
+        using var scope = await OpenScopeAsync().ConfigureAwait(false);
+        return await options(scope.ServiceProvider, cancellationToken).ConfigureAwait(false);
+    }
+
     public async Task SubmitFormAsync(
         string routeName,
         FormSubmission submission,
@@ -764,6 +776,29 @@ public sealed class BlazorUIBridge : IAdminUIBridge
 
         using (var scope = await OpenScopeAsync().ConfigureAwait(false))
         {
+            // A choice is checked against the list as it is now, not as it was when the form rendered.
+            foreach (var field in meta.Fields)
+            {
+                if (field.Options is not SelectFieldOptions { Options: { } options })
+                    continue;
+                var allowed = (
+                    await options(scope.ServiceProvider, cancellationToken).ConfigureAwait(false)
+                )
+                    .Select(o => o.Value)
+                    .ToHashSet(StringComparer.Ordinal);
+                var chosen = submission[field.Name] switch
+                {
+                    null => [],
+                    string one => [one],
+                    IEnumerable<string> many => many.ToList(),
+                    var other => [other.ToString() ?? ""],
+                };
+                if (chosen.FirstOrDefault(c => !allowed.Contains(c)) is { } bad)
+                    errors[field.Name] = $"{field.Label}: '{bad}' is not a choice.";
+            }
+            if (errors.Count > 0)
+                throw new FormValidationException(routeName, errors);
+
             var actionContext = context ?? new NullActionContext();
             await meta.Submit(scope.ServiceProvider, submission, actionContext)
                 .ConfigureAwait(false);
@@ -835,7 +870,10 @@ public sealed class BlazorUIBridge : IAdminUIBridge
                 else
                 {
                     submission.Values.TryGetValue(field.Name, out var v);
-                    missing = v is null || (v is string s && string.IsNullOrWhiteSpace(s));
+                    missing =
+                        v is null
+                        || (v is string s && string.IsNullOrWhiteSpace(s))
+                        || (v is System.Collections.ICollection { Count: 0 });
                 }
                 if (missing)
                 {
