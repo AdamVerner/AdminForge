@@ -59,6 +59,68 @@ public class CustomActionTests : IClassFixture<CustomActionTodoAppFactory>
     }
 
     [Fact]
+    public async Task An_Action_With_Fields_Validates_Its_Input_Then_Hands_It_To_The_Handler()
+    {
+        _factory.AuditSink.Events.Clear();
+
+        int userId;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            await db.Database.EnsureCreatedAsync();
+            var user = new User { DisplayName = "Before", Email = "r@x.test" };
+            db.Users.Add(user);
+            await db.SaveChangesAsync();
+            userId = user.Id;
+        }
+
+        using var run = _factory.Services.CreateScope();
+        var bridge = run.ServiceProvider.GetRequiredService<IAdminUIBridge>();
+        var key = userId.ToString();
+
+        // No input at all: the required field is named, the handler never runs.
+        var missing = await Assert.ThrowsAsync<FormValidationException>(() =>
+            bridge.InvokeActionAsync("User", key, "Rename", new StubActionContext())
+        );
+        Assert.Equal(["Name"], missing.Errors.Keys);
+
+        // A choice outside the select's list is refused the same way.
+        var wrong = await Assert.ThrowsAsync<FormValidationException>(() =>
+            bridge.InvokeActionAsync(
+                "User",
+                key,
+                "Rename",
+                new StubActionContext(),
+                Input(("Name", "After"), ("Reason", "whim"))
+            )
+        );
+        Assert.Equal(["Reason"], wrong.Errors.Keys);
+        Assert.Empty(_factory.AuditSink.Events);
+
+        await bridge.InvokeActionAsync(
+            "User",
+            key,
+            "Rename",
+            new StubActionContext(),
+            Input(("Name", "After"), ("Reason", "typo"))
+        );
+
+        using var check = _factory.Services.CreateScope();
+        var renamed = await check
+            .ServiceProvider.GetRequiredService<AppDbContext>()
+            .Users.FindAsync(userId);
+        Assert.Equal("After", renamed!.DisplayName);
+
+        var audit = Assert.Single(_factory.AuditSink.Events);
+        Assert.Equal("Rename", audit.ChangedValues["ActionName"].NewValue);
+        Assert.Equal("After", audit.ChangedValues["Name"].NewValue);
+        Assert.Equal("typo", audit.ChangedValues["Reason"].NewValue);
+    }
+
+    private static FormSubmission Input(params (string Name, object? Value)[] values) =>
+        new(values.ToDictionary(v => v.Name, v => v.Value, StringComparer.Ordinal));
+
+    [Fact]
     public async Task InvokeAction_Throws_AdminForbidden_When_Policy_Denies()
     {
         // Swap in a denying policy through a forked factory so we don't pollute the shared one.
@@ -171,13 +233,26 @@ public class CustomActionTodoAppFactory : WebApplicationFactory<Program>
                 .WithAuditLog(auditSink)
                 .AddTable<User>(e =>
                     e.AddAction(
-                        "Ping",
-                        (_, _, ctx) =>
-                        {
-                            counter.Increment();
-                            return Task.CompletedTask;
-                        }
-                    )
+                            "Ping",
+                            (_, _, ctx) =>
+                            {
+                                counter.Increment();
+                                return Task.CompletedTask;
+                            }
+                        )
+                        .AddAction(
+                            "Rename",
+                            async (sp, user, input, ctx) =>
+                            {
+                                var db = sp.GetRequiredService<AppDbContext>();
+                                db.Attach(user).Entity.DisplayName = input.Get<string>("Name")!;
+                                await db.SaveChangesAsync();
+                            },
+                            a =>
+                                a.RequireConfirmation("Renames the account everywhere.")
+                                    .AddField(f => f.Text("Name").Required().MaxLength(40))
+                                    .AddField(f => f.Select("Reason").Options("typo", "legal"))
+                        )
                 )
                 .AddTable<TodoList>()
                 .AddTable<Todo>()

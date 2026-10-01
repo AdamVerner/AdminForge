@@ -522,6 +522,7 @@ public sealed class BlazorUIBridge : IAdminUIBridge
         string encodedKey,
         string actionName,
         IActionContext context,
+        FormSubmission? input = null,
         CancellationToken cancellationToken = default
     )
     {
@@ -529,6 +530,7 @@ public sealed class BlazorUIBridge : IAdminUIBridge
         ArgumentException.ThrowIfNullOrWhiteSpace(encodedKey);
         ArgumentException.ThrowIfNullOrWhiteSpace(actionName);
         ArgumentNullException.ThrowIfNull(context);
+        input ??= new FormSubmission(new Dictionary<string, object?>(StringComparer.Ordinal));
 
         var entity =
             FindEntityByRouteName(entityRouteName)
@@ -560,10 +562,24 @@ public sealed class BlazorUIBridge : IAdminUIBridge
             )
             .ConfigureAwait(false);
 
-        await action.Handler(scope.ServiceProvider, instance, context).ConfigureAwait(false);
+        var errors = ValidateSubmission(action.Fields, input);
+        await CheckChoicesAsync(
+                action.Fields,
+                input,
+                scope.ServiceProvider,
+                errors,
+                cancellationToken
+            )
+            .ConfigureAwait(false);
+        if (errors.Count > 0)
+            throw new FormValidationException(actionName, errors);
+
+        await action.Handler(scope.ServiceProvider, instance, input, context).ConfigureAwait(false);
 
         if (_options.AuditSink is not null)
         {
+            var changes = AuditChanges(action.Fields, input);
+            changes["ActionName"] = new AuditValueChange(null, actionName);
             await _options
                 .AuditSink.RecordAsync(
                     new AuditEvent
@@ -571,12 +587,7 @@ public sealed class BlazorUIBridge : IAdminUIBridge
                         EntityType = entity.Name,
                         Action = AuditAction.Custom,
                         EntityId = encodedKey,
-                        ChangedValues = new Dictionary<string, AuditValueChange>(
-                            StringComparer.Ordinal
-                        )
-                        {
-                            ["ActionName"] = new AuditValueChange(null, actionName),
-                        },
+                        ChangedValues = changes,
                         User = await CurrentUserIdAsync().ConfigureAwait(false),
                     },
                     cancellationToken
@@ -770,32 +781,20 @@ public sealed class BlazorUIBridge : IAdminUIBridge
             throw new AdminForbiddenException(entityNameForAuthz, AdminAction.FormSubmit);
 
         // Validate (Required + per-field validators).
-        var errors = ValidateSubmission(meta, submission);
+        var errors = ValidateSubmission(meta.Fields, submission);
         if (errors.Count > 0)
             throw new FormValidationException(routeName, errors);
 
         using (var scope = await OpenScopeAsync().ConfigureAwait(false))
         {
-            // A choice is checked against the list as it is now, not as it was when the form rendered.
-            foreach (var field in meta.Fields)
-            {
-                if (field.Options is not SelectFieldOptions { Options: { } options })
-                    continue;
-                var allowed = (
-                    await options(scope.ServiceProvider, cancellationToken).ConfigureAwait(false)
+            await CheckChoicesAsync(
+                    meta.Fields,
+                    submission,
+                    scope.ServiceProvider,
+                    errors,
+                    cancellationToken
                 )
-                    .Select(o => o.Value)
-                    .ToHashSet(StringComparer.Ordinal);
-                var chosen = submission[field.Name] switch
-                {
-                    null => [],
-                    string one => [one],
-                    IEnumerable<string> many => many.ToList(),
-                    var other => [other.ToString() ?? ""],
-                };
-                if (chosen.FirstOrDefault(c => !allowed.Contains(c)) is { } bad)
-                    errors[field.Name] = $"{field.Label}: '{bad}' is not a choice.";
-            }
+                .ConfigureAwait(false);
             if (errors.Count > 0)
                 throw new FormValidationException(routeName, errors);
 
@@ -807,33 +806,6 @@ public sealed class BlazorUIBridge : IAdminUIBridge
         // Audit.
         if (_options.AuditSink is not null)
         {
-            var changes = new Dictionary<string, AuditValueChange>(StringComparer.Ordinal);
-            foreach (var field in meta.Fields)
-            {
-                if (field.Kind == FieldKind.FileUpload)
-                {
-                    submission.Files.TryGetValue(field.Name, out var file);
-                    if (file is null)
-                    {
-                        changes[field.Name] = new AuditValueChange(null, null);
-                    }
-                    else
-                    {
-                        var summary = new Dictionary<string, object?>(StringComparer.Ordinal)
-                        {
-                            ["FileName"] = file.FileName,
-                            ["ContentType"] = file.ContentType,
-                            ["Length"] = file.Length,
-                        };
-                        changes[field.Name] = new AuditValueChange(null, summary);
-                    }
-                }
-                else
-                {
-                    submission.Values.TryGetValue(field.Name, out var v);
-                    changes[field.Name] = new AuditValueChange(null, v);
-                }
-            }
             await _options
                 .AuditSink.RecordAsync(
                     new AuditEvent
@@ -841,7 +813,7 @@ public sealed class BlazorUIBridge : IAdminUIBridge
                         EntityType = $"Form:{routeName}",
                         Action = AuditAction.FormSubmit,
                         EntityId = null,
-                        ChangedValues = changes,
+                        ChangedValues = AuditChanges(meta.Fields, submission),
                         User = await CurrentUserIdAsync().ConfigureAwait(false),
                     },
                     cancellationToken
@@ -850,13 +822,74 @@ public sealed class BlazorUIBridge : IAdminUIBridge
         }
     }
 
+    /// <summary>A file is logged by name, type and size; every other value as submitted.</summary>
+    private static Dictionary<string, AuditValueChange> AuditChanges(
+        IReadOnlyList<FieldMeta> fields,
+        FormSubmission submission
+    )
+    {
+        var changes = new Dictionary<string, AuditValueChange>(StringComparer.Ordinal);
+        foreach (var field in fields)
+        {
+            if (field.Kind == FieldKind.FileUpload)
+            {
+                submission.Files.TryGetValue(field.Name, out var file);
+                changes[field.Name] = new AuditValueChange(
+                    null,
+                    file is null
+                        ? null
+                        : new Dictionary<string, object?>(StringComparer.Ordinal)
+                        {
+                            ["FileName"] = file.FileName,
+                            ["ContentType"] = file.ContentType,
+                            ["Length"] = file.Length,
+                        }
+                );
+            }
+            else
+            {
+                submission.Values.TryGetValue(field.Name, out var v);
+                changes[field.Name] = new AuditValueChange(null, v);
+            }
+        }
+        return changes;
+    }
+
+    /// <summary>A choice is checked against the list as it is now, not as it was when the form rendered.</summary>
+    private static async Task CheckChoicesAsync(
+        IReadOnlyList<FieldMeta> fields,
+        FormSubmission submission,
+        IServiceProvider services,
+        Dictionary<string, string> errors,
+        CancellationToken cancellationToken
+    )
+    {
+        foreach (var field in fields)
+        {
+            if (field.Options is not SelectFieldOptions { Options: { } options })
+                continue;
+            var allowed = (await options(services, cancellationToken).ConfigureAwait(false))
+                .Select(o => o.Value)
+                .ToHashSet(StringComparer.Ordinal);
+            var chosen = submission[field.Name] switch
+            {
+                null => [],
+                string one => [one],
+                IEnumerable<string> many => many.ToList(),
+                var other => [other.ToString() ?? ""],
+            };
+            if (chosen.FirstOrDefault(c => !allowed.Contains(c)) is { } bad)
+                errors[field.Name] = $"{field.Label}: '{bad}' is not a choice.";
+        }
+    }
+
     private static Dictionary<string, string> ValidateSubmission(
-        FormMeta meta,
+        IReadOnlyList<FieldMeta> fields,
         FormSubmission submission
     )
     {
         var errors = new Dictionary<string, string>(StringComparer.Ordinal);
-        foreach (var field in meta.Fields)
+        foreach (var field in fields)
         {
             // Required check.
             if (field.Required)

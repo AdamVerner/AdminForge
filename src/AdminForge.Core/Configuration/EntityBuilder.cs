@@ -226,6 +226,20 @@ public sealed class EntityBuilder<T>
         Action<ActionBuilder>? configure = null
     )
     {
+        ArgumentNullException.ThrowIfNull(handler);
+        return AddAction(name, (sp, row, _, ctx) => handler(sp, row, ctx), configure);
+    }
+
+    /// <summary>
+    /// Register an action that asks for input first: the fields declared with
+    /// <c>ActionBuilder.AddField</c> open as a dialog and the handler receives what was submitted.
+    /// </summary>
+    public EntityBuilder<T> AddAction(
+        string name,
+        Func<IServiceProvider, T, FormSubmission, IActionContext, Task> handler,
+        Action<ActionBuilder>? configure = null
+    )
+    {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
         ArgumentNullException.ThrowIfNull(handler);
 
@@ -239,7 +253,7 @@ public sealed class EntityBuilder<T>
         var meta = new ActionMeta
         {
             Name = name,
-            Handler = (sp, instance, ctx) => handler(sp, (T)instance, ctx),
+            Handler = (sp, instance, input, ctx) => handler(sp, (T)instance, input, ctx),
         };
         configure?.Invoke(new ActionBuilder(meta));
         _meta.Actions.Add(meta);

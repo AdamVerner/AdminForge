@@ -3,6 +3,7 @@
     runs through the bridge's InvokeActionAsync, which handles auth, audit, and
     the action handler's own ConfirmAsync / ShowSuccess / Refresh calls.
 *@
+@using AdminForge.Core.Configuration
 @inject IAdminUIBridge Bridge
 @inject ISnackbar Snackbar
 @inject NavigationManager Nav
@@ -37,6 +38,47 @@
     {
         if (Entity is null) return;
 
+        var ctx = new BlazorActionContext(
+            Snackbar,
+            Nav,
+            DialogService,
+            async () =>
+            {
+                if (OnInvoked.HasDelegate)
+                    await OnInvoked.InvokeAsync();
+            }
+        );
+
+        // An action with fields asks for them in one dialog; its confirmation text, if any, is the lead-in.
+        if (action.Fields.Count > 0)
+        {
+            var parameters = new DialogParameters
+            {
+                ["Action"] = action,
+                ["Message"] = action.ConfirmationMessage,
+                ["ButtonText"] = action.Name,
+                ["Color"] = MapColor(action.Color),
+                ["Run"] = (Func<FormSubmission, Task>)(input =>
+                    Bridge.InvokeActionAsync(Entity.RouteName, EncodedKey, action.Name, ctx, input)),
+            };
+            try
+            {
+                var dialog = await DialogService.ShowAsync<ActionInputDialog>(action.Name, parameters);
+                var result = await dialog.Result;
+                if (result is { Canceled: false } && OnInvoked.HasDelegate)
+                    await OnInvoked.InvokeAsync();
+            }
+            catch (AdminForbiddenException)
+            {
+                Snackbar.Add("You are not authorised to run this action.", Severity.Error);
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"Action failed: {ex.Message}", Severity.Error);
+            }
+            return;
+        }
+
         // Honour the action's RequireConfirmation upfront so the handler sees only the
         // confirmed path. Action handlers may still call ConfirmAsync themselves for
         // additional prompts.
@@ -53,16 +95,6 @@
             if (result is null || result.Canceled) return;
         }
 
-        var ctx = new BlazorActionContext(
-            Snackbar,
-            Nav,
-            DialogService,
-            async () =>
-            {
-                if (OnInvoked.HasDelegate)
-                    await OnInvoked.InvokeAsync();
-            }
-        );
         try
         {
             await Bridge.InvokeActionAsync(Entity.RouteName, EncodedKey, action.Name, ctx);
