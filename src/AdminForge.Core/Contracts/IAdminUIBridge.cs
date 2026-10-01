@@ -169,6 +169,18 @@ public interface IAdminUIBridge
     );
 
     /// <summary>
+    /// Whether the circuit's user may perform <paramref name="action"/>, asked of the policy the way
+    /// the operation itself asks, so a renderer hides what the operation would refuse.
+    /// </summary>
+    Task<bool> IsAllowedAsync(
+        EntityMeta entity,
+        AdminAction action,
+        object? instance = null,
+        string? actionName = null,
+        CancellationToken cancellationToken = default
+    );
+
+    /// <summary>
     /// Invoke a custom action registered via <c>AddAction</c>. Loads the entity by key,
     /// authorizes via <see cref="IAdminAuthorizationPolicy"/> (action name supplied),
     /// validates <paramref name="input"/> against the action's fields (throws

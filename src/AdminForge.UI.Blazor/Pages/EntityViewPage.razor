@@ -1,5 +1,6 @@
 @page "/admin/entities/{EntityName}/{Key}"
 @implements IDisposable
+@using AdminForge.Core.Configuration
 @inject IAdminUIBridge Bridge
 @inject NavigationManager Nav
 
@@ -28,7 +29,7 @@ else
                    OnClick="@(() => Nav.NavigateTo($"/admin/entities/{Entity.RouteName}"))">
             Back to list
         </MudButton>
-        @if (!Entity.IsReadOnly)
+        @if (_canEdit)
         {
             <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Edit"
                        OnClick="@(() => Nav.NavigateTo($"/admin/entities/{Entity.RouteName}/{Uri.EscapeDataString(_view.Key)}/edit"))">
@@ -54,7 +55,7 @@ else
     </MudCard>
 
     <RelatedLinksSection Links="@_view.RelatedLinks.Where(l => !l.Inline).ToList()" />
-    <EntityActionsBar Entity="@Entity" EncodedKey="@_view.Key" OnInvoked="Refresh" />
+    <EntityActionsBar Entity="@Entity" EncodedKey="@_view.Key" Instance="@_view.Instance" OnInvoked="Refresh" />
 
     @foreach (var link in _view.RelatedLinks.Where(l => l.Inline))
     {
@@ -75,6 +76,7 @@ else
 
     private EntityMeta? Entity;
     private EntityViewVM? _view;
+    private bool _canEdit;
     private CancellationTokenSource? _pollCts;
     private Task? _pollTask;
     private string? _polledForKey;
@@ -154,6 +156,8 @@ else
         try
         {
             _view = await Bridge.FindAsync(Entity, Uri.UnescapeDataString(Key));
+            _canEdit = !Entity.IsReadOnly && _view is not null
+                && await Bridge.IsAllowedAsync(Entity, AdminAction.Update, _view.Instance);
         }
         finally
         {

@@ -19,6 +19,9 @@ public sealed class EntityViewVM
     /// explicit cross-entity links). Empty when no related links apply.
     /// </summary>
     public IReadOnlyList<RelatedLinkVM> RelatedLinks { get; init; } = [];
+
+    /// <summary>The row as the provider returned it, for a row-level policy check.</summary>
+    public object? Instance { get; init; }
 }
 
 /// <summary>

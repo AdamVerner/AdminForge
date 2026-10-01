@@ -9,13 +9,13 @@
 @inject NavigationManager Nav
 @inject IDialogService DialogService
 
-@if (Entity is not null && Entity.Actions.Count > 0)
+@if (Entity is not null && _allowed.Count > 0)
 {
     <MudCard Class="mb-4">
         <MudCardContent>
             <MudText Typo="Typo.h6" Class="mb-2">Actions</MudText>
             <MudStack Row="true" Spacing="2" Wrap="Wrap.Wrap">
-                @foreach (var action in Entity.Actions)
+                @foreach (var action in Entity.Actions.Where(a => _allowed.Contains(a.Name)))
                 {
                     <MudButton Variant="Variant.Filled"
                                Color="@MapColor(action.Color)"
@@ -32,7 +32,21 @@
 @code {
     [Parameter, EditorRequired] public EntityMeta? Entity { get; set; }
     [Parameter, EditorRequired] public string EncodedKey { get; set; } = string.Empty;
+    [Parameter] public object? Instance { get; set; }
     [Parameter] public EventCallback OnInvoked { get; set; }
+
+    private HashSet<string> _allowed = [];
+
+    // One policy call per action per render of the row; the policy sees the row, as it does on invoke.
+    protected override async Task OnParametersSetAsync()
+    {
+        var allowed = new HashSet<string>(StringComparer.Ordinal);
+        if (Entity is not null)
+            foreach (var action in Entity.Actions)
+                if (await Bridge.IsAllowedAsync(Entity, AdminAction.Custom, Instance, action.Name))
+                    allowed.Add(action.Name);
+        _allowed = allowed;
+    }
 
     private async Task Invoke(ActionMeta action)
     {

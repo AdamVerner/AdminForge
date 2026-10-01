@@ -1248,6 +1248,21 @@ public sealed class BlazorUIBridge : IAdminUIBridge
             ),
         };
 
+    public async Task<bool> IsAllowedAsync(
+        EntityMeta entity,
+        AdminAction action,
+        object? instance = null,
+        string? actionName = null,
+        CancellationToken cancellationToken = default
+    )
+    {
+        ArgumentNullException.ThrowIfNull(entity);
+        var user = await CurrentUserAsync().ConfigureAwait(false);
+        return await _authzPolicy
+            .IsAuthorizedAsync(entity.Name, action, user, instance, actionName, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
     private async Task EnsureAuthorizedAsync(
         EntityMeta entity,
         AdminAction action,
@@ -1440,7 +1455,12 @@ public sealed class BlazorUIBridge : IAdminUIBridge
                     )
                     .ConfigureAwait(false);
                 rows.Add(
-                    new EntityListRowVM { Key = _keyAccessor.EncodeKey(item), Values = rowValues }
+                    new EntityListRowVM
+                    {
+                        Key = _keyAccessor.EncodeKey(item),
+                        Values = rowValues,
+                        Instance = item,
+                    }
                 );
             }
             return new EntityListVM
@@ -1504,6 +1524,7 @@ public sealed class BlazorUIBridge : IAdminUIBridge
                 Key = _keyAccessor.EncodeKey(entity),
                 Values = values,
                 RelatedLinks = relatedLinks,
+                Instance = entity,
             };
         }
 
