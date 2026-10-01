@@ -68,6 +68,13 @@ public sealed class ColumnBuilder<TProp>
         return this;
     }
 
+    /// <summary>A long value: the cell shows a one-line preview and opens the whole thing as <paramref name="kind"/>.</summary>
+    public ColumnBuilder<TProp> Content(Content kind)
+    {
+        _meta.Content = kind;
+        return this;
+    }
+
     /// <summary>
     /// Render this column's value as a link to <typeparamref name="TTarget"/>'s detail page,
     /// keyed by the value. For a flat read model carrying another table's id, where there is no

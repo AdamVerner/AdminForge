@@ -222,6 +222,15 @@ else
             }
             return;
         }
+        if (column.Content is { } kind && raw is string content)
+        {
+            builder.OpenComponent<ContentCell>(0);
+            builder.AddAttribute(1, "Value", content);
+            builder.AddAttribute(2, "Kind", kind);
+            builder.AddAttribute(3, "Title", column.Label);
+            builder.CloseComponent();
+            return;
+        }
         if (raw is System.Collections.IEnumerable items && raw is not string && raw is not byte[])
         {
             builder.OpenComponent<CollectionView>(0);

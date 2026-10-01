@@ -1,0 +1,33 @@
+@using AdminForge.Core.Metadata
+@inject IDialogService Dialogs
+
+@* A long value in a cell: the first line of it, and a button that opens the whole thing. *@
+
+<span class="adminforge-content">
+    <span class="adminforge-content-preview">@Preview</span>
+    <MudIconButton Icon="@Icons.Material.Filled.OpenInFull" Size="Size.Small" title="Open" OnClick="Open" />
+</span>
+
+@code {
+    private const int PreviewLength = 80;
+
+    [Parameter, EditorRequired] public string Value { get; set; } = string.Empty;
+    [Parameter, EditorRequired] public Content Kind { get; set; }
+    [Parameter] public string Title { get; set; } = string.Empty;
+
+    private string Preview
+    {
+        get
+        {
+            var text = Kind == Content.Html ? System.Text.RegularExpressions.Regex.Replace(Value, "<[^>]*>", " ") : Value;
+            text = System.Text.RegularExpressions.Regex.Replace(text, @"\s+", " ").Trim();
+            return text.Length <= PreviewLength ? text : text[..PreviewLength] + "…";
+        }
+    }
+
+    private Task Open() =>
+        Dialogs.ShowAsync<ContentDialog>(
+            Title,
+            new DialogParameters { ["Value"] = Value, ["Kind"] = Kind },
+            new DialogOptions { MaxWidth = MaxWidth.Large, FullWidth = true, CloseButton = true });
+}

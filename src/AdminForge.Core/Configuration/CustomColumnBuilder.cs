@@ -91,6 +91,13 @@ public sealed class CustomColumnBuilder<T, TValue>
         return this;
     }
 
+    /// <summary>A long value: the cell shows a one-line preview and opens the whole thing as <paramref name="kind"/>.</summary>
+    public CustomColumnBuilder<T, TValue> Content(Content kind)
+    {
+        _meta.Content = kind;
+        return this;
+    }
+
     /// <summary>Render the value as a link to <typeparamref name="TTarget"/>'s detail page, keyed by the value.</summary>
     public CustomColumnBuilder<T, TValue> LinksTo<TTarget>()
         where TTarget : class

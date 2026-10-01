@@ -1,5 +1,6 @@
 using AdminForge;
 using AdminForge.Core.Configuration;
+using AdminForge.Core.Metadata;
 
 namespace CrmApp;
 
@@ -41,6 +42,9 @@ public static class CrmHost
                         .Column(o => o.SuspendedReason)
                         .Column(o => o.CreatedAt, c => c.Sortable().Format("yyyy-MM-dd"))
                         .Column(o => o.Id)
+                        // A long value shows its first line; the whole thing opens in a dialog.
+                        .Column(o => o.Notes, c => c.Content(Content.Markdown))
+                        .Column(o => o.Profile, c => c.Content(Content.Json))
                         // The members of this organization, rendered on its detail page.
                         .RelatedLink<Member>(
                             "Members",
@@ -71,6 +75,7 @@ public static class CrmHost
                         .Column(a => a.Email, c => c.Sortable().Filterable())
                         .Column(a => a.CreatedAt, c => c.Sortable())
                         .Column(a => a.Id)
+                        .Column(a => a.Signature, c => c.Content(Content.Html))
                 )
                 .AddTable<Member>(e =>
                     e.Label("Members")

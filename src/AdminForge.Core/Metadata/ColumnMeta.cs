@@ -139,6 +139,9 @@ public sealed class ColumnMeta
     /// </summary>
     public string? Format { get; set; }
 
+    /// <summary>Set via <c>Content(...)</c>: the value opens in a dialog rendered as this kind.</summary>
+    public Content? Content { get; set; }
+
     /// <summary>
     /// CLR type of the entity this column's value identifies. Set via
     /// <c>ColumnBuilder.LinksTo&lt;TTarget&gt;()</c>; the renderer turns the cell into a link to

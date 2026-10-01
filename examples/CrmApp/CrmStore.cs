@@ -30,7 +30,16 @@ public sealed class CrmStore
                         [
                             new Contact($"{name} Billing", $"billing@{Slug(name)}.example", true),
                             new Contact($"{name} Ops", $"ops@{Slug(name)}.example", false),
-                        ]
+                        ],
+                        $"## {name}\n\nSigned in **{2019 + i}**. Renewal every January.\n\n- Contact billing first\n- Escalate to ops after two days",
+                        System.Text.Json.JsonSerializer.Serialize(
+                            new
+                            {
+                                tier = ((Plan)(i % 3)).ToString(),
+                                seats = (i + 1) * 25,
+                                flags = new { sso = i == 2, beta = true },
+                            }
+                        )
                     )
             ),
         ];
@@ -53,7 +62,8 @@ public sealed class CrmStore
                         accountId,
                         $"user{accountId}@{org.Name.Split(' ')[0].ToLowerInvariant()}.example",
                         $"{org.Name.Split(' ')[0]} User {i + 1}",
-                        start.AddDays(accountId)
+                        start.AddDays(accountId),
+                        $"<p>Regards,<br><b>{org.Name.Split(' ')[0]} User {i + 1}</b><br><i>{org.Name}</i></p>"
                     )
                 );
                 members.Add(

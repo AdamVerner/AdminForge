@@ -13,7 +13,9 @@ public sealed record Organization(
     DateTime CreatedAt,
     string? SuspendedReason,
     IReadOnlyList<string> Domains,
-    IReadOnlyList<Contact> Contacts
+    IReadOnlyList<Contact> Contacts,
+    string Notes,
+    string Profile
 );
 
 public sealed record Contact(string Name, string Email, bool Primary);
@@ -43,4 +45,10 @@ public sealed record ApiKey(
     bool IsRevoked
 );
 
-public sealed record Account(int Id, string Email, string DisplayName, DateTime CreatedAt);
+public sealed record Account(
+    int Id,
+    string Email,
+    string DisplayName,
+    DateTime CreatedAt,
+    string Signature
+);

@@ -121,6 +121,15 @@ else
             builder.AddContent(0, string.Join(", ", navs.Select(n => n.DisplayLabel)));
             return;
         }
+        if (col.Content is { } kind && raw is string content)
+        {
+            builder.OpenComponent<ContentCell>(0);
+            builder.AddAttribute(1, "Value", content);
+            builder.AddAttribute(2, "Kind", kind);
+            builder.AddAttribute(3, "Title", col.Label);
+            builder.CloseComponent();
+            return;
+        }
         var text = ValueFormatter.Format(raw, col);
         if (Bridge.Entities.FirstOrDefault(e => e.ClrType == col.LinkTargetType) is { } target)
         {
