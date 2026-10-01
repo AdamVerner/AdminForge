@@ -13,6 +13,9 @@ public sealed class EntityListRowVM
 
     /// <summary>Column-name → display-ready value map. Navigation values use <see cref="NavigationRef"/>.</summary>
     public required IReadOnlyDictionary<string, object?> Values { get; init; }
+
+    /// <summary>The row as the provider returned it, for a row-level policy check.</summary>
+    public object? Instance { get; init; }
 }
 
 /// <summary>

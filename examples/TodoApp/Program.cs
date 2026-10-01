@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text.Json.Serialization;
 using AdminForge;
 using AdminForge.Core.Configuration;
+using AdminForge.Core.Contracts;
 using AdminForge.Core.Metadata;
 using Microsoft.EntityFrameworkCore;
 using TodoApp;
@@ -42,6 +43,10 @@ builder.Services.AddAdminForgeDataProvider<SiteSettings, SiteSettingsDataProvide
 var auditLog = new AuditLogStore();
 builder.Services.AddSingleton(auditLog);
 builder.Services.AddAdminForgeDataProvider<AuditLogEntry, AuditLogDataProvider>();
+
+// A done task is frozen: the policy refuses edit, delete and Snooze on it, and the panel hides
+// those buttons on that row alone.
+builder.Services.AddSingleton<IAdminAuthorizationPolicy, FrozenWhenDonePolicy>();
 
 builder.Services.AddAdminForge<AppDbContext>(forge =>
     forge
@@ -625,6 +630,22 @@ public sealed record DailyCompletion(DateTime Day, int Count);
 public sealed record OpenTodoSnapshot(DateTime At, int Count);
 
 // Required for WebApplicationFactory<TodoApp> in integration tests.
+/// <summary>Row-level policy: a <see cref="Todo"/> in <see cref="TodoStatus.Done"/> accepts reads only.</summary>
+public sealed class FrozenWhenDonePolicy : IAdminAuthorizationPolicy
+{
+    public Task<bool> IsAuthorizedAsync(
+        string entityName,
+        AdminAction action,
+        System.Security.Claims.ClaimsPrincipal user,
+        object? instance = null,
+        string? actionName = null,
+        CancellationToken cancellationToken = default
+    ) =>
+        Task.FromResult(
+            action == AdminAction.Read || instance is not Todo { Status: TodoStatus.Done }
+        );
+}
+
 public partial class Program
 {
     private static string Show(object? value) =>

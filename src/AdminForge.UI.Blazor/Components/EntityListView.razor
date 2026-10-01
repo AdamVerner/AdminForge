@@ -1,5 +1,6 @@
 @* The table surface: filter bar, table, pagination and the state behind them. The list page is one
    caller; a detail page embedding a related table is the other, with the parent's key pinned. *@
+@using AdminForge.Core.Configuration
 @inject IAdminUIBridge Bridge
 @inject NavigationManager Nav
 @inject ISnackbar Snackbar
@@ -15,7 +16,7 @@
         <MudText Typo="Typo.h4">@Entity.Label</MudText>
     }
     <MudSpacer />
-    @if (!Entity.IsReadOnly && !Embedded)
+    @if (_canCreate && !Embedded)
     {
         <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
                    OnClick="@(() => Nav.NavigateTo($"/admin/entities/{Entity.RouteName}/new"))">
@@ -29,6 +30,7 @@
 
 <EntityTable Entity="@Entity"
              ListVM="_listVM"
+             Allowed="_allowed"
              Columns="@Columns"
              OnRowClick="OpenRow"
              OnEdit="EditRow"
@@ -56,6 +58,8 @@
     [Parameter] public bool Embedded { get; set; }
 
     private EntityListVM? _listVM;
+    private bool _canCreate;
+    private Dictionary<string, (bool Edit, bool Delete)> _allowed = new(StringComparer.Ordinal);
     private int _page;
     private int _pageSize = 25;
     private string? _sortBy;
@@ -131,6 +135,13 @@
                 try
                 {
                     _listVM = await Bridge.ListAsync(Entity, query);
+                    _canCreate = !Entity.IsReadOnly && await Bridge.IsAllowedAsync(Entity, AdminAction.Create);
+                    var allowed = new Dictionary<string, (bool, bool)>(StringComparer.Ordinal);
+                    foreach (var row in _listVM.Rows)
+                        allowed[row.Key] = (
+                            !Entity.IsReadOnly && await Bridge.IsAllowedAsync(Entity, AdminAction.Update, row.Instance),
+                            Entity.CustomDeleteHandler is not null && await Bridge.IsAllowedAsync(Entity, AdminAction.Delete, row.Instance));
+                    _allowed = allowed;
                 }
                 catch (Exception ex)
                 {

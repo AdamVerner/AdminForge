@@ -49,6 +49,25 @@ public class BridgeAuthorizationTests
     }
 
     [Fact]
+    public async Task A_Renderer_Can_Ask_What_The_Policy_Allows_For_A_Row()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        await db.Database.EnsureCreatedAsync();
+        var bridge = scope.ServiceProvider.GetRequiredService<IAdminUIBridge>();
+        var settings = bridge.FindEntityByRouteName("SiteSettings")!;
+
+        // The row the policy would judge rides along with the list and the view.
+        var row = Assert.Single((await bridge.ListAsync(settings, new ListQuery())).Rows);
+        Assert.IsType<TodoApp.SiteSettings>(row.Instance);
+        Assert.IsType<TodoApp.SiteSettings>((await bridge.FindAsync(settings, "1"))!.Instance);
+
+        Assert.True(await bridge.IsAllowedAsync(settings, AdminAction.Read, row.Instance));
+        Assert.False(await bridge.IsAllowedAsync(settings, AdminAction.Update, row.Instance));
+        Assert.False(await bridge.IsAllowedAsync(settings, AdminAction.Create));
+    }
+
+    [Fact]
     public async Task Delete_Throws_When_Policy_Denies()
     {
         // Seed a row to delete.

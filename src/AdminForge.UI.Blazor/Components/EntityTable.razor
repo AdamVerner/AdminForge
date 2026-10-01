@@ -54,12 +54,12 @@ else
             <MudTd>
                 <MudIconButton Icon="@Icons.Material.Filled.Visibility" Size="Size.Small"
                                OnClick="@(() => OnRowClick.InvokeAsync(row))" />
-                @if (Entity?.IsReadOnly != true)
+                @if (Allowed is not null && Allowed.TryGetValue(row.Key, out var can) && can.Edit)
                 {
                     <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small"
                                    OnClick="@(() => OnEdit.InvokeAsync(row))" />
                 }
-                @if (Entity?.CustomDeleteHandler is not null)
+                @if (Allowed is not null && Allowed.TryGetValue(row.Key, out var may) && may.Delete)
                 {
                     <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
                                    OnClick="@(() => OnDelete.InvokeAsync(row))" />
@@ -75,6 +75,9 @@ else
     [Parameter] public EventCallback<EntityListRowVM> OnRowClick { get; set; }
     [Parameter] public EventCallback<EntityListRowVM> OnEdit { get; set; }
     [Parameter] public EventCallback<EntityListRowVM> OnDelete { get; set; }
+
+    /// <summary>Per row key, which write buttons the policy allows. Nothing is offered until it is known.</summary>
+    [Parameter] public IReadOnlyDictionary<string, (bool Edit, bool Delete)>? Allowed { get; set; }
     [Parameter] public EventCallback<string> OnSort { get; set; }
     [Parameter] public string? SortBy { get; set; }
     [Parameter] public bool SortDescending { get; set; }
