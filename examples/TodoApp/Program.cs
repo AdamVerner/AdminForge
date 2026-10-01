@@ -56,6 +56,9 @@ builder.Services.AddAdminForge<AppDbContext>(forge =>
         // satisfies it with an umbrella policy; a host that genuinely wants an open panel
         // declares that instead, with .AllowAnonymousAccess().
         .RequireAuthorizationPolicy("AdminForge.Demo")
+        // The home page is the operations dashboard; the host's own status page sits in the sidebar.
+        .UseHomeDashboard("operations")
+        .AddPage<TodoApp.Pages.StatusPage>(n => n.Group("System").Order(2))
         // Inline-SVG data URL avoids shipping a separate asset file with the example;
         // teal primary makes it obvious at a glance that the configured palette is in effect.
         .WithTheme(theme =>

@@ -35,7 +35,7 @@
     /// Unified sidebar entry — entities and dashboards share the same nav-grouping
     /// pipeline so they can interleave under user-defined groups.
     /// </summary>
-    private enum EntryKind { Entity, Dashboard, Form }
+    private enum EntryKind { Entity, Dashboard, Form, Page }
     private record NavEntry(EntryKind Kind, string Label, string Href, NavMeta Nav);
     private record GroupedNav(string? Key, List<NavEntry> Entries);
     private List<GroupedNav> _grouped = new();
@@ -77,6 +77,12 @@
             ));
         }
 
+        foreach (var p in Options.Pages)
+        {
+            if (p.Nav.Hidden) continue;
+            entries.Add(new NavEntry(EntryKind.Page, p.Nav.Label!, PageHref(p), p.Nav));
+        }
+
         _grouped = entries
             .GroupBy(e => e.Nav.Group)
             .OrderBy(g => g.Key is null ? 0 : 1)  // ungrouped first
@@ -94,12 +100,18 @@
     private string EntityHref(EntityMeta meta) => $"{RootHref}/entities/{meta.RouteName}";
     private string DashboardHref(DashboardMeta meta) => $"{RootHref}/dashboards/{meta.RouteName}";
     private string FormHref(FormMeta meta) => $"{RootHref}/forms/{meta.RouteName}";
+    public static string PageHref(PageMeta meta) =>
+        meta.ComponentType.GetCustomAttributes(typeof(RouteAttribute), false)
+            .Cast<RouteAttribute>()
+            .Select(r => r.Template)
+            .First();
     private string EntryHref(NavEntry entry) => entry.Href;
 
     private string IconFor(NavEntry entry) => entry.Kind switch
     {
         EntryKind.Dashboard => Icons.Material.Filled.Dashboard,
         EntryKind.Form => Icons.Material.Filled.Description,
+        EntryKind.Page => Icons.Material.Filled.Article,
         _ => Icons.Material.Filled.TableChart,
     };
 }

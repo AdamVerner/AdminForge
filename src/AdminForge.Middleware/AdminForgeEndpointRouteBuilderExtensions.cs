@@ -4,6 +4,7 @@ using AdminForge.Middleware.Authorization;
 using AdminForge.UI.Blazor;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
@@ -26,6 +27,7 @@ public static class AdminForgeEndpointRouteBuilderExtensions
 
         var options = GuardAuthorizationIsConfigured(endpoints.ServiceProvider);
         GuardEveryTableHasAProvider(endpoints.ServiceProvider, options);
+        GuardEveryPageIsRoutedUnderThePrefix(options);
 
         // Razor Components in .NET 8+ refuse to serve unless antiforgery middleware is present.
         if (endpoints is IApplicationBuilder appBuilder)
@@ -35,7 +37,10 @@ public static class AdminForgeEndpointRouteBuilderExtensions
         // host with a fallback authorization policy would challenge the panel's own scripts.
         endpoints.MapStaticAssets().AllowAnonymous();
 
-        var builder = endpoints.MapRazorComponents<App>().AddInteractiveServerRenderMode();
+        var builder = endpoints
+            .MapRazorComponents<App>()
+            .AddInteractiveServerRenderMode()
+            .AddAdditionalAssemblies([.. Routes.HostAssemblies(options)]);
 
         // The umbrella policy goes on the endpoints, so the host's authentication scheme decides
         // what an unauthorized request gets: a cookie scheme redirects to its login page, a bearer
@@ -112,6 +117,28 @@ public static class AdminForgeEndpointRouteBuilderExtensions
             throw new InvalidOperationException(
                 "AdminForge cannot serve every registered table:\n" + string.Join('\n', failures)
             );
+        }
+    }
+
+    /// <summary>A host page must be a component whose route starts with the panel's prefix, or the shell never shows it.</summary>
+    internal static void GuardEveryPageIsRoutedUnderThePrefix(AdminForgeOptions options)
+    {
+        var prefix = "/" + options.RoutePrefix.Trim('/') + "/";
+        foreach (var page in options.Pages)
+        {
+            var routes = page
+                .ComponentType.GetCustomAttributes(typeof(RouteAttribute), false)
+                .Cast<RouteAttribute>()
+                .Select(r => r.Template)
+                .ToList();
+            if (!typeof(IComponent).IsAssignableFrom(page.ComponentType) || routes.Count == 0)
+                throw new InvalidOperationException(
+                    $"AddPage<{page.ComponentType.Name}>: not a routable component. Add @page \"{prefix}...\" to it."
+                );
+            if (!routes.Any(r => r.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)))
+                throw new InvalidOperationException(
+                    $"AddPage<{page.ComponentType.Name}>: its route '{routes[0]}' is outside the panel. Route it under '{prefix}'."
+                );
         }
     }
 

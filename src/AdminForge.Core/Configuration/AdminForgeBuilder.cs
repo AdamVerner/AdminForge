@@ -14,6 +14,8 @@ public sealed class AdminForgeBuilder
     private readonly List<EntityMeta> _registeredEntities = [];
     private readonly List<DashboardMeta> _dashboards = [];
     private readonly List<FormMeta> _forms = [];
+    private readonly List<PageMeta> _pages = [];
+    private string? _homeDashboard;
 
     /// <summary>Mutable surface for the top-level options (route prefix, title).</summary>
     public AdminForgeOptionsDraft Options { get; } = new();
@@ -202,6 +204,34 @@ public sealed class AdminForgeBuilder
     }
 
     /// <summary>
+    /// Lists a Razor page of the host's own in the sidebar and routes it inside the panel. The
+    /// component declares its own route, under the panel's prefix.
+    /// </summary>
+    public AdminForgeBuilder AddPage<TComponent>(Action<NavBuilder>? configure = null)
+        where TComponent : class
+    {
+        if (_pages.Any(p => p.ComponentType == typeof(TComponent)))
+            throw new InvalidOperationException(
+                $"Page '{typeof(TComponent).Name}' is already registered."
+            );
+        var meta = new PageMeta { ComponentType = typeof(TComponent) };
+        configure?.Invoke(new NavBuilder(meta.Nav));
+        meta.Nav.Label ??= typeof(TComponent).Name.EndsWith("Page", StringComparison.Ordinal)
+            ? typeof(TComponent).Name[..^4]
+            : typeof(TComponent).Name;
+        _pages.Add(meta);
+        return this;
+    }
+
+    /// <summary>The home page renders this dashboard under the title; its own sidebar entry goes away.</summary>
+    public AdminForgeBuilder UseHomeDashboard(string routeName)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(routeName);
+        _homeDashboard = routeName;
+        return this;
+    }
+
+    /// <summary>
     /// Registers an audit sink. Every mutating admin action will invoke this sink
     /// before returning a successful response to the user.
     /// </summary>
@@ -232,8 +262,20 @@ public sealed class AdminForgeBuilder
     }
 
     /// <summary>Materialise the immutable <see cref="AdminForgeOptions"/> consumed by the host pipeline.</summary>
-    public AdminForgeOptions Build() =>
-        new()
+    public AdminForgeOptions Build()
+    {
+        if (_homeDashboard is not null)
+        {
+            var home =
+                _dashboards.FirstOrDefault(d =>
+                    string.Equals(d.RouteName, _homeDashboard, StringComparison.OrdinalIgnoreCase)
+                )
+                ?? throw new InvalidOperationException(
+                    $"UseHomeDashboard('{_homeDashboard}') names no registered dashboard."
+                );
+            home.Nav.Hidden = true;
+        }
+        return new()
         {
             RoutePrefix = Options.RoutePrefix,
             Title = Options.Title,
@@ -245,6 +287,8 @@ public sealed class AdminForgeBuilder
             Entities = _registeredEntities.AsReadOnly(),
             Dashboards = _dashboards.AsReadOnly(),
             Forms = _forms.AsReadOnly(),
+            Pages = _pages.AsReadOnly(),
+            HomeDashboard = _homeDashboard,
             AuditSink = AuditSink,
             Theme = new ThemeOptions
             {
@@ -254,6 +298,7 @@ public sealed class AdminForgeBuilder
                 SecondaryColor = Theme.SecondaryColor,
             },
         };
+    }
 
     private sealed class DelegateAuditSink(Func<AuditEvent, CancellationToken, Task> callback)
         : IAuditSink

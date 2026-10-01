@@ -1,7 +1,9 @@
 @using Microsoft.AspNetCore.Components.Routing
+@using AdminForge.Core.Configuration
 @using AdminForge.UI.Blazor.Layout
+@inject AdminForgeOptions Options
 
-<Router AppAssembly="@typeof(Routes).Assembly">
+<Router AppAssembly="@typeof(Routes).Assembly" AdditionalAssemblies="@HostAssemblies(Options)">
     <Found Context="routeData">
         <RouteView RouteData="@routeData" DefaultLayout="@typeof(AdminShell)" />
         <FocusOnNavigate RouteData="@routeData" Selector="h1" />
@@ -14,3 +16,9 @@
         </LayoutView>
     </NotFound>
 </Router>
+
+@code {
+    /// <summary>The assemblies the host's own pages live in, so the router finds their routes.</summary>
+    public static IEnumerable<System.Reflection.Assembly> HostAssemblies(AdminForgeOptions options) =>
+        options.Pages.Select(p => p.ComponentType.Assembly).Where(a => a != typeof(Routes).Assembly).Distinct();
+}
