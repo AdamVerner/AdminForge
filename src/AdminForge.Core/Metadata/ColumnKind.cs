@@ -20,4 +20,7 @@ public enum ColumnKind
 
     /// <summary>Owned/complex type (rendered inline).</summary>
     Owned,
+
+    /// <summary>A list carried by the row itself, of scalars or of records. Detail page only, never edited.</summary>
+    Collection,
 }

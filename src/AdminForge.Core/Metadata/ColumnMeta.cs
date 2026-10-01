@@ -43,6 +43,9 @@ public sealed class ColumnMeta
     /// </summary>
     public Type? RelatedEntityType { get; init; }
 
+    /// <summary>When <see cref="Kind"/> is <see cref="ColumnKind.Collection"/>, the element type.</summary>
+    public Type? ElementType { get; init; }
+
     /// <summary>
     /// When <see cref="Kind"/> is <see cref="ColumnKind.Enum"/>, the underlying enum CLR type
     /// (peeled out of <see cref="Nullable{T}"/> if applicable).

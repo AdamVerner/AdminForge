@@ -1,0 +1,62 @@
+@using System.Collections
+@using System.Reflection
+@using AdminForge.Core.Metadata
+
+@* A list carried by the row: chips when the elements are scalars, a table when they are records. *@
+
+@if (_items.Count == 0)
+{
+    <em>(none)</em>
+}
+else if (_columns is null)
+{
+    <MudChipSet T="string" ReadOnly="true">
+        @foreach (var item in _items)
+        {
+            <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined">@ValueFormatter.Format(item)</MudChip>
+        }
+    </MudChipSet>
+}
+else
+{
+    <MudSimpleTable Dense="true" Hover="true" Class="adminforge-collection">
+        <thead>
+            <tr>
+                @foreach (var column in _columns)
+                {
+                    <th>@ClrTypeScanner.Humanize(column.Name)</th>
+                }
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var item in _items)
+            {
+                <tr>
+                    @foreach (var column in _columns)
+                    {
+                        <td>@ValueFormatter.Format(column.GetValue(item))</td>
+                    }
+                </tr>
+            }
+        </tbody>
+    </MudSimpleTable>
+}
+
+@code {
+    [Parameter, EditorRequired] public IEnumerable Items { get; set; } = Array.Empty<object>();
+    [Parameter] public Type? ElementType { get; set; }
+
+    private List<object> _items = [];
+    private PropertyInfo[]? _columns;
+
+    protected override void OnParametersSet()
+    {
+        _items = Items.Cast<object?>().Where(i => i is not null).Select(i => i!).ToList();
+        var elementType = ElementType ?? _items.FirstOrDefault()?.GetType();
+        _columns = elementType is null || ScalarTypes.IsScalar(elementType)
+            ? null
+            : elementType.GetProperties(BindingFlags.Public | BindingFlags.Instance)
+                .Where(p => p.CanRead && p.GetIndexParameters().Length == 0 && ScalarTypes.IsScalar(p.PropertyType))
+                .ToArray();
+    }
+}
