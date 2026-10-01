@@ -210,6 +210,7 @@ public sealed class EntityBuilder<T>
             IsFilterable = column.IsFilterable,
             DisplayOrder = _nextDisplayOrder++,
             Format = column.Format,
+            Content = column.Content,
             LinkTargetType = column.LinkTargetType,
         };
         _meta.Columns.Add(finalMeta);

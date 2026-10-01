@@ -1,4 +1,5 @@
 using AdminForge.Core.Contracts;
+using AdminForge.UI.Blazor.Components;
 using CrmApp;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -60,6 +61,24 @@ public class CrmPanelTests : IClassFixture<CrmPanelFixture>
 
         var list = await _panel.Client.GetStringAsync("/admin/entities/Organization");
         Assert.DoesNotContain("northwind.example", list);
+    }
+
+    [Fact]
+    public async Task A_Content_Column_Shows_One_Line_And_Keeps_The_Rest_For_The_Dialog()
+    {
+        var list = await _panel.Client.GetStringAsync("/admin/entities/Organization");
+        var detail = await _panel.Client.GetStringAsync("/admin/entities/Organization/1");
+        foreach (var html in new[] { list, detail })
+        {
+            Assert.Contains("adminforge-content-preview", html);
+            // The markdown is flattened to one line and cut; the heading marks never render.
+            Assert.Contains("## Northwind Signed in **2019**", html);
+            Assert.DoesNotContain("<h2>Northwind</h2>", html);
+            Assert.DoesNotContain("Escalate to ops", html);
+            Assert.Contains("&quot;tier&quot;:&quot;Free&quot;", html);
+        }
+        Assert.Equal("{\n  \"a\": 1\n}", ContentDialog.Pretty("{\"a\":1}"));
+        Assert.Equal("not json", ContentDialog.Pretty("not json"));
     }
 
     [Fact]

@@ -207,6 +207,7 @@ builder.Services.AddAdminForge<AppDbContext>(forge =>
                                 "Title must be at least 3 characters."
                             )
                 )
+                .Column(t => t.Description, c => c.Content(Content.Text))
                 .Column(t => t.Status)
                 .Column(t => t.Priority)
                 // Typed LinkText: parameter type matches the column's CLR type at

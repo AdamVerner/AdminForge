@@ -18,6 +18,25 @@ public class ComputedColumnTests
         return new AdminForgeBuilder(new EfCoreReflectionScanner().Scan(ctx));
     }
 
+    [Fact]
+    public void Content_Is_Recorded_On_A_Discovered_And_A_Computed_Column()
+    {
+        var builder = Builder();
+        builder.AddTable<Todo>(e =>
+            e.Column(t => t.Description, c => c.Content(Content.Markdown))
+                .Column<string>(
+                    "Raw",
+                    c => c.Resolve((_, _, _) => Task.FromResult("{}")).Content(Content.Json)
+                )
+        );
+        var columns = builder.Build().Entities.Single().Columns;
+        Assert.Equal(
+            Content.Markdown,
+            columns.Single(c => c.PropertyName == "Description").Content
+        );
+        Assert.Equal(Content.Json, columns.Single(c => c.PropertyName == "Raw").Content);
+    }
+
     private static ColumnMeta Register(Action<CustomColumnBuilder<Todo, int>> configure)
     {
         var builder = Builder();

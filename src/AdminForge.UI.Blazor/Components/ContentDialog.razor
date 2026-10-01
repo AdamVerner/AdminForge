@@ -1,0 +1,45 @@
+@using System.Text.Json
+@using AdminForge.Core.Metadata
+
+<MudDialog Class="adminforge-content-dialog">
+    <DialogContent>
+        <div style="max-height: 70vh; overflow: auto;">
+            @switch (Kind)
+            {
+                case Content.Markdown:
+                    <MarkdownView Markdown="@Value" />
+                    break;
+                case Content.Html:
+                    <iframe sandbox="" srcdoc="@Value" style="width:100%; height:65vh; border:0;"></iframe>
+                    break;
+                case Content.Json:
+                    <pre style="white-space: pre-wrap; margin: 0;">@Pretty(Value)</pre>
+                    break;
+                default:
+                    <pre style="white-space: pre-wrap; margin: 0;">@Value</pre>
+                    break;
+            }
+        </div>
+    </DialogContent>
+</MudDialog>
+
+@code {
+    [Parameter] public string Value { get; set; } = string.Empty;
+    [Parameter] public Content Kind { get; set; }
+
+    private static readonly JsonSerializerOptions Indented = new() { WriteIndented = true };
+
+    /// <summary>Re-indented JSON; the value as is when it does not parse.</summary>
+    public static string Pretty(string value)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(value);
+            return JsonSerializer.Serialize(doc.RootElement, Indented);
+        }
+        catch (JsonException)
+        {
+            return value;
+        }
+    }
+}
