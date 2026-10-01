@@ -3,6 +3,7 @@ namespace CrmApp;
 /// <summary>
 /// The read models this panel is built from. Each is flat — one property per column, no
 /// navigations — because a provider-backed table is whatever a service hands back, not a row.
+/// A list the service already carries (domains, contacts) renders on the detail page as is.
 /// </summary>
 public sealed record Organization(
     int Id,
@@ -10,8 +11,12 @@ public sealed record Organization(
     Plan Plan,
     int Seats,
     DateTime CreatedAt,
-    string? SuspendedReason
+    string? SuspendedReason,
+    IReadOnlyList<string> Domains,
+    IReadOnlyList<Contact> Contacts
 );
+
+public sealed record Contact(string Name, string Email, bool Primary);
 
 public enum Plan
 {

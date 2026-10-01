@@ -50,6 +50,19 @@ public class CrmPanelTests : IClassFixture<CrmPanelFixture>
     }
 
     [Fact]
+    public async Task A_List_On_The_Row_Renders_On_Its_Detail_Page_And_Nowhere_Else()
+    {
+        var html = await _panel.Client.GetStringAsync("/admin/entities/Organization/1");
+        Assert.Contains("northwind.example", html); // a chip per domain
+        Assert.Contains("adminforge-collection", html); // a table for the contacts
+        Assert.Contains("billing@northwind.example", html);
+        Assert.Contains("<th>Primary</th>", html);
+
+        var list = await _panel.Client.GetStringAsync("/admin/entities/Organization");
+        Assert.DoesNotContain("northwind.example", list);
+    }
+
+    [Fact]
     public async Task Only_A_Table_Whose_Provider_Searches_Offers_A_Search_Box()
     {
         Assert.Contains(

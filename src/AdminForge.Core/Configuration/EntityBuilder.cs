@@ -79,10 +79,10 @@ public sealed class EntityBuilder<T>
                 $"Column '{propertyName}' was not discovered on entity '{typeof(T).Name}'."
             );
         }
-        if (column.Kind == ColumnKind.NavigationCollection)
+        if (column.Kind is ColumnKind.NavigationCollection or ColumnKind.Collection)
         {
             throw new InvalidOperationException(
-                $"Column '{propertyName}' is a navigation collection and cannot be added to the list view."
+                $"Column '{propertyName}' is a collection and cannot be added to the list view."
             );
         }
         column.ShowInList = true;

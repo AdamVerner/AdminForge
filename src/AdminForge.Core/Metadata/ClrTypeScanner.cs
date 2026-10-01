@@ -5,8 +5,9 @@ namespace AdminForge.Core.Metadata;
 
 /// <summary>
 /// Describes a plain CLR type — a read model a host-registered <c>IAdminDataProvider&lt;T&gt;</c>
-/// serves — the way <c>EfCoreReflectionScanner</c> describes an EF entity. Only scalar properties
-/// become columns; the key is the <see cref="KeyAttribute"/>-marked properties, else <c>Id</c>.
+/// serves — the way <c>EfCoreReflectionScanner</c> describes an EF entity. Scalar properties become
+/// columns, lists become detail-only <see cref="ColumnKind.Collection"/> columns; the key is the
+/// <see cref="KeyAttribute"/>-marked properties, else <c>Id</c>.
 /// Nothing is known about what the provider can sort or filter on, so columns start with neither.
 /// </summary>
 public static class ClrTypeScanner
@@ -17,7 +18,11 @@ public static class ClrTypeScanner
 
         var nullability = new NullabilityInfoContext();
         var properties = type.GetProperties(BindingFlags.Public | BindingFlags.Instance)
-            .Where(p => p.CanRead && p.GetIndexParameters().Length == 0 && IsScalar(p.PropertyType))
+            .Where(p =>
+                p.CanRead
+                && p.GetIndexParameters().Length == 0
+                && (IsScalar(p.PropertyType) || ElementType(p.PropertyType) is not null)
+            )
             .ToList();
 
         var keys = properties
@@ -39,6 +44,20 @@ public static class ClrTypeScanner
                     Nullable.GetUnderlyingType(p.PropertyType) is not null
                     || nullability.Create(p).ReadState == NullabilityState.Nullable;
                 var isKey = keys.Contains(p.Name);
+                if (!IsScalar(p.PropertyType))
+                    return new ColumnMeta
+                    {
+                        PropertyName = p.Name,
+                        Label = Humanize(p.Name),
+                        ClrType = p.PropertyType,
+                        IsNullable = isNullable,
+                        Kind = ColumnKind.Collection,
+                        ElementType = ElementType(p.PropertyType),
+                        IsGenerated = true,
+                        HiddenInEdit = true,
+                        IsSortable = false,
+                        IsFilterable = false,
+                    };
                 return new ColumnMeta
                 {
                     PropertyName = p.Name,
@@ -68,6 +87,19 @@ public static class ClrTypeScanner
     }
 
     private static bool IsScalar(Type type) => ScalarTypes.IsScalar(type);
+
+    /// <summary>The element type of a list property; null for a scalar, a string or a byte array.</summary>
+    public static Type? ElementType(Type type)
+    {
+        if (IsScalar(type) || type == typeof(byte[]))
+            return null;
+        return new[] { type }
+            .Concat(type.GetInterfaces())
+            .FirstOrDefault(i =>
+                i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IEnumerable<>)
+            )
+            ?.GetGenericArguments()[0];
+    }
 
     /// <summary>"CreatedAt" → "Created At"; an identifier already containing spaces is kept.</summary>
     public static string Humanize(string identifier)

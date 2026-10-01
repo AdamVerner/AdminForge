@@ -11,7 +11,8 @@ public sealed record AuditLogEntry(
     string EntityType,
     string? EntityId,
     string? User,
-    int Changes
+    int Changes,
+    IReadOnlyList<string> ChangedProperties
 );
 
 /// <summary>The audit sink's memory: the last 500 events, newest first.</summary>
@@ -33,7 +34,8 @@ public sealed class AuditLogStore
                     evt.EntityType,
                     evt.EntityId,
                     evt.User,
-                    evt.ChangedValues.Count
+                    evt.ChangedValues.Count,
+                    [.. evt.ChangedValues.Keys]
                 )
             );
             if (_entries.Count > 500)

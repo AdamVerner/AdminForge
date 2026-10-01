@@ -218,6 +218,14 @@ else
             }
             return;
         }
+        if (raw is System.Collections.IEnumerable items && raw is not string && raw is not byte[])
+        {
+            builder.OpenComponent<CollectionView>(0);
+            builder.AddAttribute(1, "Items", items);
+            builder.AddAttribute(2, "ElementType", column.ElementType ?? ClrTypeScanner.ElementType(column.ClrType));
+            builder.CloseComponent();
+            return;
+        }
         if (Bridge.Entities.FirstOrDefault(e => e.ClrType == column.LinkTargetType) is { } target)
         {
             builder.OpenComponent<MudLink>(0);

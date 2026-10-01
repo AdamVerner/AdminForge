@@ -65,11 +65,17 @@ public class ClrTypeScannerTests
 
         Assert.Equal("Account", meta.RouteName);
         Assert.Equal(["Id"], meta.PrimaryKeyPropertyNames);
-        // Collections are not columns: a read model carries them for its own consumers.
         Assert.Equal(
-            ["Id", "Email", "DisplayName", "Tier", "CreatedAt"],
+            ["Id", "Email", "DisplayName", "Tier", "CreatedAt", "Tags"],
             meta.Columns.Select(c => c.PropertyName)
         );
+
+        // A list is a detail-only column: never listed, never edited.
+        var tags = meta.Columns.Single(c => c.PropertyName == "Tags");
+        Assert.Equal(ColumnKind.Collection, tags.Kind);
+        Assert.Equal(typeof(string), tags.ElementType);
+        Assert.False(tags.ShowInList);
+        Assert.True(tags.HiddenInEdit);
 
         // What the provider can sort or filter on is unknown, so nothing offers a control until opted in.
         Assert.All(meta.Columns, c => Assert.False(c.IsSortable || c.IsFilterable));

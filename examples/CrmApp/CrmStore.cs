@@ -25,10 +25,17 @@ public sealed class CrmStore
                         (Plan)(i % 3),
                         (i + 1) * 25,
                         start.AddDays(i * 31),
-                        i == 2 ? "unpaid invoice" : null
+                        i == 2 ? "unpaid invoice" : null,
+                        [$"{Slug(name)}.example", $"{Slug(name)}.test"],
+                        [
+                            new Contact($"{name} Billing", $"billing@{Slug(name)}.example", true),
+                            new Contact($"{name} Ops", $"ops@{Slug(name)}.example", false),
+                        ]
                     )
             ),
         ];
+
+        static string Slug(string name) => name.Split(' ')[0].ToLowerInvariant();
 
         string[] roles = ["Owner", "Admin", "Operator", "Viewer"];
         var accounts = new List<Account>();
