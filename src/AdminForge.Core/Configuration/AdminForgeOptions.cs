@@ -56,6 +56,12 @@ public sealed class AdminForgeOptions
     /// <summary>All registered generic forms, in registration order.</summary>
     public IReadOnlyList<FormMeta> Forms { get; init; } = [];
 
+    /// <summary>Pages the host wrote itself, in registration order.</summary>
+    public IReadOnlyList<PageMeta> Pages { get; init; } = [];
+
+    /// <summary>Route name of the dashboard the home page renders; null leaves the welcome text alone.</summary>
+    public string? HomeDashboard { get; init; }
+
     /// <summary>
     /// Optional audit sink; mutations are recorded here. Null = no auditing.
     /// Wired via <c>AdminForgeBuilder.WithAuditLog(...)</c>.

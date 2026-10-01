@@ -5,6 +5,23 @@
 <PageTitle>@Options.Title</PageTitle>
 
 <MudText Typo="Typo.h4">@Options.Title</MudText>
-<MudText Typo="Typo.body1" Class="mt-2">
+<MudText Typo="Typo.body1" Class="mt-2 mb-4">
     @(Options.WelcomeMessage ?? $"{Bridge.Entities.Count} registered entities. Pick one from the sidebar.")
 </MudText>
+@if (_home is not null && _dashboard is not null)
+{
+    <WidgetGrid Dashboard="@_dashboard" DashboardMeta="@_home" />
+}
+
+@code {
+    private DashboardMeta? _home;
+    private DashboardVM? _dashboard;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (Options.HomeDashboard is null) return;
+        _home = Bridge.FindDashboardByRouteName(Options.HomeDashboard);
+        if (_home is not null)
+            _dashboard = await Bridge.LoadDashboardAsync(_home);
+    }
+}

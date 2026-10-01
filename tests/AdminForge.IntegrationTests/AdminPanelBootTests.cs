@@ -36,6 +36,21 @@ public class AdminPanelBootTests : IClassFixture<TodoAppFactory>
     }
 
     [Fact]
+    public async Task The_Home_Page_Is_The_Named_Dashboard_And_A_Host_Page_Sits_In_The_Shell()
+    {
+        var client = _factory.CreateClient();
+        var home = await client.GetStringAsync("/admin");
+        Assert.Contains("Open Todos", home); // a widget of the operations dashboard
+        Assert.Contains("href=\"/admin/status\"", home); // the host page in the sidebar
+        Assert.DoesNotContain("href=\"/admin/dashboards/operations\"", home); // not listed twice
+
+        var status = await client.GetStringAsync("/admin/status");
+        Assert.Contains("host-page", status);
+        Assert.Contains("audit entries since start", status);
+        Assert.Contains("href=\"/admin/status\"", status); // rendered inside the shell
+    }
+
+    [Fact]
     public async Task Entity_List_Page_Renders()
     {
         // Seed a known row through the host's DI graph so the page has something to show.

@@ -1,0 +1,15 @@
+@page "/admin/status"
+@using AdminForge.Core.Contracts
+@using Microsoft.AspNetCore.Components.Web
+@using MudBlazor
+@inject IUserAccessor User
+@inject AuditLogStore AuditLog
+
+@* A page of the host's own, inside the panel's shell: its theme, its sidebar, its user. *@
+
+<PageTitle>Status</PageTitle>
+<MudText Typo="Typo.h4" Class="mb-4">Status</MudText>
+<MudPaper Class="pa-4" data-testid="host-page">
+    <MudText>Signed in as <b>@(User.GetUser().Identity?.Name ?? "anonymous")</b>.</MudText>
+    <MudText>@AuditLog.Snapshot().Count audit entries since start.</MudText>
+</MudPaper>

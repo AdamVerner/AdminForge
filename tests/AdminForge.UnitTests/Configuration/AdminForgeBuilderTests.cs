@@ -184,4 +184,25 @@ public class AdminForgeBuilderTests
         Assert.Equal("Title required", validator.Validate(""));
         Assert.Null(validator.Validate("ok"));
     }
+
+    [Fact]
+    public void A_Host_Page_Is_Listed_And_The_Home_Dashboard_Must_Exist()
+    {
+        var builder = new AdminForgeBuilder();
+        builder.AddPage<AdminForgeBuilderTests>(n => n.Group("System"));
+        var page = Assert.Single(builder.Build().Pages);
+        Assert.Equal(typeof(AdminForgeBuilderTests), page.ComponentType);
+        Assert.Equal("AdminForgeBuilderTests", page.Nav.Label);
+        Assert.Equal("System", page.Nav.Group);
+
+        var missing = new AdminForgeBuilder().UseHomeDashboard("nope");
+        Assert.Throws<InvalidOperationException>(() => missing.Build());
+
+        var home = new AdminForgeBuilder()
+            .AddDashboard("ops", d => d.WithTitle("Ops"))
+            .UseHomeDashboard("ops")
+            .Build();
+        Assert.Equal("ops", home.HomeDashboard);
+        Assert.True(Assert.Single(home.Dashboards).Nav.Hidden);
+    }
 }
