@@ -23,6 +23,25 @@ public sealed class ActionBuilder
         return this;
     }
 
+    /// <summary>Ask the user for a value before the handler runs; the fields open as a dialog.</summary>
+    public ActionBuilder AddField(Action<FieldBuilder> configure)
+    {
+        ArgumentNullException.ThrowIfNull(configure);
+        var b = new FieldBuilder();
+        configure(b);
+        var field = b.Build();
+        if (
+            _meta.Fields.Any(f =>
+                string.Equals(f.Name, field.Name, StringComparison.OrdinalIgnoreCase)
+            )
+        )
+            throw new InvalidOperationException(
+                $"Field '{field.Name}' is already declared on action '{_meta.Name}'."
+            );
+        _meta.Fields.Add(field);
+        return this;
+    }
+
     /// <summary>Icon name (renderer-defined token, e.g. MudBlazor's <c>Icons.Material.Filled.Email</c>).</summary>
     public ActionBuilder Icon(string icon)
     {

@@ -171,14 +171,16 @@ public interface IAdminUIBridge
     /// <summary>
     /// Invoke a custom action registered via <c>AddAction</c>. Loads the entity by key,
     /// authorizes via <see cref="IAdminAuthorizationPolicy"/> (action name supplied),
-    /// runs the handler inside a fresh DI scope, and emits an
-    /// <see cref="AuditAction.Custom"/> audit event.
+    /// validates <paramref name="input"/> against the action's fields (throws
+    /// <see cref="FormValidationException"/>), runs the handler inside a fresh DI scope,
+    /// and emits an <see cref="AuditAction.Custom"/> audit event carrying the input.
     /// </summary>
     Task InvokeActionAsync(
         string entityRouteName,
         string encodedKey,
         string actionName,
         IActionContext context,
+        FormSubmission? input = null,
         CancellationToken cancellationToken = default
     );
 

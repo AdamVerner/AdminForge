@@ -1,0 +1,73 @@
+@using AdminForge.Core.Configuration
+@using AdminForge.Core.Metadata
+@using AdminForge.Core.ViewModels
+
+@* The fields an action asks for. Submit runs the action; a validation failure stays in the dialog. *@
+
+<MudDialog Class="adminforge-action-input">
+    <DialogContent>
+        @if (!string.IsNullOrEmpty(Message))
+        {
+            <MudText Class="mb-3">@Message</MudText>
+        }
+        @foreach (var field in _form.Fields)
+        {
+            <FormFieldRenderer Field="@field" Form="@_form"
+                               FileChanged="@(f => OnFileChanged(field.Name, f))" />
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => Dialog.Cancel())">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled" Color="@Color" Disabled="@_submitting" OnClick="Submit">@ButtonText</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance Dialog { get; set; } = default!;
+    [Parameter, EditorRequired] public ActionMeta Action { get; set; } = default!;
+    [Parameter, EditorRequired] public Func<FormSubmission, Task> Run { get; set; } = default!;
+    [Parameter] public string? Message { get; set; }
+    [Parameter] public string ButtonText { get; set; } = "Run";
+    [Parameter] public Color Color { get; set; } = Color.Primary;
+
+    private FormVM _form = default!;
+    private bool _submitting;
+    private readonly Dictionary<string, FormFileUpload> _files = new(StringComparer.Ordinal);
+
+    protected override void OnInitialized() =>
+        _form = new FormVM
+        {
+            RouteName = Action.Name,
+            Title = Action.Name,
+            Fields = Action.Fields,
+            Values = Action.Fields.ToDictionary(f => f.Name, f => f.Kind == FieldKind.Bool ? (object?)false : null, StringComparer.Ordinal),
+        };
+
+    private void OnFileChanged(string name, FormFileUpload? file)
+    {
+        if (file is null) _files.Remove(name);
+        else _files[name] = file;
+    }
+
+    private async Task Submit()
+    {
+        _submitting = true;
+        _form.Errors.Clear();
+        try
+        {
+            await Run(new FormSubmission(
+                new Dictionary<string, object?>(_form.Values, StringComparer.Ordinal),
+                new Dictionary<string, FormFileUpload>(_files, StringComparer.Ordinal)));
+            Dialog.Close(DialogResult.Ok(true));
+        }
+        catch (FormValidationException fve)
+        {
+            foreach (var (k, v) in fve.Errors)
+                _form.Errors[k] = v;
+        }
+        finally
+        {
+            _submitting = false;
+        }
+    }
+}

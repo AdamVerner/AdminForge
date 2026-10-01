@@ -252,6 +252,27 @@ builder.Services.AddAdminForge<AppDbContext>(forge =>
                             )
                 )
                 .HideColumn(t => t.CreatedAt)
+                // An action with fields: the dialog asks, the handler gets the answers.
+                .AddAction(
+                    "Snooze",
+                    async (sp, todo, input, ctx) =>
+                    {
+                        var days = input.Get<int>("Days");
+                        var db = sp.GetRequiredService<AppDbContext>();
+                        db.Attach(todo).Entity.DueAt = (todo.DueAt ?? DateTime.Today).AddDays(days);
+                        await db.SaveChangesAsync();
+                        ctx.ShowSuccess($"Snoozed {days} day(s): {input.Get<string>("Reason")}");
+                        ctx.Refresh();
+                    },
+                    a =>
+                        a.Icon("Snooze")
+                            .RequireConfirmation("Pushes the due date out.")
+                            .AddField(f => f.Number("Days").Min(1).Max(90).Required())
+                            .AddField(f =>
+                                f.Select("Reason")
+                                    .Options("waiting on someone", "low priority", "blocked")
+                            )
+                )
                 // Visiting /admin/entities/Todo/{id} re-fetches the displayed row every 5s.
                 .WithLivePolling(TimeSpan.FromSeconds(5))
                 .OnDelete(

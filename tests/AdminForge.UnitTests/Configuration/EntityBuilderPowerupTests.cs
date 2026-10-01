@@ -23,6 +23,34 @@ public class EntityBuilderPowerupTests
     }
 
     [Fact]
+    public void An_Action_Declares_Its_Fields_Once_Each()
+    {
+        var builder = new AdminForgeBuilder(Scan());
+        builder.AddTable<Todo>(e =>
+            e.AddAction("Plain", (_, _, _) => Task.CompletedTask)
+                .AddAction(
+                    "Snooze",
+                    (_, _, _, _) => Task.CompletedTask,
+                    a => a.AddField(f => f.Number("Days").Required())
+                )
+        );
+        var actions = builder.Build().Entities.Single().Actions;
+        Assert.Empty(actions.Single(a => a.Name == "Plain").Fields);
+        var days = Assert.Single(actions.Single(a => a.Name == "Snooze").Fields);
+        Assert.Equal(FieldKind.Number, days.Kind);
+
+        Assert.Throws<InvalidOperationException>(() =>
+            new AdminForgeBuilder(Scan()).AddTable<Todo>(e =>
+                e.AddAction(
+                    "Twice",
+                    (_, _, _, _) => Task.CompletedTask,
+                    a => a.AddField(f => f.Text("X")).AddField(f => f.Text("x"))
+                )
+            )
+        );
+    }
+
+    [Fact]
     public void HideColumn_Clears_ShowInList_And_Sets_HiddenInEdit()
     {
         var builder = new AdminForgeBuilder(Scan());

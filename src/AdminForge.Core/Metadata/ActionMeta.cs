@@ -1,3 +1,4 @@
+using AdminForge.Core.Configuration;
 using AdminForge.Core.Contracts;
 
 namespace AdminForge.Core.Metadata;
@@ -13,10 +14,19 @@ public sealed class ActionMeta
 
     /// <summary>
     /// Async handler invoked when the button fires. Receives the scoped service provider,
-    /// the loaded entity instance (boxed — the bridge casts it for typed callers),
-    /// and an <see cref="IActionContext"/> wrapping the UI.
+    /// the loaded entity instance (boxed — the bridge casts it for typed callers), the
+    /// submitted <see cref="Fields"/> and an <see cref="IActionContext"/> wrapping the UI.
     /// </summary>
-    public required Func<IServiceProvider, object, IActionContext, Task> Handler { get; init; }
+    public required Func<
+        IServiceProvider,
+        object,
+        FormSubmission,
+        IActionContext,
+        Task
+    > Handler { get; init; }
+
+    /// <summary>Asked of the user in a dialog before the handler runs; empty for a plain button.</summary>
+    public List<FieldMeta> Fields { get; } = [];
 
     /// <summary>
     /// When set, the action context first prompts with this message and aborts on cancel.
