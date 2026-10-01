@@ -212,6 +212,12 @@ public interface IAdminUIBridge
     /// <summary>Build a fresh form view model for the given route, or null when missing.</summary>
     FormVM? GetForm(string routeName);
 
+    /// <summary>The choices of a <see cref="FieldKind.Select"/> field, resolved in a fresh DI scope.</summary>
+    Task<IReadOnlyList<SelectOption>> LoadSelectOptionsAsync(
+        FieldMeta field,
+        CancellationToken cancellationToken = default
+    );
+
     /// <summary>
     /// Validate and submit a form. Throws <see cref="FormValidationException"/>
     /// when validation fails and <see cref="AdminForbiddenException"/> when the

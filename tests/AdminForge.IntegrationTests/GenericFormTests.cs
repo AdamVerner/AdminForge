@@ -6,6 +6,7 @@ using AdminForge.Core.Metadata;
 using AdminForge.DataAccess.EfCore;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using TodoApp.Data;
 using TodoApp.Entities;
@@ -81,6 +82,61 @@ public class GenericFormTests : IClassFixture<FormTodoAppFactory>
         Assert.Null(evt.EntityId);
         Assert.Equal("Hello", evt.ChangedValues["Title"].NewValue);
         Assert.Equal(3L, evt.ChangedValues["Priority"].NewValue);
+    }
+
+    [Fact]
+    public async Task A_Select_Offers_What_The_Host_Resolves_And_Refuses_Anything_Else()
+    {
+        _factory.HandlerCalls.Clear();
+        using var scope = _factory.Services.CreateScope();
+        await DbSeeder.SeedAsync(scope.ServiceProvider.GetRequiredService<AppDbContext>());
+        var bridge = scope.ServiceProvider.GetRequiredService<IAdminUIBridge>();
+        var form = bridge.GetForm("send-notification")!;
+
+        // The choices come from the database, through the bridge's own scope.
+        var recipients = await bridge.LoadSelectOptionsAsync(
+            form.Fields.Single(f => f.Name == "Recipients")
+        );
+        Assert.NotEmpty(recipients);
+        Assert.All(recipients, o => Assert.Contains("@", o.Label));
+
+        var ex = await Assert.ThrowsAsync<FormValidationException>(() =>
+            bridge.SubmitFormAsync(
+                "send-notification",
+                new FormSubmission(
+                    new Dictionary<string, object?>
+                    {
+                        ["Title"] = "t",
+                        ["Body"] = "b",
+                        ["Channel"] = "pigeon",
+                        ["Recipients"] = new List<string> { recipients[0].Value, "999" },
+                    }
+                ),
+                context: null
+            )
+        );
+        Assert.Contains("pigeon", ex.Errors["Channel"]);
+        Assert.Contains("999", ex.Errors["Recipients"]);
+        Assert.Empty(_factory.HandlerCalls);
+
+        await bridge.SubmitFormAsync(
+            "send-notification",
+            new FormSubmission(
+                new Dictionary<string, object?>
+                {
+                    ["Title"] = "t",
+                    ["Body"] = "b",
+                    ["Channel"] = "sms",
+                    ["Recipients"] = new List<string> { recipients[0].Value, recipients[1].Value },
+                }
+            ),
+            context: null
+        );
+        Assert.Equal(["t", $"{recipients[0].Value},{recipients[1].Value}"], _factory.HandlerCalls);
+
+        // The page renders both dropdowns.
+        var body = await _factory.CreateClient().GetStringAsync("/admin/forms/send-notification");
+        Assert.Equal(2, body.Split("adminforge-select").Length - 1);
     }
 
     [Fact]
@@ -211,10 +267,31 @@ public class FormTodoAppFactory : WebApplicationFactory<Program>
                             .AddField(x => x.Date("ScheduledDate").Label("Scheduled Date"))
                             .AddField(x => x.DateTime("ExpiresAt").Label("Expires At"))
                             .AddField(x => x.FileUpload("Attachment").MaxSizeBytes(5_000_000))
+                            .AddField(x => x.Select("Channel").Options("email", "sms"))
+                            .AddField(x =>
+                                x.Select("Recipients")
+                                    .Multiple()
+                                    .Options(
+                                        async (sp, ct) =>
+                                            (IReadOnlyList<SelectOption>)
+                                                await sp.GetRequiredService<AppDbContext>()
+                                                    .Users.OrderBy(u => u.Id)
+                                                    .Select(u => new SelectOption(
+                                                        u.Id.ToString(),
+                                                        u.Email
+                                                    ))
+                                                    .ToListAsync(ct)
+                                    )
+                            )
                             .OnSubmit(
                                 (sp, submission, ctx) =>
                                 {
                                     handlerCalls.Add(submission.Get<string>("Title") ?? "");
+                                    if (
+                                        submission.Get<IReadOnlyList<string>>("Recipients") is
+                                        { } to
+                                    )
+                                        handlerCalls.Add(string.Join(",", to));
                                     return Task.CompletedTask;
                                 }
                             )

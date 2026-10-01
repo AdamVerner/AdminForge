@@ -68,6 +68,10 @@ public sealed class FieldBuilder
     public FileUploadFieldBuilder FileUpload(string name) =>
         Begin<FileUploadFieldBuilder>(name, FieldKind.FileUpload, new FileUploadFieldOptions());
 
+    /// <summary>Declare a dropdown; <c>.Options(...)</c> is required, <c>.Multiple()</c> allows several.</summary>
+    public SelectFieldBuilder Select(string name) =>
+        Begin<SelectFieldBuilder>(name, FieldKind.Select, new SelectFieldOptions());
+
     /// <summary>
     /// Returns the built field, or throws if no kind method was called. Internal —
     /// consumed by <see cref="FormBuilder.AddField"/>.
@@ -77,6 +81,10 @@ public sealed class FieldBuilder
         if (_built is null)
             throw new InvalidOperationException(
                 "AddField callback must invoke a field-kind method (e.g. f.Text(...))."
+            );
+        if (_built.Options is SelectFieldOptions { Options: null })
+            throw new InvalidOperationException(
+                $"Select field '{_built.Name}' must name its choices with Options(...)."
             );
         return _built;
     }
@@ -272,6 +280,41 @@ public sealed class FileUploadFieldBuilder : FieldSubBuilder<FileUploadFieldBuil
             normalised.Add(lower.StartsWith('.') ? lower : "." + lower);
         }
         Opts.AcceptedExtensions = normalised;
+        return this;
+    }
+}
+
+/// <summary>Kind-specific builder for <see cref="FieldKind.Select"/> fields.</summary>
+public sealed class SelectFieldBuilder : FieldSubBuilder<SelectFieldBuilder>
+{
+    public SelectFieldBuilder(FieldMeta meta)
+        : base(meta) { }
+
+    private SelectFieldOptions Opts => (SelectFieldOptions)Meta.Options!;
+
+    /// <summary>Choices resolved from services when the form renders and when it submits.</summary>
+    public SelectFieldBuilder Options(
+        Func<IServiceProvider, CancellationToken, Task<IReadOnlyList<SelectOption>>> options
+    )
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        Opts.Options = options;
+        return this;
+    }
+
+    /// <summary>A fixed list of choices, each its own label.</summary>
+    public SelectFieldBuilder Options(params string[] values)
+    {
+        ArgumentNullException.ThrowIfNull(values);
+        IReadOnlyList<SelectOption> fixedList = values.Select(v => new SelectOption(v, v)).ToList();
+        Opts.Options = (_, _) => Task.FromResult(fixedList);
+        return this;
+    }
+
+    /// <summary>Allow any number of choices; the handler receives an <c>IReadOnlyList&lt;string&gt;</c>.</summary>
+    public SelectFieldBuilder Multiple(bool multiple = true)
+    {
+        Opts.Multiple = multiple;
         return this;
     }
 }

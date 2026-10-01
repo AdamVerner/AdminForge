@@ -1,0 +1,53 @@
+@using AdminForge.Core.Contracts
+@using AdminForge.Core.Metadata
+@using AdminForge.Core.ViewModels
+@inject IAdminUIBridge Bridge
+
+@* A dropdown whose choices come from the host at render time; several at once when the field says so. *@
+
+@if (_options is null)
+{
+    <MudProgressCircular Size="Size.Small" Indeterminate="true" />
+}
+else if (Multiple)
+{
+    <MudSelect T="string" Label="@Label" MultiSelection="true" ToStringFunc="@LabelOf"
+               SelectedValues="@(Form.Values.TryGetValue(Field.Name, out var v) && v is IEnumerable<string> many ? many.ToList() : [])"
+               SelectedValuesChanged="@(values => Form.Values[Field.Name] = values.ToList())"
+               HelperText="@Field.Description" Error="@(Error is not null)" ErrorText="@Error"
+               Class="adminforge-select">
+        @foreach (var option in _options)
+        {
+            <MudSelectItem T="string" Value="@option.Value">@option.Label</MudSelectItem>
+        }
+    </MudSelect>
+}
+else
+{
+    <MudSelect T="string" Label="@Label" Clearable="true" ToStringFunc="@LabelOf"
+               Value="@(Form.Values.TryGetValue(Field.Name, out var v) ? v as string : null)"
+               ValueChanged="@(value => Form.Values[Field.Name] = value)"
+               HelperText="@Field.Description" Error="@(Error is not null)" ErrorText="@Error"
+               Class="adminforge-select">
+        @foreach (var option in _options)
+        {
+            <MudSelectItem T="string" Value="@option.Value">@option.Label</MudSelectItem>
+        }
+    </MudSelect>
+}
+
+@code {
+    [Parameter, EditorRequired] public FieldMeta Field { get; set; } = default!;
+    [Parameter, EditorRequired] public FormVM Form { get; set; } = default!;
+    [Parameter] public string Label { get; set; } = string.Empty;
+    [Parameter] public string? Error { get; set; }
+
+    private IReadOnlyList<SelectOption>? _options;
+    private bool Multiple => Field.Options is SelectFieldOptions { Multiple: true };
+
+    private string LabelOf(string? value) =>
+        _options?.FirstOrDefault(o => o.Value == value)?.Label ?? value ?? string.Empty;
+
+    protected override async Task OnInitializedAsync() =>
+        _options = await Bridge.LoadSelectOptionsAsync(Field);
+}

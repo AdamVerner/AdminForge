@@ -29,8 +29,8 @@ public sealed class FieldMeta
     /// <summary>
     /// Kind-specific extra configuration. The concrete type depends on
     /// <see cref="Kind"/> — see <see cref="TextFieldOptions"/>,
-    /// <see cref="NumberFieldOptions"/>, <see cref="FloatFieldOptions"/>, and
-    /// <see cref="FileUploadFieldOptions"/>. May be null for kinds that need no
+    /// <see cref="NumberFieldOptions"/>, <see cref="FloatFieldOptions"/>,
+    /// <see cref="FileUploadFieldOptions"/> and <see cref="SelectFieldOptions"/>. May be null for kinds that need no
     /// extra options (Bool, Date, DateTime, Markdown).
     /// </summary>
     public object? Options { get; set; }
@@ -71,4 +71,21 @@ public sealed class FileUploadFieldOptions
     /// Null/empty means anything is accepted.
     /// </summary>
     public IReadOnlyList<string>? AcceptedExtensions { get; set; }
+}
+
+/// <summary>One choice of a <see cref="FieldKind.Select"/> field: the submitted value and what the user sees.</summary>
+public sealed record SelectOption(string Value, string Label);
+
+/// <summary>Type-specific options for a <see cref="FieldKind.Select"/> field.</summary>
+public sealed class SelectFieldOptions
+{
+    /// <summary>Resolved when the form renders and again when it submits, so the list can come from a service.</summary>
+    public Func<
+        IServiceProvider,
+        CancellationToken,
+        Task<IReadOnlyList<SelectOption>>
+    >? Options { get; set; }
+
+    /// <summary>Any number of choices; the submitted value is an <c>IReadOnlyList&lt;string&gt;</c>.</summary>
+    public bool Multiple { get; set; }
 }
