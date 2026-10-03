@@ -48,7 +48,7 @@ public class LiveUpdatesTests : IClassFixture<TodoAppFactory>
             await db.SaveChangesAsync();
         }
 
-        var client = _factory.CreateClient();
+        var client = await _factory.CreateSignedInClientAsync();
         var response = await client.GetAsync("/admin/entities/Todo/1");
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }

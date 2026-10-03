@@ -1,117 +1,59 @@
 @inject IAdminUIBridge Bridge
 @inject AdminForgeOptions Options
+@inject NavigationManager Nav
 
-<MudNavMenu>
-    <MudNavLink Href="@RootHref" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Home">
-        Home
-    </MudNavLink>
-    @foreach (var group in _grouped)
-    {
-        if (group.Key is null)
+<div class="adminforge-sidebar" style="display:flex;flex-direction:column;height:100%">
+    <MudNavMenu Style="flex:1 1 auto;overflow-y:auto">
+        <MudNavLink Href="@RootHref" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Home">
+            Home
+        </MudNavLink>
+        @foreach (var group in _grouped)
         {
-            @foreach (var entry in group.Entries)
+            if (group.Key is null)
             {
-                <MudNavLink Href="@EntryHref(entry)" Icon="@(IconFor(entry))">
-                    @(entry.Label)
-                </MudNavLink>
-            }
-        }
-        else
-        {
-            <MudNavGroup Title="@group.Key" Expanded="true" Icon="@Icons.Material.Filled.Folder">
                 @foreach (var entry in group.Entries)
                 {
-                    <MudNavLink Href="@EntryHref(entry)" Icon="@(IconFor(entry))">
-                        @(entry.Label)
-                    </MudNavLink>
+                    <MudNavLink Href="@entry.Href" Icon="@entry.Icon">@entry.Label</MudNavLink>
+                }
+            }
+            else
+            {
+                <MudNavGroup Title="@group.Key" Expanded="true" Icon="@Icons.Material.Filled.Folder">
+                    @foreach (var entry in group.Entries)
+                    {
+                        <MudNavLink Href="@entry.Href" Icon="@entry.Icon">@entry.Label</MudNavLink>
+                    }
+                </MudNavGroup>
+            }
+        }
+    </MudNavMenu>
+    @if (_settings.Count > 0)
+    {
+        <MudNavMenu Class="adminforge-settings" Style="flex:none;border-top:1px solid var(--mud-palette-divider)">
+            <MudNavGroup Title="Settings" @bind-Expanded="_settingsOpen" Icon="@Icons.Material.Filled.Settings">
+                @foreach (var entry in _settings)
+                {
+                    <MudNavLink Href="@entry.Href" Icon="@entry.Icon">@entry.Label</MudNavLink>
                 }
             </MudNavGroup>
-        }
+        </MudNavMenu>
     }
-</MudNavMenu>
+</div>
 
 @code {
-    /// <summary>
-    /// Unified sidebar entry — entities and dashboards share the same nav-grouping
-    /// pipeline so they can interleave under user-defined groups.
-    /// </summary>
-    private enum EntryKind { Entity, Dashboard, Form, Page }
-    private record NavEntry(EntryKind Kind, string Label, string Href, NavMeta Nav);
-    private record GroupedNav(string? Key, List<NavEntry> Entries);
-    private List<GroupedNav> _grouped = new();
+    private IReadOnlyList<NavGrouping.Group<NavEntry>> _grouped = [];
+    private IReadOnlyList<NavEntry> _settings = [];
+    private bool _settingsOpen;
 
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
-        var entries = new List<NavEntry>();
-
-        foreach (var e in Bridge.Entities)
-        {
-            if (e.Nav.Hidden || e.IsJoinEntity) continue;
-            entries.Add(new NavEntry(
-                EntryKind.Entity,
-                e.Nav.Label ?? e.Label,
-                EntityHref(e),
-                e.Nav
-            ));
-        }
-
-        foreach (var d in Bridge.Dashboards)
-        {
-            if (d.Nav.Hidden) continue;
-            entries.Add(new NavEntry(
-                EntryKind.Dashboard,
-                d.Nav.Label ?? d.Title,
-                DashboardHref(d),
-                d.Nav
-            ));
-        }
-
-        foreach (var f in Bridge.Forms)
-        {
-            if (f.Nav.Hidden) continue;
-            entries.Add(new NavEntry(
-                EntryKind.Form,
-                f.Nav.Label ?? f.Title,
-                FormHref(f),
-                f.Nav
-            ));
-        }
-
-        foreach (var p in Options.Pages)
-        {
-            if (p.Nav.Hidden) continue;
-            entries.Add(new NavEntry(EntryKind.Page, p.Nav.Label!, PageHref(p), p.Nav));
-        }
-
-        _grouped = entries
-            .GroupBy(e => e.Nav.Group)
-            .OrderBy(g => g.Key is null ? 0 : 1)  // ungrouped first
-            .ThenBy(g => g.Key, StringComparer.OrdinalIgnoreCase)
-            .Select(g => new GroupedNav(
-                g.Key,
-                g.OrderBy(en => en.Nav.Order ?? int.MaxValue)
-                 .ThenBy(en => en.Label, StringComparer.OrdinalIgnoreCase)
-                 .ToList()
-            ))
-            .ToList();
+        var entries = await NavEntries.CollectAsync(Bridge, Options);
+        _grouped = NavGrouping.Arrange(entries.Where(e => e.Nav.Area == NavArea.Main), e => e.Nav, e => e.Label);
+        _settings = NavGrouping.Arrange(entries.Where(e => e.Nav.Area == NavArea.Settings), e => e.Nav, e => e.Label)
+            .SingleOrDefault()?.Entries ?? [];
+        var path = "/" + Nav.ToBaseRelativePath(Nav.Uri).Split('?')[0];
+        _settingsOpen = _settings.Any(e => path.StartsWith(e.Href, StringComparison.OrdinalIgnoreCase));
     }
 
     private string RootHref => "/" + Options.RoutePrefix.Trim('/');
-    private string EntityHref(EntityMeta meta) => $"{RootHref}/entities/{meta.RouteName}";
-    private string DashboardHref(DashboardMeta meta) => $"{RootHref}/dashboards/{meta.RouteName}";
-    private string FormHref(FormMeta meta) => $"{RootHref}/forms/{meta.RouteName}";
-    public static string PageHref(PageMeta meta) =>
-        meta.ComponentType.GetCustomAttributes(typeof(RouteAttribute), false)
-            .Cast<RouteAttribute>()
-            .Select(r => r.Template)
-            .First();
-    private string EntryHref(NavEntry entry) => entry.Href;
-
-    private string IconFor(NavEntry entry) => entry.Kind switch
-    {
-        EntryKind.Dashboard => Icons.Material.Filled.Dashboard,
-        EntryKind.Form => Icons.Material.Filled.Description,
-        EntryKind.Page => Icons.Material.Filled.Article,
-        _ => Icons.Material.Filled.TableChart,
-    };
 }

@@ -1,3 +1,4 @@
+using AdminForge.Auth;
 using AdminForge.Core.Configuration;
 using AdminForge.Core.Contracts;
 using AdminForge.Core.Metadata;
@@ -163,7 +164,7 @@ public class CustomCreateTodoAppFactory : WebApplicationFactory<Program>
 
                 var b = new AdminForgeBuilder(scanned);
                 b.WithTitle("Custom Create Test")
-                    .AllowAnonymousAccess()
+                    .RequireAuthorizationPolicy(AdminForgeAuth.Policy)
                     .AddTable<User>(e =>
                         e.OnCreate(
                             async (csp, user, _, ct) =>

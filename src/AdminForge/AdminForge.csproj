@@ -46,6 +46,9 @@
   -->
   <ItemGroup>
     <ProjectReference Include="../AdminForge.Core/AdminForge.Core.csproj" PrivateAssets="all" />
+    <ProjectReference Include="../AdminForge.Bridge/AdminForge.Bridge.csproj" PrivateAssets="all" />
+    <ProjectReference Include="../AdminForge.Auth/AdminForge.Auth.csproj" PrivateAssets="all" />
+    <ProjectReference Include="../AdminForge.Mcp/AdminForge.Mcp.csproj" PrivateAssets="all" />
     <ProjectReference
       Include="../AdminForge.DataAccess.EfCore/AdminForge.DataAccess.EfCore.csproj"
       PrivateAssets="all"
@@ -73,6 +76,7 @@
     <PackageReference Include="Microsoft.EntityFrameworkCore" />
     <PackageReference Include="MudBlazor" />
     <PackageReference Include="Microsoft.AspNetCore.App.Internal.Assets" />
+    <PackageReference Include="ModelContextProtocol.AspNetCore" />
   </ItemGroup>
 
   <ItemGroup Condition="'$(IsPackable)' == 'true'">

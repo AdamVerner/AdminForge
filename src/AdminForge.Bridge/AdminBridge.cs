@@ -11,37 +11,34 @@ using AdminForge.Core.Metadata;
 using AdminForge.Core.ViewModels;
 using AdminForge.DataAccess.EfCore;
 using AdminForge.LiveUpdates;
-using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.Extensions.DependencyInjection;
 
-namespace AdminForge.UI.Blazor;
+namespace AdminForge.Bridge;
 
 /// <summary>
 /// Reflection-based bridge between the Blazor renderer and the per-entity
 /// <see cref="IAdminDataProvider{T}"/> registrations. Pages and components
 /// depend on this interface only — they never know the entity CLR type.
 /// </summary>
-public sealed class BlazorUIBridge : IAdminUIBridge
+public sealed class AdminBridge : IAdminUIBridge
 {
     private readonly AdminForgeOptions _options;
     private readonly IServiceProvider _serviceProvider;
     private readonly IAdminAuthorizationPolicy _authzPolicy;
     private readonly IUserAccessor _userAccessor;
-    private readonly AuthenticationStateProvider? _authenticationState;
     private readonly IModel? _model;
     private readonly ILiveSourceRegistry? _liveRegistry;
 
     // Cache compiled per-entity adapters keyed by CLR entity type.
     private readonly ConcurrentDictionary<Type, EntityAdapter> _adapters = new();
 
-    public BlazorUIBridge(
+    public AdminBridge(
         AdminForgeOptions options,
         IServiceProvider serviceProvider,
         IAdminAuthorizationPolicy authzPolicy,
         IUserAccessor userAccessor,
-        AuthenticationStateProvider? authenticationState = null,
         DbContext? dbContext = null,
         ILiveSourceRegistry? liveRegistry = null
     )
@@ -54,30 +51,12 @@ public sealed class BlazorUIBridge : IAdminUIBridge
         _serviceProvider = serviceProvider;
         _authzPolicy = authzPolicy;
         _userAccessor = userAccessor;
-        _authenticationState = authenticationState;
         _model = dbContext?.Model;
         _liveRegistry = liveRegistry;
     }
 
-    /// <summary>
-    /// The user the circuit was opened for. Outside a render — a test resolving the bridge from a
-    /// plain scope — the provider has no state, and the request's user is what there is.
-    /// </summary>
-    private async ValueTask<ClaimsPrincipal> CurrentUserAsync()
-    {
-        if (_authenticationState is not null)
-        {
-            try
-            {
-                var state = await _authenticationState
-                    .GetAuthenticationStateAsync()
-                    .ConfigureAwait(false);
-                return state.User;
-            }
-            catch (InvalidOperationException) { }
-        }
-        return _userAccessor.GetUser();
-    }
+    /// <summary>The caller: the circuit's or the request's user, as the registered accessor answers.</summary>
+    private ValueTask<ClaimsPrincipal> CurrentUserAsync() => new(_userAccessor.GetUser());
 
     private async ValueTask<string?> CurrentUserIdAsync() =>
         UserIdentity.IdOf(await CurrentUserAsync().ConfigureAwait(false));
@@ -632,7 +611,7 @@ public sealed class BlazorUIBridge : IAdminUIBridge
         var elementType = widget.LiveDataSource!.ItemType;
         var liveUpdateType = typeof(LiveUpdate<>).MakeGenericType(elementType);
         var asyncEnumerableType = typeof(IAsyncEnumerable<>).MakeGenericType(liveUpdateType);
-        var castMethod = typeof(BlazorUIBridge)
+        var castMethod = typeof(AdminBridge)
             .GetMethod(
                 nameof(EnumerateAsLineChartPoints),
                 System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static
@@ -1084,6 +1063,8 @@ public sealed class BlazorUIBridge : IAdminUIBridge
     )
     {
         ArgumentNullException.ThrowIfNull(dashboard);
+        if (!await IsAllowedAsync(dashboard, cancellationToken).ConfigureAwait(false))
+            throw new AdminForbiddenException($"Dashboard:{dashboard.RouteName}", AdminAction.Read);
 
         // Each widget gets its own scope so scoped services (DbContext) are isolated.
         var widgets = new Dictionary<string, WidgetVM>(StringComparer.Ordinal);
@@ -1260,6 +1241,44 @@ public sealed class BlazorUIBridge : IAdminUIBridge
         var user = await CurrentUserAsync().ConfigureAwait(false);
         return await _authzPolicy
             .IsAuthorizedAsync(entity.Name, action, user, instance, actionName, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    public async Task<bool> IsAllowedAsync(
+        FormMeta form,
+        CancellationToken cancellationToken = default
+    )
+    {
+        ArgumentNullException.ThrowIfNull(form);
+        var user = await CurrentUserAsync().ConfigureAwait(false);
+        return await _authzPolicy
+            .IsAuthorizedAsync(
+                $"Form:{form.RouteName}",
+                AdminAction.FormSubmit,
+                user,
+                instance: null,
+                actionName: form.RouteName,
+                cancellationToken
+            )
+            .ConfigureAwait(false);
+    }
+
+    public async Task<bool> IsAllowedAsync(
+        DashboardMeta dashboard,
+        CancellationToken cancellationToken = default
+    )
+    {
+        ArgumentNullException.ThrowIfNull(dashboard);
+        var user = await CurrentUserAsync().ConfigureAwait(false);
+        return await _authzPolicy
+            .IsAuthorizedAsync(
+                $"Dashboard:{dashboard.RouteName}",
+                AdminAction.Read,
+                user,
+                instance: null,
+                actionName: dashboard.RouteName,
+                cancellationToken
+            )
             .ConfigureAwait(false);
     }
 
@@ -1652,9 +1671,10 @@ public sealed class BlazorUIBridge : IAdminUIBridge
                 string? icon = null;
                 var inline = false;
                 IReadOnlyList<string>? columns = null;
-                if (explicitBySourceNav.TryGetValue(nav.Name, out var explicitMeta))
+                var generated = !explicitBySourceNav.TryGetValue(nav.Name, out var explicitMeta);
+                if (!generated)
                 {
-                    label = explicitMeta.Label;
+                    label = explicitMeta!.Label;
                     icon = explicitMeta.Icon;
                     inline = explicitMeta.Inline;
                     columns = explicitMeta.Columns;
@@ -1678,6 +1698,7 @@ public sealed class BlazorUIBridge : IAdminUIBridge
                         Icon = icon,
                         RouteName = targetMeta.RouteName,
                         Filter = filter,
+                        Generated = generated,
                         Inline = inline,
                         Columns = columns,
                     }
@@ -1685,6 +1706,7 @@ public sealed class BlazorUIBridge : IAdminUIBridge
             }
 
             // Cross-entity explicit links (no source nav): use the user-supplied filter builder verbatim.
+            // One that lands on the same rows as a generated link replaces it.
             foreach (var link in crossEntityLinks)
             {
                 var targetMeta = _options.Entities.FirstOrDefault(e =>
@@ -1693,6 +1715,11 @@ public sealed class BlazorUIBridge : IAdminUIBridge
                 if (targetMeta is null)
                     continue;
                 var filter = link.FilterBuilder(sourceInstance);
+                output.RemoveAll(l =>
+                    l.Generated
+                    && l.RouteName == targetMeta.RouteName
+                    && SameFilter(l.Filter, filter)
+                );
                 output.Add(
                     new RelatedLinkVM
                     {
@@ -1707,6 +1734,20 @@ public sealed class BlazorUIBridge : IAdminUIBridge
             }
 
             return output;
+
+            static bool SameFilter(
+                IReadOnlyDictionary<string, object?> a,
+                IReadOnlyDictionary<string, object?> b
+            ) =>
+                a.Count == b.Count
+                && a.All(kv =>
+                    b.TryGetValue(kv.Key, out var v)
+                    && string.Equals(
+                        Convert.ToString(kv.Value, CultureInfo.InvariantCulture),
+                        Convert.ToString(v, CultureInfo.InvariantCulture),
+                        StringComparison.Ordinal
+                    )
+                );
         }
 
         /// <summary>

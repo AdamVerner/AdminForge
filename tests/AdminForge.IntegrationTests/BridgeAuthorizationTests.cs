@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using AdminForge.Core.Configuration;
 using AdminForge.Core.Contracts;
+using AdminForge.Core.Metadata;
 using AdminForge.Core.ViewModels;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -37,15 +38,13 @@ public class BridgeAuthorizationTests
     {
         using var scope = _readDenying.Services.CreateScope();
         var bridge = scope.ServiceProvider.GetRequiredService<IAdminUIBridge>();
-        var settings = bridge.FindEntityByRouteName("SiteSettings")!;
+        var log = bridge.FindEntityByRouteName("AuditLogEntry")!;
 
         await Assert.ThrowsAsync<AdminForbiddenException>(() =>
-            bridge.ListAsync(settings, new ListQuery())
+            bridge.ListAsync(log, new ListQuery())
         );
-        await Assert.ThrowsAsync<AdminForbiddenException>(() => bridge.FindAsync(settings, "1"));
-        await Assert.ThrowsAsync<AdminForbiddenException>(() =>
-            bridge.LoadForEditAsync(settings, "1")
-        );
+        await Assert.ThrowsAsync<AdminForbiddenException>(() => bridge.FindAsync(log, "1"));
+        await Assert.ThrowsAsync<AdminForbiddenException>(() => bridge.LoadForEditAsync(log, "1"));
     }
 
     [Fact]
@@ -54,17 +53,49 @@ public class BridgeAuthorizationTests
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         await db.Database.EnsureCreatedAsync();
+        scope
+            .ServiceProvider.GetRequiredService<TodoApp.AuditLogStore>()
+            .Record(new AuditEvent { EntityType = "Probe", Action = AuditAction.Custom });
         var bridge = scope.ServiceProvider.GetRequiredService<IAdminUIBridge>();
-        var settings = bridge.FindEntityByRouteName("SiteSettings")!;
+        var log = bridge.FindEntityByRouteName("AuditLogEntry")!;
 
         // The row the policy would judge rides along with the list and the view.
-        var row = Assert.Single((await bridge.ListAsync(settings, new ListQuery())).Rows);
-        Assert.IsType<TodoApp.SiteSettings>(row.Instance);
-        Assert.IsType<TodoApp.SiteSettings>((await bridge.FindAsync(settings, "1"))!.Instance);
+        var row = Assert.Single(
+            (await bridge.ListAsync(log, new ListQuery())).Rows,
+            r => (string)r.Values["EntityType"]! == "Probe"
+        );
+        Assert.IsType<TodoApp.AuditLogEntry>(row.Instance);
+        Assert.IsType<TodoApp.AuditLogEntry>((await bridge.FindAsync(log, row.Key))!.Instance);
 
-        Assert.True(await bridge.IsAllowedAsync(settings, AdminAction.Read, row.Instance));
-        Assert.False(await bridge.IsAllowedAsync(settings, AdminAction.Update, row.Instance));
-        Assert.False(await bridge.IsAllowedAsync(settings, AdminAction.Create));
+        Assert.True(await bridge.IsAllowedAsync(log, AdminAction.Read, row.Instance));
+        Assert.False(await bridge.IsAllowedAsync(log, AdminAction.Update, row.Instance));
+        Assert.False(await bridge.IsAllowedAsync(log, AdminAction.Create));
+    }
+
+    [Fact]
+    public async Task Forms_And_Dashboards_Are_Asked_Of_The_Policy_Too()
+    {
+        // Reads denied: a dashboard is a read, a form submit is not.
+        using (var scope = _readDenying.Services.CreateScope())
+        {
+            var bridge = scope.ServiceProvider.GetRequiredService<IAdminUIBridge>();
+            var dashboard = bridge.FindDashboardByRouteName("operations")!;
+            Assert.False(await bridge.IsAllowedAsync(dashboard));
+            await Assert.ThrowsAsync<AdminForbiddenException>(() =>
+                bridge.LoadDashboardAsync(dashboard)
+            );
+            Assert.True(await bridge.IsAllowedAsync(bridge.Forms[0]));
+        }
+
+        // Mutations denied: the other way round.
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var bridge = scope.ServiceProvider.GetRequiredService<IAdminUIBridge>();
+            Assert.True(
+                await bridge.IsAllowedAsync(bridge.FindDashboardByRouteName("operations")!)
+            );
+            Assert.False(await bridge.IsAllowedAsync(bridge.Forms[0]));
+        }
     }
 
     [Fact]
@@ -183,7 +214,7 @@ public class DenyingTodoAppFactory : WebApplicationFactory<Program>
     }
 }
 
-/// <summary>Denies <c>Read</c> for every entity; the in-memory SiteSettings table needs no database.</summary>
+/// <summary>Denies <c>Read</c> for every entity; the in-memory audit log needs no database.</summary>
 public class ReadDenyingTodoAppFactory : WebApplicationFactory<Program>
 {
     protected override void ConfigureWebHost(IWebHostBuilder builder)

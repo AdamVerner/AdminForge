@@ -53,15 +53,7 @@
         }
         @if (_userName is not null)
         {
-            <MudText Typo="Typo.body2" Class="mr-4">@_userName</MudText>
-        }
-        @if (Options.SignOutPath is not null)
-        {
-            <form method="post" action="@Options.SignOutPath">
-                <AntiforgeryToken />
-                <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Text" Color="Color.Inherit"
-                           StartIcon="@Icons.Material.Filled.Logout">Sign out</MudButton>
-            </form>
+            <AccountMenu UserName="@_userName" />
         }
     </MudAppBar>
     <MudDrawer @bind-Open="_drawerOpen" ClipMode="DrawerClipMode.Always" Elevation="2" Variant="DrawerVariant.Mini" OpenMiniOnHover="true">

@@ -160,10 +160,7 @@ public static class AdminForgeEndpointRouteBuilderExtensions
         services.AddRazorComponents().AddInteractiveServerComponents();
         AdminForge.UI.Blazor.BlazorServiceCollectionExtensions.AddAdminForgeBlazorUI(services);
         services.AddAntiforgery();
-        services.AddHttpContextAccessor();
         services.AddAuthorization();
-        services.AddScoped<OperationUserAccessor>();
-        services.TryAddScoped<IUserAccessor, CurrentUserAccessor>();
 
         // Decorate whatever provider the host has, so its own policy names keep resolving.
         var host = services.Last(d => d.ServiceType == typeof(IAuthorizationPolicyProvider));

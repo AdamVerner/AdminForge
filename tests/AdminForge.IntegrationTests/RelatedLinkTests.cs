@@ -1,3 +1,4 @@
+using AdminForge.Auth;
 using AdminForge.Core.Configuration;
 using AdminForge.Core.Contracts;
 using AdminForge.DataAccess.EfCore;
@@ -56,6 +57,30 @@ public class RelatedLinkTests : IClassFixture<RelatedLinkTodoAppFactory>
     }
 
     [Fact]
+    public async Task An_Explicit_Link_Replaces_The_Generated_One_To_The_Same_Rows()
+    {
+        int userId;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            await db.Database.EnsureCreatedAsync();
+            var u = new User { DisplayName = "Assignee", Email = "a@x.y" };
+            db.Users.Add(u);
+            await db.SaveChangesAsync();
+            userId = u.Id;
+        }
+
+        using var view = _factory.Services.CreateScope();
+        var bridge = view.ServiceProvider.GetRequiredService<IAdminUIBridge>();
+        var user = (
+            await bridge.FindAsync(bridge.FindEntityByRouteName("User")!, userId.ToString())
+        )!;
+        var only = Assert.Single(user.RelatedLinks, l => l.RouteName == "Todo");
+        Assert.False(only.Generated);
+        Assert.Equal("Active", only.Label);
+    }
+
+    [Fact]
     public async Task User_View_Excludes_Hidden_TodoLists_Auto_Link()
     {
         int userId;
@@ -106,7 +131,7 @@ public class RelatedLinkTodoAppFactory : WebApplicationFactory<Program>
 
                 var b = new AdminForgeBuilder(scanned);
                 b.WithTitle("Related Tests")
-                    .AllowAnonymousAccess()
+                    .RequireAuthorizationPolicy(AdminForgeAuth.Policy)
                     .AddTable<User>(e =>
                         e.HideRelatedLink(u => u.TodoLists)
                             .RelatedLink<Todo>(

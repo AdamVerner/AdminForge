@@ -180,6 +180,15 @@ public interface IAdminUIBridge
         CancellationToken cancellationToken = default
     );
 
+    /// <summary>Whether the user may submit <paramref name="form"/>, asked as <see cref="SubmitFormAsync"/> asks.</summary>
+    Task<bool> IsAllowedAsync(FormMeta form, CancellationToken cancellationToken = default);
+
+    /// <summary>Whether the user may open <paramref name="dashboard"/>, asked as <see cref="LoadDashboardAsync"/> asks.</summary>
+    Task<bool> IsAllowedAsync(
+        DashboardMeta dashboard,
+        CancellationToken cancellationToken = default
+    );
+
     /// <summary>
     /// Invoke a custom action registered via <c>AddAction</c>. Loads the entity by key,
     /// authorizes via <see cref="IAdminAuthorizationPolicy"/> (action name supplied),

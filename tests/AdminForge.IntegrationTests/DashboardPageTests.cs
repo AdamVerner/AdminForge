@@ -45,7 +45,7 @@ public class DashboardPageTests : IClassFixture<TodoAppFactory>
             await db.SaveChangesAsync();
         }
 
-        var client = _factory.CreateClient();
+        var client = await _factory.CreateSignedInClientAsync();
         var response = await client.GetAsync("/admin/dashboards/operations");
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var body = await response.Content.ReadAsStringAsync();
@@ -62,7 +62,7 @@ public class DashboardPageTests : IClassFixture<TodoAppFactory>
     [Fact]
     public async Task Unknown_Dashboard_Returns_404_Body()
     {
-        var client = _factory.CreateClient();
+        var client = await _factory.CreateSignedInClientAsync();
         var response = await client.GetAsync("/admin/dashboards/does-not-exist");
         // Page exists (200) but renders an "Unknown dashboard" error inline.
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);

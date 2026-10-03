@@ -6,6 +6,9 @@
   <Folder Name="/src/">
     <Project Path="src/AdminForge/AdminForge.csproj" />
     <Project Path="src/AdminForge.Core/AdminForge.Core.csproj" />
+    <Project Path="src/AdminForge.Bridge/AdminForge.Bridge.csproj" />
+    <Project Path="src/AdminForge.Auth/AdminForge.Auth.csproj" />
+    <Project Path="src/AdminForge.Mcp/AdminForge.Mcp.csproj" />
     <Project Path="src/AdminForge.DataAccess.EfCore/AdminForge.DataAccess.EfCore.csproj" />
     <Project Path="src/AdminForge.LiveUpdates/AdminForge.LiveUpdates.csproj" />
     <Project Path="src/AdminForge.UI.Blazor/AdminForge.UI.Blazor.csproj" />

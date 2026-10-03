@@ -1,4 +1,5 @@
 using AdminForge.Core.Contracts;
+using AdminForge.Core.Metadata;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
@@ -17,10 +18,12 @@ public class HostWithoutDbContextTests
     {
         var builder = WebApplication.CreateBuilder();
         builder.WebHost.UseTestServer();
-        builder.Services.AddSingleton<SiteSettingsStore>();
-        builder.Services.AddAdminForgeDataProvider<SiteSettings, SiteSettingsDataProvider>();
+        var audit = new AuditLogStore();
+        audit.Record(new AuditEvent { EntityType = "Probe", Action = AuditAction.Custom });
+        builder.Services.AddSingleton(audit);
+        builder.Services.AddAdminForgeDataProvider<AuditLogEntry, AuditLogDataProvider>();
         builder.Services.AddAdminForge(f =>
-            f.AllowAnonymousAccess().AddTable<SiteSettings>().AddTable<AuditLogEntry>()
+            f.AllowAnonymousAccess().AddTable<AuditLogEntry>().AddTable<Unserved>()
         );
         using var app = builder.Build();
         Middleware.AdminForgeEndpointRouteBuilderExtensions.GuardAuthorizationIsConfigured(
@@ -30,19 +33,16 @@ public class HostWithoutDbContextTests
         using var scope = app.Services.CreateScope();
         var bridge = scope.ServiceProvider.GetRequiredService<IAdminUIBridge>();
 
-        var settings = await bridge.ListAsync(
-            bridge.FindEntityByRouteName("SiteSettings")!,
+        var log = await bridge.ListAsync(
+            bridge.FindEntityByRouteName("AuditLogEntry")!,
             new ListQuery()
         );
-        Assert.Equal(
-            "Welcome to Todo Admin!",
-            Assert.Single(settings.Rows).Values["WelcomeMessage"]
-        );
+        Assert.Equal("Probe", Assert.Single(log.Rows).Values["EntityType"]);
 
         var unserved = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            bridge.ListAsync(bridge.FindEntityByRouteName("AuditLogEntry")!, new ListQuery())
+            bridge.ListAsync(bridge.FindEntityByRouteName("Unserved")!, new ListQuery())
         );
-        Assert.Contains("AddAdminForgeDataProvider<AuditLogEntry", unserved.Message);
+        Assert.Contains("AddAdminForgeDataProvider<Unserved", unserved.Message);
     }
 
     [Fact]
@@ -57,4 +57,9 @@ public class HostWithoutDbContextTests
         Assert.Contains("AuditLogEntry", failure.Message);
         Assert.Contains("AddAdminForgeDataProvider<AuditLogEntry", failure.Message);
     }
+}
+
+public sealed class Unserved
+{
+    public int Id { get; set; }
 }

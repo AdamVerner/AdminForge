@@ -21,7 +21,7 @@
     {
         if (Options.HomeDashboard is null) return;
         _home = Bridge.FindDashboardByRouteName(Options.HomeDashboard);
-        if (_home is not null)
+        if (_home is not null && await Bridge.IsAllowedAsync(_home))
             _dashboard = await Bridge.LoadDashboardAsync(_home);
     }
 }

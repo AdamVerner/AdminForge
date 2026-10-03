@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using AdminForge.Auth;
 using AdminForge.Core.Configuration;
 using AdminForge.Core.Contracts;
 using AdminForge.Core.Metadata;
@@ -229,7 +230,7 @@ public class CustomActionTodoAppFactory : WebApplicationFactory<Program>
 
             var b = new AdminForgeBuilder(scanned);
             b.WithTitle("Action Tests")
-                .AllowAnonymousAccess()
+                .RequireAuthorizationPolicy(AdminForgeAuth.Policy)
                 .WithAuditLog(auditSink)
                 .AddTable<User>(e =>
                     e.AddAction(

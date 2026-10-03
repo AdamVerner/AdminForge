@@ -34,6 +34,13 @@ public sealed class NavBuilder
         return this;
     }
 
+    /// <summary>Place the entry in the sidebar's Settings section or the account menu.</summary>
+    public NavBuilder Area(NavArea area)
+    {
+        _meta.Area = area;
+        return this;
+    }
+
     /// <summary>Hide the entry from the sidebar (entity still routable directly).</summary>
     public NavBuilder Hidden()
     {

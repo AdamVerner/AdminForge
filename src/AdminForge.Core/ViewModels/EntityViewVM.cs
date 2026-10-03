@@ -46,4 +46,7 @@ public sealed class RelatedLinkVM
 
     /// <summary>Columns the inline table shows, in order. Null shows the target's own list columns.</summary>
     public IReadOnlyList<string>? Columns { get; init; }
+
+    /// <summary>Derived from a collection navigation rather than registered; its label carries a count.</summary>
+    public bool Generated { get; init; }
 }

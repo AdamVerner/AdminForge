@@ -1,3 +1,4 @@
+using AdminForge.Auth;
 using AdminForge.Core.Configuration;
 using AdminForge.Core.Contracts;
 using AdminForge.Core.Metadata;
@@ -85,7 +86,7 @@ public class AuditableTodoAppFactory : WebApplicationFactory<Program>
 
                 var b = new AdminForgeBuilder(scanned);
                 b.WithTitle("Todo Admin Test")
-                    .AllowAnonymousAccess()
+                    .RequireAuthorizationPolicy(AdminForgeAuth.Policy)
                     .AddTable<User>()
                     .AddTable<TodoList>()
                     .AddTable<Todo>()

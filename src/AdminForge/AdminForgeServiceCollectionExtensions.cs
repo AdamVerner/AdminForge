@@ -61,7 +61,7 @@ public static class AdminForgeServiceCollectionExtensions
 
             var builder = new AdminForgeBuilder(scanned);
             configure?.Invoke(builder);
-            return builder.Build();
+            return Contributed(builder, sp);
         });
 
         services.AddSingleton(new HostDbContextMarker(typeof(TDbContext)));
@@ -85,14 +85,21 @@ public static class AdminForgeServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(services);
         ArgumentNullException.ThrowIfNull(configure);
 
-        services.AddSingleton(_ =>
+        services.AddSingleton(sp =>
         {
             var builder = new AdminForgeBuilder();
             configure(builder);
-            return builder.Build();
+            return Contributed(builder, sp);
         });
 
         return services.AddAdminForgeCore();
+    }
+
+    private static AdminForgeOptions Contributed(AdminForgeBuilder builder, IServiceProvider sp)
+    {
+        foreach (var contribution in sp.GetServices<AdminForgeContribution>())
+            contribution.Configure(builder);
+        return builder.Build();
     }
 
     private static IServiceCollection AddAdminForgeCore(this IServiceCollection services)

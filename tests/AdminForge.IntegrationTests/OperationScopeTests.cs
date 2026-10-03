@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using AdminForge.Core.Contracts;
+using AdminForge.Core.Metadata;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
@@ -30,10 +31,13 @@ public class OperationScopeTests : IClassFixture<ScopeProbeTodoAppFactory>
         );
         circuit.ServiceProvider.GetRequiredService<OperationUserAccessor>().Set(alice);
         var bridge = circuit.ServiceProvider.GetRequiredService<IAdminUIBridge>();
-        var settings = bridge.FindEntityByRouteName("SiteSettings")!;
+        circuit
+            .ServiceProvider.GetRequiredService<AuditLogStore>()
+            .Record(new AuditEvent { EntityType = "Probe", Action = AuditAction.Custom });
+        var log = bridge.FindEntityByRouteName("AuditLogEntry")!;
 
-        await bridge.ListAsync(settings, new ListQuery());
-        var view = await bridge.FindAsync(settings, "1");
+        var key = (await bridge.ListAsync(log, new ListQuery())).Rows[0].Key;
+        var view = await bridge.FindAsync(log, key);
 
         Assert.NotNull(view);
         Assert.Equal(2, probe.Providers.Count);
@@ -55,7 +59,7 @@ public class ScopeProbeTodoAppFactory : WebApplicationFactory<Program>
         builder.ConfigureServices(services =>
         {
             services.AddSingleton<ScopeProbe>();
-            services.AddScoped<IAdminDataProvider<SiteSettings>, ProbingSiteSettingsProvider>();
+            services.AddScoped<IAdminDataProvider<AuditLogEntry>, ProbingAuditLogProvider>();
         });
     }
 
@@ -78,43 +82,24 @@ public sealed class ScopeProbe
 }
 
 /// <summary>Records which instance served each call and whom the scope said was calling.</summary>
-public sealed class ProbingSiteSettingsProvider : IAdminDataProvider<SiteSettings>
+public sealed class ProbingAuditLogProvider : ReadOnlyDataProvider<AuditLogEntry>
 {
-    private readonly SiteSettingsDataProvider _inner;
+    private readonly AuditLogDataProvider _inner;
 
-    public ProbingSiteSettingsProvider(
-        SiteSettingsStore store,
-        IUserAccessor user,
-        ScopeProbe probe
-    )
+    public ProbingAuditLogProvider(AuditLogStore store, IUserAccessor user, ScopeProbe probe)
     {
-        _inner = new SiteSettingsDataProvider(store);
+        _inner = new AuditLogDataProvider(store);
         probe.Providers.Add(this);
         probe.Callers.Add(user.GetUserId());
     }
 
-    public Task<ListResult<SiteSettings>> ListAsync(
+    public override Task<ListResult<AuditLogEntry>> ListAsync(
         ListQuery query,
         CancellationToken cancellationToken = default
     ) => _inner.ListAsync(query, cancellationToken);
 
-    public Task<SiteSettings?> FindAsync(
+    public override Task<AuditLogEntry?> FindAsync(
         object?[] keyValues,
         CancellationToken cancellationToken = default
     ) => _inner.FindAsync(keyValues, cancellationToken);
-
-    public Task<SiteSettings> CreateAsync(
-        SiteSettings entity,
-        CancellationToken cancellationToken = default
-    ) => _inner.CreateAsync(entity, cancellationToken);
-
-    public Task<SiteSettings> UpdateAsync(
-        SiteSettings entity,
-        CancellationToken cancellationToken = default
-    ) => _inner.UpdateAsync(entity, cancellationToken);
-
-    public Task<bool> DeleteAsync(
-        object?[] keyValues,
-        CancellationToken cancellationToken = default
-    ) => _inner.DeleteAsync(keyValues, cancellationToken);
 }

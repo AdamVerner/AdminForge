@@ -442,7 +442,7 @@ public sealed class EntityBuilder<T>
 
         // FilterBuilder is wired by the bridge when it materialises the link (we don't
         // know the inverse-FK property until we have an EF model). Stash a stub here
-        // and let BlazorUIBridge swap it for the real one keyed by SourceNavigationName.
+        // and let AdminBridge swap it for the real one keyed by SourceNavigationName.
         var meta = new RelatedLinkMeta
         {
             RelatedEntityType = elementType,

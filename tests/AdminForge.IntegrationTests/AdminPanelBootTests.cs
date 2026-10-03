@@ -25,7 +25,7 @@ public class AdminPanelBootTests : IClassFixture<TodoAppFactory>
     [Fact]
     public async Task Admin_Root_Returns_Blazor_Html()
     {
-        var client = _factory.CreateClient();
+        var client = await _factory.CreateSignedInClientAsync();
         var response = await client.GetAsync("/admin");
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var body = await response.Content.ReadAsStringAsync();
@@ -38,7 +38,7 @@ public class AdminPanelBootTests : IClassFixture<TodoAppFactory>
     [Fact]
     public async Task The_Home_Page_Is_The_Named_Dashboard_And_A_Host_Page_Sits_In_The_Shell()
     {
-        var client = _factory.CreateClient();
+        var client = await _factory.CreateSignedInClientAsync();
         var home = await client.GetStringAsync("/admin");
         Assert.Contains("Open Todos", home); // a widget of the operations dashboard
         Assert.Contains("href=\"/admin/status\"", home); // the host page in the sidebar
@@ -64,7 +64,7 @@ public class AdminPanelBootTests : IClassFixture<TodoAppFactory>
             await db.SaveChangesAsync();
         }
 
-        var client = _factory.CreateClient();
+        var client = await _factory.CreateSignedInClientAsync();
         var response = await client.GetAsync("/admin/entities/User");
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var body = await response.Content.ReadAsStringAsync();

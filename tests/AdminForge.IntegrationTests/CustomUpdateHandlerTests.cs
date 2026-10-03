@@ -1,3 +1,4 @@
+using AdminForge.Auth;
 using AdminForge.Core.Configuration;
 using AdminForge.Core.Contracts;
 using AdminForge.Core.Metadata;
@@ -178,7 +179,7 @@ public class CustomUpdateTodoAppFactory : WebApplicationFactory<Program>
 
                 var b = new AdminForgeBuilder(scanned);
                 b.WithTitle("Custom Update Test")
-                    .AllowAnonymousAccess()
+                    .RequireAuthorizationPolicy(AdminForgeAuth.Policy)
                     .AddTable<User>(e =>
                         e.OnUpdate(
                             async (csp, original, patched, _, ct) =>

@@ -1,3 +1,4 @@
+using AdminForge.Bridge;
 using AdminForge.Core.Contracts;
 using Microsoft.Extensions.DependencyInjection;
 using MudBlazor.Services;
@@ -20,7 +21,7 @@ public static class BlazorServiceCollectionExtensions
     {
         ArgumentNullException.ThrowIfNull(services);
         services.AddMudServices();
-        services.AddScoped<IAdminUIBridge, BlazorUIBridge>();
+        services.AddAdminForgeBridge();
         return services;
     }
 }

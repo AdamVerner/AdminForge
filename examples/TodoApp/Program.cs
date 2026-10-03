@@ -1,9 +1,12 @@
 using System.Globalization;
+using System.Security.Claims;
 using System.Text.Json.Serialization;
 using AdminForge;
+using AdminForge.Auth;
 using AdminForge.Core.Configuration;
 using AdminForge.Core.Contracts;
 using AdminForge.Core.Metadata;
+using AdminForge.Mcp;
 using Microsoft.EntityFrameworkCore;
 using TodoApp;
 using TodoApp.Data;
@@ -30,16 +33,14 @@ var metricsTickStream = new MetricsTickStream();
 builder.Services.AddSingleton(metricsTickStream);
 builder.Services.AddHostedService<MetricsBackgroundService>();
 
-// Allow-all umbrella policy for the demo so anonymous browsing works.
-builder.Services.AddAuthorization(opts =>
-{
-    opts.AddPolicy("AdminForge.Demo", p => p.RequireAssertion(_ => true));
-});
+// The panel signs admins in itself; the demo accepts admin / admin.
+builder.Services.AddAdminForgeAuth<DemoCredentials>();
 
-// SiteSettings and AuditLogEntry have no DbSet: AddTable<T> describes each from its properties
+// The same panel as MCP tools, behind the same session.
+builder.Services.AddAdminForgeMcp();
+
+// AuditLogEntry has no DbSet: AddTable<T> describes it from its properties
 // and the registered provider serves it from an in-memory store.
-builder.Services.AddSingleton<SiteSettingsStore>();
-builder.Services.AddAdminForgeDataProvider<SiteSettings, SiteSettingsDataProvider>();
 var auditLog = new AuditLogStore();
 builder.Services.AddSingleton(auditLog);
 builder.Services.AddAdminForgeDataProvider<AuditLogEntry, AuditLogDataProvider>();
@@ -52,13 +53,9 @@ builder.Services.AddAdminForge<AppDbContext>(forge =>
     forge
         .WithTitle("Todo Admin")
         .WithEnvironment("local", "#2e7d32")
-        // MapAdminForge() refuses to mount a panel with no authorization at all. This demo
-        // satisfies it with an umbrella policy; a host that genuinely wants an open panel
-        // declares that instead, with .AllowAnonymousAccess().
-        .RequireAuthorizationPolicy("AdminForge.Demo")
         // The home page is the operations dashboard; the host's own status page sits in the sidebar.
         .UseHomeDashboard("operations")
-        .AddPage<TodoApp.Pages.StatusPage>(n => n.Group("System").Order(2))
+        .AddPage<TodoApp.Pages.StatusPage>(n => n.Area(NavArea.Settings).Order(2))
         // Inline-SVG data URL avoids shipping a separate asset file with the example;
         // teal primary makes it obvious at a glance that the configured palette is in effect.
         .WithTheme(theme =>
@@ -314,20 +311,13 @@ builder.Services.AddAdminForge<AppDbContext>(forge =>
                     }
                 )
         )
-        .AddTable<SiteSettings>(e =>
-            e.Nav(n => n.Group("System").Order(0).Label("Site Settings"))
-                .Column(s => s.MaintenanceMode)
-                .Column(s => s.MaxItemsPerPage)
-                .Column(s => s.WelcomeMessage)
-        )
         // Read-only and provider-backed: no create or edit surface, and a column offers a sort
         // control only where the provider honours it.
         .AddTable<AuditLogEntry>(e =>
             e.Label("Audit Log")
                 .ReadOnly()
-                .Nav(n => n.Group("System").Order(1))
-                // This provider matches Search against entity type and user; SiteSettings, one row
-                // that ignores it, says nothing and gets no search box.
+                .Nav(n => n.Area(NavArea.Settings).Order(1))
+                // This provider matches Search against entity type and user.
                 .Searchable()
                 .Column(a => a.Timestamp, c => c.Sortable())
                 .Column(a => a.Action)
@@ -546,9 +536,12 @@ using (var scope = app.Services.CreateScope())
     await db.Database.EnsureCreatedAsync();
 }
 
+app.UseAuthentication();
 app.UseAuthorization();
 
+app.MapAdminForgeAuth();
 app.MapAdminForge();
+app.MapAdminForgeMcp();
 app.MapGet("/", () => Results.Redirect("/admin"));
 
 app.MapGet(
@@ -635,6 +628,24 @@ public sealed record OpenTodoSnapshot(DateTime At, int Count);
 
 // Required for WebApplicationFactory<TodoApp> in integration tests.
 /// <summary>Row-level policy: a <see cref="Todo"/> in <see cref="TodoStatus.Done"/> accepts reads only.</summary>
+public sealed class DemoCredentials : IAdminCredentialValidator
+{
+    public Task<ClaimsPrincipal?> ValidateAsync(
+        string username,
+        string password,
+        CancellationToken ct
+    )
+    {
+        if (username != "admin" || password != "admin")
+            return Task.FromResult<ClaimsPrincipal?>(null);
+        var identity = new ClaimsIdentity(
+            [new Claim(ClaimTypes.NameIdentifier, "admin"), new Claim(ClaimTypes.Name, "admin")],
+            AdminForgeAuth.Scheme
+        );
+        return Task.FromResult<ClaimsPrincipal?>(new ClaimsPrincipal(identity));
+    }
+}
+
 public sealed class FrozenWhenDonePolicy : IAdminAuthorizationPolicy
 {
     public Task<bool> IsAuthorizedAsync(

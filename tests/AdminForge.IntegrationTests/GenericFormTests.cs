@@ -1,5 +1,6 @@
 using System.Net;
 using System.Security.Claims;
+using AdminForge.Auth;
 using AdminForge.Core.Configuration;
 using AdminForge.Core.Contracts;
 using AdminForge.Core.Metadata;
@@ -27,7 +28,7 @@ public class GenericFormTests : IClassFixture<FormTodoAppFactory>
     [Fact]
     public async Task Form_Page_Renders_Title_And_Field_Labels()
     {
-        var client = _factory.CreateClient();
+        var client = await _factory.CreateSignedInClientAsync();
         var resp = await client.GetAsync("/admin/forms/send-notification");
         Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
         var body = await resp.Content.ReadAsStringAsync();
@@ -48,7 +49,7 @@ public class GenericFormTests : IClassFixture<FormTodoAppFactory>
     [Fact]
     public async Task Unknown_Form_Renders_Error_Inline()
     {
-        var client = _factory.CreateClient();
+        var client = await _factory.CreateSignedInClientAsync();
         var resp = await client.GetAsync("/admin/forms/does-not-exist");
         Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
         var body = await resp.Content.ReadAsStringAsync();
@@ -135,7 +136,9 @@ public class GenericFormTests : IClassFixture<FormTodoAppFactory>
         Assert.Equal(["t", $"{recipients[0].Value},{recipients[1].Value}"], _factory.HandlerCalls);
 
         // The page renders both dropdowns.
-        var body = await _factory.CreateClient().GetStringAsync("/admin/forms/send-notification");
+        var body = await (await _factory.CreateSignedInClientAsync()).GetStringAsync(
+            "/admin/forms/send-notification"
+        );
         Assert.Equal(2, body.Split("adminforge-select").Length - 1);
     }
 
@@ -245,7 +248,7 @@ public class FormTodoAppFactory : WebApplicationFactory<Program>
 
             var b = new AdminForgeBuilder(scanned);
             b.WithTitle("Form Tests")
-                .AllowAnonymousAccess()
+                .RequireAuthorizationPolicy(AdminForgeAuth.Policy)
                 .WithAuditLog(sink)
                 .AddTable<User>()
                 .AddTable<TodoList>()

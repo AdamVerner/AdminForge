@@ -14,6 +14,8 @@ public sealed class NavMeta
     /// <summary>Sort order within a group (lower comes first). Null defers to registration order.</summary>
     public int? Order { get; set; }
 
+    public NavArea Area { get; set; }
+
     /// <summary>Hide this entry from the sidebar entirely.</summary>
     public bool Hidden { get; set; }
 }

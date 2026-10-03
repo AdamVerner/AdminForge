@@ -7,6 +7,10 @@
 {
     <MudAlert Severity="Severity.Error">Unknown dashboard '@RouteName'.</MudAlert>
 }
+else if (_forbidden)
+{
+    <MudAlert Severity="Severity.Warning">You are not allowed to open this dashboard.</MudAlert>
+}
 else if (_dashboard is null)
 {
     <MudProgressCircular Indeterminate="true" />
@@ -22,15 +26,21 @@ else
 
     private DashboardMeta? _meta;
     private DashboardVM? _dashboard;
+    private bool _forbidden;
 
     protected override async Task OnParametersSetAsync()
     {
         _meta = Bridge.FindDashboardByRouteName(RouteName);
-        if (_meta is null)
+        _dashboard = null;
+        _forbidden = false;
+        if (_meta is null) return;
+        try
         {
-            _dashboard = null;
-            return;
+            _dashboard = await Bridge.LoadDashboardAsync(_meta);
         }
-        _dashboard = await Bridge.LoadDashboardAsync(_meta);
+        catch (AdminForbiddenException)
+        {
+            _forbidden = true;
+        }
     }
 }
