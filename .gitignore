@@ -489,3 +489,6 @@ $RECYCLE.BIN/
 *.db
 *.db-shm
 *.db-wal
+
+# Playwright MCP session output
+.playwright-mcp/

@@ -10,10 +10,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<Todo> Todos => Set<Todo>();
     public DbSet<Tag> Tags => Set<Tag>();
 
-    /// <summary>
-    /// Stamp <see cref="Todo.UpdatedAt"/> on every mutation so the incremental
-    /// polling live source sees fresh rows.
-    /// </summary>
+    /// <summary>Stamps <see cref="Todo.UpdatedAt"/> on every write.</summary>
     public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {
         var now = DateTime.UtcNow;

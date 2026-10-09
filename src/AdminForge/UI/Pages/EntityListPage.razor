@@ -1,0 +1,25 @@
+@page "/admin/entities/{TableId}"
+@inject AdminPanel Panel
+
+@if (Panel.Model.Table(TableId) is not { } table)
+{
+    <NotFoundState Body="@($"There is no table '{TableId}'.")" />
+}
+else
+{
+    <PageHeader Title="@table.Title" Crumbs="@Links.GroupCrumbs(table.Nav)">
+        <Actions>
+            @if (_canCreate)
+            {
+                <a class="af-btn af-btn-primary" href="@Links.New(table.Id)" data-af="create"><Icon Svg="@Icons.Material.Filled.Add" /> New</a>
+            }
+        </Actions>
+    </PageHeader>
+    <EntityListView TableId="@TableId" @key="TableId" OnLoaded="@(((int, bool CanCreate) l) => _canCreate = l.CanCreate)" />
+}
+
+@code {
+    [Parameter] public string TableId { get; set; } = "";
+
+    private bool _canCreate;
+}

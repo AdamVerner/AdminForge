@@ -36,9 +36,7 @@ public sealed class Todo
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
-    /// <summary>
-    /// Stamped on every write — drives the incremental live-update demo on the Todo table.
-    /// </summary>
+    /// <summary>Stamped by <c>SaveChanges</c> on every write.</summary>
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 
     public DateTime? DueAt { get; set; }

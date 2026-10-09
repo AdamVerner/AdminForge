@@ -1,11 +1,9 @@
-using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using AdminForge.Core.Metadata;
 
 namespace AdminForge.Mcp;
 
-/// <summary>Builds a tool's input schema from metadata and reads arguments back as CLR values.</summary>
+/// <summary>Builds a tool's input schema from the model and reads arguments back as plain values.</summary>
 internal static class JsonSchema
 {
     public static JsonElement Object(JsonObject properties, IEnumerable<string> required)
@@ -38,14 +36,7 @@ internal static class JsonSchema
         return p;
     }
 
-    public static JsonObject Array(JsonObject items, string? description = null)
-    {
-        var p = Property("array", description);
-        p["items"] = items;
-        return p;
-    }
-
-    /// <summary>A column's scalar type as a schema property.</summary>
+    /// <summary>A value of <paramref name="type"/> as a schema property.</summary>
     public static JsonObject ForClrType(Type type, string? description)
     {
         var t = Nullable.GetUnderlyingType(type) ?? type;
@@ -53,17 +44,9 @@ internal static class JsonSchema
             return Enum(System.Enum.GetNames(t), description);
         if (t == typeof(bool))
             return Property("boolean", description);
-        if (
-            t == typeof(int)
-            || t == typeof(long)
-            || t == typeof(short)
-            || t == typeof(byte)
-            || t == typeof(uint)
-            || t == typeof(ulong)
-            || t == typeof(ushort)
-        )
+        if (ScalarTypes.IsInteger(t))
             return Property("integer", description);
-        if (t == typeof(double) || t == typeof(float) || t == typeof(decimal))
+        if (ScalarTypes.IsFraction(t))
             return Property("number", description);
         if (t == typeof(DateTime) || t == typeof(DateTimeOffset))
             return Property("string", description, "date-time");
@@ -72,73 +55,40 @@ internal static class JsonSchema
         return Property("string", description);
     }
 
-    /// <summary>A form or action field as a schema property; select choices are filled in by <paramref name="choices"/>.</summary>
-    public static JsonObject ForField(FieldMeta field, IReadOnlyList<SelectOption>? choices)
+    /// <summary>Every field a tool call can carry; a file cannot travel in one.</summary>
+    public static JsonObject Fields(
+        IEnumerable<FieldModel> fields,
+        IReadOnlyDictionary<string, IReadOnlyList<AdminOption>>? choices = null
+    )
     {
-        var d = field.Description;
-        switch (field.Kind)
-        {
-            case FieldKind.Number:
-                return Property("integer", d);
-            case FieldKind.Float:
-                return Property("number", d);
-            case FieldKind.Bool:
-                return Property("boolean", d);
-            case FieldKind.Date:
-                return Property("string", d, "date");
-            case FieldKind.DateTime:
-                return Property("string", d, "date-time");
-            case FieldKind.Select:
-            {
-                var multiple = field.Options is SelectFieldOptions { Multiple: true };
-                var item = choices is { Count: > 0 }
-                    ? Enum(choices.Select(c => c.Value), Describe(choices, d))
-                    : Property("string", d);
-                return multiple ? Array(item, d) : item;
-            }
-            default:
-                return Property("string", d);
-        }
+        var p = new JsonObject();
+        foreach (var f in fields.Where(f => f.Kind != FieldKind.File))
+            p[f.Name] = ForField(f, choices?.GetValueOrDefault(f.Name));
+        return p;
     }
 
-    private static string Describe(IReadOnlyList<SelectOption> choices, string? description)
+    /// <summary>An input as a schema property; a select's choices come from <paramref name="choices"/>.</summary>
+    public static JsonObject ForField(FieldModel field, IReadOnlyList<AdminOption>? choices)
     {
+        var d = field.Description ?? field.Title;
+        if (field.Kind != FieldKind.Select)
+            return ForClrType(field.ClrType, d);
         var legend = string.Join(
             ", ",
-            choices.Where(c => c.Value != c.Label).Select(c => $"{c.Value} = {c.Label}")
+            choices?.Where(c => c.Value != c.Label).Select(c => $"{c.Value} = {c.Label}") ?? []
         );
-        return legend.Length == 0 ? description ?? "" : $"{description} ({legend})".Trim();
+        var described = legend.Length == 0 ? d : $"{d} ({legend})";
+        var item = choices is { Count: > 0 }
+            ? Enum(choices.Select(c => c.Value), described)
+            : Property("string", described);
+        if (!field.Multiple)
+            return item;
+        var array = Property("array", d);
+        array["items"] = item;
+        return array;
     }
 
-    /// <summary>The CLR value a field handler expects for one argument.</summary>
-    public static object? FieldValue(FieldMeta field, JsonElement e)
-    {
-        if (e.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
-            return null;
-        return field.Kind switch
-        {
-            FieldKind.Number => e.ValueKind == JsonValueKind.Number
-                ? e.GetInt64()
-                : long.Parse(e.GetString()!, CultureInfo.InvariantCulture),
-            FieldKind.Float => e.ValueKind == JsonValueKind.Number
-                ? e.GetDouble()
-                : double.Parse(e.GetString()!, CultureInfo.InvariantCulture),
-            FieldKind.Bool => e.ValueKind == JsonValueKind.True
-                || (e.ValueKind == JsonValueKind.String && bool.Parse(e.GetString()!)),
-            FieldKind.Date or FieldKind.DateTime => DateTime.Parse(
-                e.GetString()!,
-                CultureInfo.InvariantCulture,
-                DateTimeStyles.RoundtripKind
-            ),
-            FieldKind.Select when field.Options is SelectFieldOptions { Multiple: true } =>
-                e.ValueKind == JsonValueKind.Array
-                    ? e.EnumerateArray().Select(Scalar).Select(v => v?.ToString() ?? "").ToList()
-                    : new List<string> { e.ToString() },
-            _ => e.ValueKind == JsonValueKind.String ? e.GetString() : e.ToString(),
-        };
-    }
-
-    /// <summary>A JSON scalar as string, long, double or bool; the bridge coerces to the column type.</summary>
+    /// <summary>A JSON scalar as string, long, double or bool; the panel converts it to the field's type.</summary>
     public static object? Scalar(JsonElement e) =>
         e.ValueKind switch
         {

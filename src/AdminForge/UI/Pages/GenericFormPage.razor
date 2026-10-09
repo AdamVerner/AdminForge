@@ -1,0 +1,106 @@
+@page "/admin/forms/{FormId}"
+@inject AdminPanel Panel
+@inject ISnackbar Snackbar
+
+@if (_model is null)
+{
+    <NotFoundState Body="@($"There is no form '{FormId}'.")" />
+}
+else if (_refused is not null)
+{
+    <PageTitle>@_model.Title · @Panel.Model.Title</PageTitle>
+    <EmptyState Page="true" Title="@_refused" Hook="refused" Icon="@Icons.Material.Outlined.Block">
+        <a class="af-btn" href="@PanelModel.Root">Go home</a>
+    </EmptyState>
+}
+else if (_form is not null)
+{
+    <PageHeader Title="@_model.Title" Crumbs="@Links.GroupCrumbs(_model.Nav)" />
+    @if (!string.IsNullOrEmpty(_model.Description))
+    {
+        <p class="af-lead">@_model.Description</p>
+    }
+    <form class="af-form" @onsubmit="Submit" novalidate>
+        <div class="af-panel">
+            <CascadingValue Value="_form">
+                <FormFields Error="@_error" />
+            </CascadingValue>
+        </div>
+        @if (_result is not null)
+        {
+            <section class="af-panel af-result" data-af="result" aria-label="Result" tabindex="-1" @ref="_resultBox">
+                <MarkdownView Markdown="@_result" />
+            </section>
+        }
+        <div class="af-savebar">
+            <div class="af-savebar-inner">
+                <span></span>
+                <button type="submit" class="af-btn af-btn-primary" disabled="@_submitting" data-af="save">
+                    @if (_submitting) { <span class="af-spinner" aria-hidden="true"></span> }
+                    @_model.Title
+                </button>
+            </div>
+        </div>
+    </form>
+}
+
+@code {
+    [Parameter] public string FormId { get; set; } = "";
+
+    private FormModel? _model;
+    private FormView? _form;
+    private string? _refused;
+    private string? _error;
+    private string? _result;
+    private bool _submitting;
+    private ElementReference _resultBox;
+    private bool _showResult;
+
+    // The result renders below the form, often under the fold; focus brings it into view.
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!_showResult) return;
+        _showResult = false;
+        await _resultBox.FocusAsync();
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _model = Panel.Model.Form(FormId);
+        if (_model is null) return;
+        try
+        {
+            _form = await Panel.FormAsync(FormId);
+        }
+        catch (AdminRejection ex)
+        {
+            _refused = ex.Message;
+        }
+    }
+
+    private async Task Submit()
+    {
+        if (_submitting) return;
+        _submitting = true;
+        _error = null;
+        _result = null;
+        _form!.Errors.Clear();
+        try
+        {
+            var outcome = await Panel.SubmitFormAsync(FormId, _form.Values);
+            _result = outcome.Markdown;
+            _showResult = _result is not null;
+            Toasts.Success(Snackbar, outcome.Message ?? $"{_model!.Title}: done.");
+        }
+        catch (AdminRejection ex)
+        {
+            foreach (var (field, message) in ex.FieldErrors)
+                _form.Errors[field] = message;
+            if (ex.FieldErrors.Count == 0) _error = ex.Message;
+        }
+        finally
+        {
+            _submitting = false;
+        }
+    }
+}

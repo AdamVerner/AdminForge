@@ -1,0 +1,42 @@
+@* Every page's top: breadcrumb, the one h1 with its chips, the page's actions, and a meta line. *@
+@inject PanelModel Panel
+
+<PageTitle>@Title · @Panel.Title</PageTitle>
+<header class="af-page-header">
+    @if (Crumbs is { Count: > 0 })
+    {
+        <nav class="af-crumbs" aria-label="Breadcrumb">
+            <ol>
+                @foreach (var (label, href) in Crumbs)
+                {
+                    <li>@if (href is null) { @label } else { <a href="@href">@label</a> }</li>
+                }
+            </ol>
+        </nav>
+    }
+    <div class="af-title-row">
+        <div class="af-title-group">
+            <h1 data-af="title" tabindex="-1">@Title</h1>
+            @Chips
+        </div>
+        @if (Actions is not null)
+        {
+            <div class="af-actions">@Actions</div>
+        }
+    </div>
+    @if (Subtitle is not null)
+    {
+        <p class="af-meta">@Subtitle</p>
+    }
+</header>
+
+@code {
+    [Parameter, EditorRequired] public string Title { get; set; } = "";
+
+    /// <summary>Label and link of each level above this page; a null link is plain text.</summary>
+    [Parameter] public IReadOnlyList<(string Label, string? Href)>? Crumbs { get; set; }
+
+    [Parameter] public RenderFragment? Chips { get; set; }
+    [Parameter] public RenderFragment? Actions { get; set; }
+    [Parameter] public RenderFragment? Subtitle { get; set; }
+}

@@ -1,0 +1,60 @@
+@using System.Text.Json
+
+@* A whole value, as its kind renders. HTML goes into a frame with every sandbox flag off: no scripts, no access to the panel. *@
+<MudDialog Class="af-dialog-lg">
+    <TitleContent><h2>@Title</h2></TitleContent>
+    <DialogContent>
+        <div class="af-viewer">
+            @switch (Kind)
+            {
+                case Content.Markdown:
+                    <MarkdownView Markdown="@Value" />
+                    break;
+                case Content.Html:
+                    <iframe class="af-frame" sandbox="" srcdoc="@(NoFetch + Value)" title="@Title"></iframe>
+                    break;
+                case Content.Json:
+                    <pre class="af-pre">@Pretty(Value)</pre>
+                    break;
+                default:
+                    <pre class="af-pre">@Value</pre>
+                    break;
+            }
+        </div>
+    </DialogContent>
+    <DialogActions>
+        <button type="button" class="af-btn" @onclick="@(() => Dialog.Close())">Close</button>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance Dialog { get; set; } = default!;
+    [Parameter] public string Title { get; set; } = string.Empty;
+    [Parameter] public string Value { get; set; } = string.Empty;
+    [Parameter] public Content Kind { get; set; }
+
+    // The sandbox stops scripts, not loads: a remote image would tell its host the value was opened.
+    private const string NoFetch = """<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'">""";
+
+    private static readonly JsonSerializerOptions Indented = new() { WriteIndented = true };
+
+    public static Task ShowAsync(IDialogService dialogs, string title, string value, Content kind) =>
+        dialogs.ShowAsync<ContentDialog>(
+            title,
+            new DialogParameters<ContentDialog> { { d => d.Title, title }, { d => d.Value, value }, { d => d.Kind, kind } },
+            new DialogOptions { MaxWidth = MaxWidth.Large, FullWidth = kind == Content.Html, CloseButton = true, CloseOnEscapeKey = true });
+
+    /// <summary>Re-indented JSON; the value as is when it does not parse.</summary>
+    public static string Pretty(string value)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(value);
+            return JsonSerializer.Serialize(doc.RootElement, Indented);
+        }
+        catch (JsonException)
+        {
+            return value;
+        }
+    }
+}

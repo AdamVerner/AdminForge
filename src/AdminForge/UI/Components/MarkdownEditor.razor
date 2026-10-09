@@ -1,0 +1,28 @@
+@* Markdown source beside its rendering; one column on a phone. *@
+<div class="af-markdown-edit">
+    <textarea class="af-textarea af-code" id="@Id" aria-describedby="@DescribedBy" value="@Value" @oninput="Changed"></textarea>
+    <div class="af-preview" aria-live="polite">
+        <small>Preview</small>
+        @if (string.IsNullOrEmpty(Value))
+        {
+            <span class="af-null">Nothing to preview yet.</span>
+        }
+        else
+        {
+            <MarkdownView Markdown="@Value" />
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter] public string? Id { get; set; }
+    [Parameter] public string? DescribedBy { get; set; }
+    [Parameter] public string Value { get; set; } = string.Empty;
+    [Parameter] public EventCallback<string> ValueChanged { get; set; }
+
+    private Task Changed(ChangeEventArgs e)
+    {
+        Value = e.Value as string ?? "";
+        return ValueChanged.InvokeAsync(Value);
+    }
+}

@@ -1,6 +1,5 @@
 using System.Net;
 using System.Text;
-using AdminForge.Core.Metadata;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Http;
 
@@ -10,8 +9,9 @@ namespace AdminForge.Mcp;
 internal static class ConsentPage
 {
     public static IResult Render(
-        string title,
+        PanelModel panel,
         string clientName,
+        Uri redirect,
         IReadOnlyList<PanelTool> tools,
         IReadOnlyList<TimeSpan> lifetimes,
         IReadOnlyDictionary<string, string> request,
@@ -27,7 +27,7 @@ internal static class ConsentPage
             hidden.Append($"""<input type="hidden" name="{E(name)}" value="{E(value)}">""");
 
         var groups = new StringBuilder();
-        foreach (var group in NavGrouping.Arrange(tools, t => t.Nav, t => t.Section))
+        foreach (var group in NavGrouping.Arrange(tools, t => t.Nav))
         {
             groups.Append("<fieldset>");
             if (group.Key is not null)
@@ -40,7 +40,7 @@ internal static class ConsentPage
                     var t = tool.ProtocolTool;
                     var ro = t.Annotations?.ReadOnlyHint == true ? " data-readonly" : "";
                     groups.Append(
-                        $"""<label title="{E(t.Description ?? "")}"><input type="checkbox" name="tools" value="{E(t.Name)}"{ro}> {E(t.Name)}</label>"""
+                        $"""<label class="af-check" title="{E(t.Description ?? "")}"><input type="checkbox" name="tools" value="{E(t.Name)}"{ro}> {E(t.Name)}</label>"""
                     );
                 }
             }
@@ -53,55 +53,45 @@ internal static class ConsentPage
                 $"""<option value="{(int)span.TotalMinutes}">{Describe(span)}</option>"""
             );
 
-        var html = $$"""
-            <!DOCTYPE html>
-            <html lang="en">
-            <head>
-              <meta charset="utf-8">
-              <meta name="viewport" content="width=device-width, initial-scale=1">
-              <title>{{E(title)}} — connect {{E(clientName)}}</title>
-              <style>
-                body { font-family: system-ui, sans-serif; background: #f4f5f7; margin: 0; padding: 4vh 1rem; }
-                form { max-width: 40rem; margin: 0 auto; background: #fff; padding: 2rem; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,.08); }
-                h1 { font-size: 1.25rem; margin: 0 0 .25rem; } h3 { font-size: .9rem; margin: .75rem 0 .25rem; color: #555; }
-                fieldset { border: 1px solid #ddd; border-radius: 6px; margin: 1rem 0; padding: .5rem 1rem; }
-                legend { font-weight: 600; padding: 0 .4rem; }
-                label { display: block; font-family: ui-monospace, monospace; font-size: .85rem; padding: .15rem 0; }
-                .presets button, .decide button { padding: .5rem .9rem; font-size: .95rem; border-radius: 4px; border: 1px solid #ccc; background: #fff; cursor: pointer; margin-right: .5rem; }
-                .decide { margin-top: 1.5rem; display: flex; align-items: center; gap: .5rem; }
-                .allow { background: #1976d2 !important; color: #fff; border-color: #1976d2 !important; }
-                select { padding: .4rem; font-size: .95rem; }
-              </style>
-            </head>
-            <body>
-              <form method="post" action="{{action}}">
-                {{hidden}}
-                <h1>{{E(title)}}</h1>
-                <p><strong>{{E(
+        // The client names itself at registration, so its name proves nothing; the redirect host is where the code goes.
+        var target =
+            $"""<p>The connection is handed to <strong class="af-mono" data-af="redirect-host">{E(redirect.Authority)}</strong>.</p>"""
+            + (
+                redirect.IsLoopback
+                    ? ""
+                    : $"""<div class="af-alert af-alert-danger" role="alert" data-af="remote-redirect">That is not this computer. Allow only if you know {E(redirect.Host)}.</div>"""
+            );
+        var form = $$"""
+                <form class="af-panel af-auth-card af-wide af-consent" method="post" action="{{action}}">
+                  {{hidden}}
+                  <div class="af-auth-brand"><h1>{{E(panel.Title)}}</h1>{{UI.Theme.EnvironmentBadge(panel)}}</div>
+                  <p><strong>{{E(
                 clientName
             )}}</strong> asks to use the panel as you. Tick what it may call.</p>
-                <div class="presets">
-                  <button type="button" onclick="pick(e => e.hasAttribute('data-readonly'))">Read only</button>
-                  <button type="button" onclick="pick(() => true)">Everything</button>
-                  <button type="button" onclick="pick(() => false)">Nothing</button>
-                </div>
-                {{groups}}
-                <div class="decide">
-                  <label for="expires" style="font-family: inherit">Expires in</label>
-                  <select id="expires" name="expires">{{expiry}}</select>
-                  <span style="flex:1"></span>
-                  <button type="submit" name="decision" value="deny">Deny</button>
-                  <button type="submit" name="decision" value="allow" class="allow">Allow</button>
-                </div>
-              </form>
-              <script>
-                function pick(f) { document.querySelectorAll('input[name=tools]').forEach(e => e.checked = f(e)); }
-                pick(e => e.hasAttribute('data-readonly'));
-              </script>
-            </body>
-            </html>
+                  {{target}}
+                  <div class="af-row" role="group" aria-label="Presets">
+                    <button class="af-btn" type="button" onclick="pick(e => e.hasAttribute('data-readonly'))">Read only</button>
+                    <button class="af-btn" type="button" onclick="pick(() => true)">Everything</button>
+                    <button class="af-btn" type="button" onclick="pick(() => false)">Nothing</button>
+                  </div>
+                  {{groups}}
+                  <div class="af-row">
+                    <label class="af-label" for="expires">Expires in</label>
+                    <select class="af-select" id="expires" name="expires">{{expiry}}</select>
+                    <span class="af-spacer"></span>
+                    <button class="af-btn" type="submit" name="decision" value="deny">Deny</button>
+                    <button class="af-btn af-btn-primary" type="submit" name="decision" value="allow">Allow</button>
+                  </div>
+                </form>
+                <script>
+                  function pick(f) { document.querySelectorAll('input[name=tools]').forEach(e => e.checked = f(e)); }
+                  pick(e => e.hasAttribute('data-readonly'));
+                </script>
             """;
-        return Results.Content(html, "text/html; charset=utf-8");
+        return Results.Content(
+            UI.Theme.PlainPage(panel, $"Connect {clientName} · {panel.Title}", form),
+            "text/html; charset=utf-8"
+        );
     }
 
     private static string Describe(TimeSpan span) =>

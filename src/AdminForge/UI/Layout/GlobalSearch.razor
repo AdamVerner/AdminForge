@@ -1,0 +1,64 @@
+@* Every searchable table the caller may read, a few rows each; "/" focuses it from anywhere. *@
+@inject AdminPanel Panel
+@inject NavigationManager Nav
+
+<div class="af-search" role="search">
+    <MudAutocomplete T="SearchHit" @ref="_box"
+                     Placeholder="Search"
+                     aria-label="Search everything"
+                     SearchFunc="SearchAsync"
+                     ToStringFunc="@(h => h?.Label ?? string.Empty)"
+                     ValueChanged="Open"
+                     ResetValueOnEmptyText="true"
+                     SelectOnActivation="false"
+                     CoerceText="false"
+                     DebounceInterval="300"
+                     ShowProgressIndicator="true"
+                     Dense="true"
+                     Margin="Margin.Dense"
+                     Variant="Variant.Outlined"
+                     Adornment="Adornment.Start"
+                     AdornmentIcon="@Icons.Material.Filled.Search"
+                     MinCharacters="1"
+                     MaxItems="40">
+        <ItemTemplate Context="hit">
+            <span class="af-hit">@hit.Label <small>@hit.TableTitle</small></span>
+        </ItemTemplate>
+        <NoItemsTemplate>
+            <div class="af-hit-state">@(_failed ? "Search failed. Try again." : $"No matches for '{_text}'")</div>
+        </NoItemsTemplate>
+        <ProgressIndicatorInPopoverTemplate>
+            <div class="af-hit-state">Searching…</div>
+        </ProgressIndicatorInPopoverTemplate>
+    </MudAutocomplete>
+    <kbd aria-hidden="true">/</kbd>
+</div>
+
+@code {
+    private MudAutocomplete<SearchHit>? _box;
+    private string? _text;
+    private bool _failed;
+
+    private async Task<IEnumerable<SearchHit>> SearchAsync(string? text, CancellationToken ct)
+    {
+        _text = text;
+        _failed = false;
+        if (string.IsNullOrWhiteSpace(text)) return [];
+        try
+        {
+            return await Panel.SearchAsync(text, ct: ct);
+        }
+        catch (AdminRejection)
+        {
+            _failed = true;
+            return [];
+        }
+    }
+
+    public Task FocusAsync() => _box?.FocusAsync().AsTask() ?? Task.CompletedTask;
+
+    private void Open(SearchHit? hit)
+    {
+        if (hit is not null) Nav.NavigateTo(Links.Row(hit.TableId, hit.Key));
+    }
+}

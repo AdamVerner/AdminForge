@@ -1,0 +1,96 @@
+@* A detail page's buttons: Edit, then the actions the pipeline allowed, then Delete in the overflow menu.
+   An action with input asks for it in a dialog; one without asks to confirm when it says so. *@
+@inject AdminPanel Panel
+@inject ISnackbar Snackbar
+@inject IDialogService Dialogs
+@inject NavigationManager Nav
+
+@if (Panel.Model.Table(TableId) is { } table)
+{
+    @foreach (var action in table.Actions.Where(a => Actions.Contains(a.Id)))
+    {
+        <button type="button" class="af-btn @(action.Tone == Tone.Danger ? "af-text-danger" : null)" disabled="@_busy"
+                @onclick="@(() => RunAsync(action))" data-af="action:@action.Id">@action.Title</button>
+    }
+    @if (CanEdit)
+    {
+        <a class="af-btn af-btn-primary" href="@Links.Edit(TableId, RowKey)" data-af="edit">
+            <Icon Svg="@Icons.Material.Outlined.Edit" /> Edit
+        </a>
+    }
+    @if (CanDelete)
+    {
+        <button type="button" class="af-btn" aria-label="More actions" title="More actions" aria-haspopup="menu" popovertarget="af-row-menu">
+            <Icon Svg="@Icons.Material.Filled.MoreHoriz" />
+        </button>
+        <div id="af-row-menu" class="af-menu" role="menu" aria-label="More actions" popover>
+            <button type="button" class="af-menu-item af-danger" role="menuitem" @onclick="DeleteAsync" data-af="delete">
+                <Icon Svg="@Icons.Material.Outlined.Delete" /> Delete
+            </button>
+        </div>
+    }
+}
+
+@code {
+    [Parameter, EditorRequired] public string TableId { get; set; } = "";
+    [Parameter, EditorRequired] public string RowKey { get; set; } = "";
+    [Parameter, EditorRequired] public string RowLabel { get; set; } = "";
+    [Parameter] public IReadOnlySet<string> Actions { get; set; } = new HashSet<string>();
+    [Parameter] public bool CanEdit { get; set; }
+    [Parameter] public bool CanDelete { get; set; }
+
+    /// <summary>After an action ran, so the page reloads the row.</summary>
+    [Parameter] public EventCallback OnInvoked { get; set; }
+
+    private bool _busy;
+
+    private async Task RunAsync(ActionModel action)
+    {
+        if (action.Input is not null)
+        {
+            var dialog = await Dialogs.ShowAsync<ActionInputDialog>(
+                action.Title,
+                new DialogParameters<ActionInputDialog>
+                {
+                    { d => d.TableId, TableId },
+                    { d => d.RowKey, RowKey },
+                    { d => d.ActionId, action.Id },
+                    { d => d.Title, action.Title },
+                    { d => d.Message, action.Confirm },
+                },
+                new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true, CloseButton = true, CloseOnEscapeKey = true, DefaultFocus = DefaultFocus.None });
+            if (await dialog.Result is { Canceled: false, Data: Outcome outcome })
+                await DoneAsync(action, outcome);
+            return;
+        }
+        if (action.Confirm is { } prompt && !await ConfirmDialog.AskAsync(Dialogs, $"{action.Title}: {RowLabel}", prompt, action.Title, action.Tone == Tone.Danger))
+            return;
+        _busy = true;
+        try
+        {
+            await DoneAsync(action, await Panel.RunActionAsync(TableId, RowKey, action.Id, new Dictionary<string, object?>()));
+        }
+        catch (AdminRejection ex)
+        {
+            Toasts.Error(Snackbar, ex.Message);
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task DoneAsync(ActionModel action, Outcome outcome)
+    {
+        Toasts.Success(Snackbar, outcome.Message ?? $"{action.Title}: done.");
+        if (outcome.Markdown is { } markdown)
+            await ContentDialog.ShowAsync(Dialogs, $"{action.Title} — result", markdown, Content.Markdown);
+        await OnInvoked.InvokeAsync();
+    }
+
+    private async Task DeleteAsync()
+    {
+        if (await ConfirmDialog.DeleteAsync(Dialogs, Snackbar, Panel, TableId, RowKey, RowLabel))
+            Nav.NavigateTo(Links.List(TableId));
+    }
+}

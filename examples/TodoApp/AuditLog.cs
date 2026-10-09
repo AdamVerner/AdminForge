@@ -1,16 +1,17 @@
-using AdminForge.Core.Contracts;
-using AdminForge.Core.Metadata;
+using AdminForge;
 
 namespace TodoApp;
 
-/// <summary>One audited admin action, flattened so each column is one property.</summary>
+/// <summary>One audited admin operation, flattened so each column is one property.</summary>
 public sealed record AuditLogEntry(
     int Id,
-    DateTime Timestamp,
-    AuditAction Action,
-    string EntityType,
-    string? EntityId,
+    DateTimeOffset At,
+    AdminAuditOperation Operation,
+    string? Table,
+    string? Key,
+    string? Action,
     string? User,
+    AdminSurface Surface,
     int Changes,
     IReadOnlyList<string> ChangedProperties
 );
@@ -21,7 +22,7 @@ public sealed class AuditLogStore
     private readonly List<AuditLogEntry> _entries = [];
     private readonly Lock _lock = new();
 
-    public void Record(AuditEvent evt)
+    public void Record(AdminAuditEvent e)
     {
         lock (_lock)
         {
@@ -29,13 +30,15 @@ public sealed class AuditLogStore
                 0,
                 new AuditLogEntry(
                     _entries.Count == 0 ? 1 : _entries[0].Id + 1,
-                    evt.Timestamp,
-                    evt.Action,
-                    evt.EntityType,
-                    evt.EntityId,
-                    evt.User,
-                    evt.ChangedValues.Count,
-                    [.. evt.ChangedValues.Keys]
+                    e.At,
+                    e.Operation,
+                    e.Table,
+                    e.Key,
+                    e.Action,
+                    e.User.Identity?.Name,
+                    e.Surface,
+                    e.Changes.Count,
+                    [.. e.Changes.Keys]
                 )
             );
             if (_entries.Count > 500)
@@ -48,44 +51,43 @@ public sealed class AuditLogStore
         lock (_lock)
             return _entries.ToArray();
     }
+
+    public AuditLogEntry? Find(int id) => Snapshot().FirstOrDefault(e => e.Id == id);
+
+    /// <summary>A page of entries, of one user when <paramref name="user"/> names one; the search matches the table, the action and the user.</summary>
+    public AdminPage<AuditLogEntry> List(AdminQuery<AuditLogEntry> query, string? user)
+    {
+        IEnumerable<AuditLogEntry> rows = Snapshot();
+        if (user is not null)
+            rows = rows.Where(r => r.User == user);
+        if (query.Search is { } s)
+            rows = rows.Where(r =>
+                $"{r.Table} {r.Action} {r.User}".Contains(s, StringComparison.OrdinalIgnoreCase)
+            );
+        return AdminPage.From(rows, query);
+    }
 }
 
-/// <summary>
-/// A read-only, provider-backed table: AdminForge describes <see cref="AuditLogEntry"/> from its
-/// properties, this provider answers the list and view pages, and <c>ReadOnly()</c> hides the rest.
-/// Sorts by timestamp only, so that is the one column registered as <c>Sortable()</c>.
-/// </summary>
-public sealed class AuditLogDataProvider(AuditLogStore store) : ReadOnlyDataProvider<AuditLogEntry>
+/// <summary>The signed-in admin's own entries. A source can inject <see cref="IUserAccessor"/> like any service.</summary>
+public sealed class MyActivity(AuditLogStore store, IUserAccessor user)
 {
-    public override Task<ListResult<AuditLogEntry>> ListAsync(
-        ListQuery query,
-        CancellationToken cancellationToken = default
-    )
+    public AdminPage<AuditLogEntry> List(AdminQuery<AuditLogEntry> query) =>
+        store.List(query, Name());
+
+    public AuditLogEntry? Find(int id) => store.Find(id) is { } e && e.User == Name() ? e : null;
+
+    private string Name() => user.GetUser().Identity?.Name ?? "";
+}
+
+/// <summary>Writes every panel and MCP write into the store and the console.</summary>
+public sealed class AuditLogSink(AuditLogStore store) : IAdminAuditSink
+{
+    public Task RecordAsync(AdminAuditEvent e, CancellationToken ct)
     {
-        IEnumerable<AuditLogEntry> rows = store.Snapshot();
-        if (!string.IsNullOrWhiteSpace(query.Search))
-            rows = rows.Where(r =>
-                r.EntityType.Contains(query.Search, StringComparison.OrdinalIgnoreCase)
-                || (r.User?.Contains(query.Search, StringComparison.OrdinalIgnoreCase) ?? false)
-            );
-        if (query.SortBy == nameof(AuditLogEntry.Timestamp) && !query.SortDescending)
-            rows = rows.OrderBy(r => r.Timestamp);
-
-        var all = rows.ToList();
-        return Task.FromResult(
-            new ListResult<AuditLogEntry>
-            {
-                Items = all.Skip(query.Page * query.PageSize).Take(query.PageSize).ToList(),
-                TotalCount = all.Count,
-            }
+        Console.WriteLine(
+            $"[audit] {e.At:O} {e.Operation} {e.Table ?? e.Action}#{e.Key} by {e.User.Identity?.Name ?? "anonymous"} via {e.Surface} ({e.Changes.Count} change(s))"
         );
+        store.Record(e);
+        return Task.CompletedTask;
     }
-
-    public override Task<AuditLogEntry?> FindAsync(
-        object?[] keyValues,
-        CancellationToken cancellationToken = default
-    ) =>
-        Task.FromResult(
-            keyValues is [int id] ? store.Snapshot().FirstOrDefault(r => r.Id == id) : null
-        );
 }

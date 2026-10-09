@@ -1,0 +1,16 @@
+@page "/admin/dashboards/{DashboardId}"
+@inject PanelModel Model
+
+@if (Model.Dashboard(DashboardId) is not { } dashboard)
+{
+    <NotFoundState Body="@($"There is no dashboard '{DashboardId}'.")" />
+}
+else
+{
+    <PageHeader Title="@dashboard.Title" Crumbs="@Links.GroupCrumbs(dashboard.Nav)" />
+    <DashboardGrid DashboardId="@dashboard.Id" @key="dashboard.Id" />
+}
+
+@code {
+    [Parameter] public string DashboardId { get; set; } = "";
+}

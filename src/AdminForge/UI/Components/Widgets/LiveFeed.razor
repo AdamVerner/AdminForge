@@ -1,0 +1,65 @@
+@* A stream as a table, newest first, keeping Keep entries. Starts once the circuit is interactive. *@
+@implements IDisposable
+
+@if (_error is not null)
+{
+    <div class="af-inline-error" data-af="error">@_error</div>
+}
+else if (_entries.Count == 0)
+{
+    <div class="af-chart-empty" data-af="empty">Waiting for the first entry…</div>
+}
+else
+{
+    <div class="af-table-wrap af-feed">
+        <table class="af-table">
+            <thead><tr>@foreach (var c in Columns) { <th scope="col">@c</th> }</tr></thead>
+            <tbody>
+                @foreach (var entry in _entries)
+                {
+                    <tr data-af="row">@foreach (var cell in entry) { <td class="af-mono">@(ValueFormatter.Format(cell) ?? "—")</td> }</tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@code {
+    [Parameter] public IReadOnlyList<string> Columns { get; set; } = [];
+    [Parameter] public int Keep { get; set; } = 50;
+    [Parameter, EditorRequired] public Func<CancellationToken, IAsyncEnumerable<IReadOnlyList<object?>>> Stream { get; set; } = default!;
+
+    private readonly LinkedList<IReadOnlyList<object?>> _entries = new();
+    private readonly CancellationTokenSource _cts = new();
+    private string? _error;
+
+    protected override void OnAfterRender(bool firstRender)
+    {
+        if (firstRender) _ = RunAsync();
+    }
+
+    private async Task RunAsync()
+    {
+        try
+        {
+            await foreach (var entry in Stream(_cts.Token))
+            {
+                _entries.AddFirst(entry);
+                while (_entries.Count > Keep) _entries.RemoveLast();
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            _error = ex is AdminRejection ? ex.Message : "The stream failed.";
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    public void Dispose()
+    {
+        _cts.Cancel();
+        _cts.Dispose();
+    }
+}

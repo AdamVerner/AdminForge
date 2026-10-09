@@ -1,0 +1,16 @@
+@using AdminForge
+@using Microsoft.AspNetCore.Components.Web
+
+@* A host component rendered above every detail page; it chooses which tables it cares about. *@
+
+@if (TableId == "todo")
+{
+    <div class="af-panel host-note" data-af="task-banner">
+        Task @Key. Done tasks are frozen: the policy refuses edits and actions on them.
+    </div>
+}
+
+@code {
+    [Parameter] public string TableId { get; set; } = "";
+    [Parameter] public string Key { get; set; } = "";
+}

@@ -1,49 +1,47 @@
-using AdminForge.Core.Configuration;
-using AdminForge.Core.Metadata;
 using Microsoft.Extensions.Logging;
 
 namespace AdminForge.Mcp;
 
-internal static class ToolCatalog
+/// <summary>Every tool the registered panel yields, built once.</summary>
+internal sealed class PanelTools(IReadOnlyList<PanelTool> all)
 {
-    /// <summary>Every tool the registered panel yields, in sidebar order.</summary>
-    public static List<PanelTool> Build(
-        AdminForgeOptions forge,
-        AdminForgeMcpOptions options,
-        ILogger logger
-    )
+    public IReadOnlyList<PanelTool> All { get; } = all;
+
+    /// <summary>Every tool the panel yields: a list per table, a get, writes and actions as its source and model offer them.</summary>
+    public static PanelTools Build(PanelModel panel, ILogger logger)
     {
-        var tools = new List<PanelTool> { new SearchTool(options) };
-        foreach (var e in forge.Entities.Where(e => !e.IsJoinEntity))
+        var tools = new List<PanelTool> { new SearchTool() };
+        foreach (var t in panel.Tables)
         {
-            tools.Add(new ListTool(e, options));
-            tools.Add(new GetTool(e, options));
-            if (!e.IsReadOnly)
-            {
-                tools.Add(new CreateTool(e, options));
-                tools.Add(new UpdateTool(e, options));
-            }
-            if (e.CustomDeleteHandler is not null)
-                tools.Add(new DeleteTool(e, options));
-            foreach (var a in e.Actions)
-            {
-                if (HasFile(a.Fields, $"{e.Name} action '{a.Name}'", logger))
-                    continue;
-                tools.Add(new ActionTool(e, a, options));
-            }
+            tools.Add(new ListTool(t));
+            if (t.HasDetail)
+                tools.Add(new GetTool(t));
+            if (t.Source.Create is not null)
+                tools.Add(new CreateTool(t));
+            if (t.Source.Update is not null)
+                tools.Add(new UpdateTool(t));
+            if (t.Source.Delete is not null)
+                tools.Add(new DeleteTool(t));
+            foreach (var a in t.Actions)
+                if (!NeedsFile(a.Input?.Fields ?? [], $"{t.Id} action '{a.Id}'", logger))
+                    tools.Add(new ActionTool(t, a));
         }
-        foreach (var f in forge.Forms)
-            if (!HasFile(f.Fields, $"form '{f.RouteName}'", logger))
-                tools.Add(new FormTool(f, options));
-        foreach (var d in forge.Dashboards)
-            tools.Add(new DashboardTool(d, options));
-        return tools;
+        foreach (var f in panel.Forms)
+            if (!NeedsFile(f.Input.Fields, $"form '{f.Id}'", logger))
+                tools.Add(new FormTool(f));
+        foreach (var d in panel.Dashboards)
+            tools.Add(new DashboardTool(d));
+        if (tools.GroupBy(t => t.ProtocolTool.Name).FirstOrDefault(g => g.Count() > 1) is { } twin)
+            throw new InvalidOperationException(
+                $"Two MCP tools are named '{twin.Key}'; give one of their tables, actions, forms or dashboards another id."
+            );
+        return new PanelTools(tools);
     }
 
     /// <summary>A file cannot travel in a tool call: an optional one is left out, a required one drops the tool.</summary>
-    private static bool HasFile(IEnumerable<FieldMeta> fields, string what, ILogger logger)
+    private static bool NeedsFile(IEnumerable<FieldModel> fields, string what, ILogger logger)
     {
-        if (!fields.Any(f => f is { Kind: FieldKind.FileUpload, Required: true }))
+        if (!fields.Any(f => f is { Kind: FieldKind.File, Required: true }))
             return false;
         logger.LogWarning("AdminForge MCP: {What} requires a file upload and gets no tool.", what);
         return true;

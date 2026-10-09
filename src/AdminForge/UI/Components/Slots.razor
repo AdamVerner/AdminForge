@@ -1,0 +1,24 @@
+@* The host components registered for one slot, in registration order. *@
+@inject PanelModel Model
+
+@if (Model.Slots.Any(s => s.Slot == Slot))
+{
+    <div class="af-slot">
+        @foreach (var (_, component) in Model.Slots.Where(s => s.Slot == Slot))
+        {
+            <DynamicComponent Type="component" Parameters="@Parameters" />
+        }
+    </div>
+}
+
+@code {
+    [Parameter, EditorRequired] public AdminSlot Slot { get; set; }
+
+    /// <summary>A detail slot's row; the home slots take none.</summary>
+    [Parameter] public string? TableId { get; set; }
+
+    [Parameter] public string? Key { get; set; }
+
+    private Dictionary<string, object?>? Parameters =>
+        TableId is null ? null : new() { ["TableId"] = TableId, ["Key"] = Key };
+}

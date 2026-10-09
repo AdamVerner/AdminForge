@@ -4,33 +4,19 @@
   </PropertyGroup>
 
   <ItemGroup Label="Runtime">
-    <PackageVersion Include="Microsoft.EntityFrameworkCore" Version="10.0.8" />
-    <PackageVersion Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.8" />
-    <!-- EF Core Sqlite resolves lib.e_sqlite3 2.1.11, which trips NU1903 (GHSA-2m69-gcr7-jv3q).
-         Referenced directly by the projects that use Sqlite, to raise that node. -->
-    <PackageVersion Include="SQLitePCLRaw.lib.e_sqlite3" Version="2.1.13" />
-    <PackageVersion Include="Microsoft.EntityFrameworkCore.InMemory" Version="10.0.8" />
-    <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.8" />
-    <PackageVersion Include="Microsoft.AspNetCore.Components.Web" Version="10.0.8" />
-    <PackageVersion Include="Microsoft.AspNetCore.App.Internal.Assets" Version="10.0.0" />
-    <PackageVersion Include="MudBlazor" Version="9.5.0" />
-    <PackageVersion Include="Markdig" Version="1.3.2" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore" Version="10.0.12" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.12" />
+    <PackageVersion Include="Microsoft.AspNetCore.App.Internal.Assets" Version="10.0.12" />
+    <PackageVersion Include="MudBlazor" Version="9.11.0" />
+    <PackageVersion Include="Markdig" Version="1.4.0" />
     <PackageVersion Include="ModelContextProtocol.AspNetCore" Version="2.2.0" />
     <PackageVersion Include="ModelContextProtocol" Version="2.2.0" />
-    <PackageVersion
-      Include="Microsoft.Extensions.DependencyInjection.Abstractions"
-      Version="10.0.0"
-    />
-    <PackageVersion Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.0" />
-    <PackageVersion Include="Microsoft.Extensions.TimeProvider.Testing" Version="10.0.0" />
   </ItemGroup>
 
   <ItemGroup Label="Test">
-    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
-    <PackageVersion Include="xunit" Version="2.9.3" />
-    <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.4" />
-    <PackageVersion Include="coverlet.collector" Version="6.0.4" />
-    <PackageVersion Include="JunitXml.TestLogger" Version="8.0.0" />
-    <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.0" />
+    <PackageVersion Include="xunit.v3" Version="4.0.2" />
+    <PackageVersion Include="AngleSharp" Version="1.8.4" />
+    <PackageVersion Include="bunit" Version="2.11.3" />
+    <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.12" />
   </ItemGroup>
 </Project>

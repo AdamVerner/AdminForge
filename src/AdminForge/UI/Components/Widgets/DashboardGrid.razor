@@ -1,0 +1,114 @@
+@* A dashboard's rows on a 12-column grid: a stat takes 3 columns, the other widgets share the rest. *@
+@inject AdminPanel Panel
+
+@if (_refused is not null)
+{
+    <EmptyState Title="@_refused" Hook="refused" Icon="@Icons.Material.Outlined.Block">
+        <a class="af-btn" href="@PanelModel.Root">Go home</a>
+    </EmptyState>
+}
+else if (_view is not null)
+{
+    @foreach (var row in _view.Model.Rows)
+    {
+        <div class="af-grid">
+            @foreach (var widget in row)
+            {
+                var view = _view.Widgets[widget.Id];
+                <div class="af-span-@Span(widget, row)" data-af="widget:@widget.Id">
+                    @switch (view)
+                    {
+                        case StatView stat:
+                            <StatCard Title="@stat.Title" Value="@stat.Value" Suffix="@stat.Suffix" Error="@stat.Error" />
+                            break;
+                        case ChartView chart:
+                            var model = (ChartModel)widget;
+                            <section class="af-panel af-widget" aria-label="@chart.Title">
+                                <div class="af-section-head">
+                                    <h2>@chart.Title</h2>
+                                    @if (model.Stream is not null || model.Poll is not null)
+                                    {
+                                        <span class="af-chip af-dot" title="@(model.Poll is { } p ? $"Refreshes every {p.TotalSeconds:0} s" : "Streaming")">Live</span>
+                                    }
+                                </div>
+                                <LineChart Title="@chart.Title" YLabel="@chart.YLabel" Error="@chart.Error"
+                                           Points="@chart.Points.Select(p => (IReadOnlyList<object?>)[p.X, p.Y]).ToList()"
+                                           Window="@model.Window" Poll="@model.Poll"
+                                           Reload="@(model.Poll is null ? null : ct => Reload(widget.Id, ct))"
+                                           Stream="@(model.Stream is null ? null : ct => Panel.StreamChartAsync(_view.Model.Id, widget.Id, ct))" />
+                            </section>
+                            break;
+                        case TableWidgetView table:
+                            <section class="af-panel af-widget" aria-label="@table.Title">
+                                <div class="af-section-head">
+                                    <h2>@table.Title</h2>
+                                    @if (Panel.Model.Table(table.TableId) is { } listed)
+                                    {
+                                        <a class="af-tab-link" href="@Links.List(listed.Id)">Open @listed.Title →</a>
+                                    }
+                                </div>
+                                @if (table.Error is not null)
+                                {
+                                    <div class="af-inline-error" data-af="error">@table.Error</div>
+                                }
+                                else if (Panel.Model.Table(table.TableId) is { } t)
+                                {
+                                    var columns = table.Columns.Select(t.Column).OfType<ColumnModel>().ToList();
+                                    <div class="af-widget-table af-table-wrap">
+                                        <table class="af-table">
+                                            <thead><tr>@foreach (var c in columns) { <th scope="col" class="@Cells.Align(c)">@c.Title</th> }</tr></thead>
+                                            <tbody>
+                                                @foreach (var r in table.Rows)
+                                                {
+                                                    <tr data-af="row" data-key="@r.Key">
+                                                        @for (var i = 0; i < columns.Count; i++)
+                                                        {
+                                                            var c = columns[i];
+                                                            <td class="@Cells.Align(c)">@Cells.Render(r.Values.GetValueOrDefault(c.Name), c, Panel.Model, r.Links.GetValueOrDefault(c.Name), i == 0 && t.HasDetail ? Links.Row(t.Id, r.Key) : null, r.Label)</td>
+                                                        }
+                                                    </tr>
+                                                }
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                }
+                            </section>
+                            break;
+                    }
+                </div>
+            }
+        </div>
+    }
+}
+
+@code {
+    [Parameter, EditorRequired] public string DashboardId { get; set; } = "";
+
+    private DashboardView? _view;
+    private string? _refused;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        try
+        {
+            _view = await Panel.DashboardAsync(DashboardId);
+        }
+        catch (AdminRejection ex)
+        {
+            _refused = ex.Message;
+        }
+    }
+
+    private static int Span(WidgetModel widget, IReadOnlyList<WidgetModel> row)
+    {
+        if (widget is StatModel) return 3;
+        var stats = row.Count(w => w is StatModel);
+        var others = row.Count - stats;
+        return Math.Max(4, (12 - 3 * stats) / others) switch { >= 12 => 12, >= 9 => 9, >= 6 => 6, _ => 4 };
+    }
+
+    private async Task<IReadOnlyList<IReadOnlyList<object?>>> Reload(string widgetId, CancellationToken ct) =>
+        await Panel.WidgetAsync(DashboardId, widgetId, ct) is ChartView { Error: null } chart
+            ? chart.Points.Select(p => (IReadOnlyList<object?>)[p.X, p.Y]).ToList()
+            : throw new AdminRejection("The chart failed to reload.");
+}

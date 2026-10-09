@@ -38,15 +38,13 @@ internal sealed class McpBearerHandler(
         if (connection is null || !connection.IsLive(now))
             return AuthenticateResult.Fail("Connection ended.");
 
-        connection.LastCallAt = now;
-        await store.SaveAsync(connection, Context.RequestAborted).ConfigureAwait(false);
-
+        await store.TouchAsync(connection.Id, now, Context.RequestAborted).ConfigureAwait(false);
         return AuthenticateResult.Success(
             new AuthenticationTicket(Principal(connection), Scheme.Name)
         );
     }
 
-    public static ClaimsPrincipal Principal(McpConnection connection)
+    private static ClaimsPrincipal Principal(McpConnection connection)
     {
         var claims = connection.Claims.Select(c => new Claim(c.Type, c.Value)).ToList();
         claims.Add(new Claim(AdminForgeMcp.ConnectionClaim, connection.Id));

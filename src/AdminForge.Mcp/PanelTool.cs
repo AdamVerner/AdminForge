@@ -1,48 +1,46 @@
 using System.Security.Claims;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using AdminForge.Core.Configuration;
-using AdminForge.Core.Contracts;
-using AdminForge.Core.Metadata;
+using System.Text.Json.Serialization;
 using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 
 namespace AdminForge.Mcp;
 
-/// <summary>One panel operation as a tool. Every call runs through the bridge from the request's scope.</summary>
-internal abstract class PanelTool(AdminForgeMcpOptions options) : McpServerTool
+/// <summary>
+/// One panel operation as a tool. Every call goes through <see cref="AdminPanel"/>, so the umbrella
+/// policy, the host's policy and the audit apply to each call, not to the connection.
+/// </summary>
+internal abstract class PanelTool : McpServerTool
 {
-    protected AdminForgeMcpOptions Options { get; } = options;
-    protected JsonSerializerOptions Json => Options.JsonSerializerOptions;
+    protected static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
+    {
+        Converters = { new JsonStringEnumConverter() },
+    };
 
     private Tool? _tool;
-    public override Tool ProtocolTool => _tool ??= Describe(null);
+    public override Tool ProtocolTool => _tool ??= Describe();
     public override IReadOnlyList<object> Metadata => [];
 
-    /// <summary>The tool's description; <paramref name="bridge"/> is present when choices can be loaded.</summary>
-    protected abstract Tool Describe(IAdminUIBridge? bridge);
+    protected abstract Tool Describe();
 
-    /// <summary>Where the consent page files the tool: the owner's sidebar entry and its name.</summary>
-    public abstract NavMeta Nav { get; }
+    /// <summary>Where the consent page files the tool: its owner's sidebar entry and title.</summary>
+    public abstract NavModel Nav { get; }
     public abstract string Section { get; }
 
-    /// <summary>A bearer connection may call only what it was granted; a panel session may call anything the policy allows.</summary>
+    /// <summary>Whether the caller may run this tool at all, as tools/list and the consent page ask.</summary>
+    public abstract Task<bool> IsAllowedAsync(AdminPanel panel, CancellationToken ct);
+
+    /// <summary>The tool as this caller sees it; one with select fields lists the choices loaded for them.</summary>
+    public virtual Task<Tool> DescribeAsync(AdminPanel panel, CancellationToken ct) =>
+        Task.FromResult(ProtocolTool);
+
     public static bool Granted(ClaimsPrincipal user, string toolName) =>
-        !user.HasClaim(c => c.Type == AdminForgeMcp.ConnectionClaim)
-        || user.HasClaim(AdminForgeMcp.ToolClaim, toolName);
-
-    /// <summary>Whether the caller may run this tool, as the panel would ask before showing its button.</summary>
-    public abstract Task<bool> IsAllowedAsync(IAdminUIBridge bridge, CancellationToken ct);
-
-    /// <summary>Re-describes a tool whose schema depends on runtime data, such as select choices.</summary>
-    public virtual Task RefreshAsync(IAdminUIBridge bridge, CancellationToken ct) =>
-        Task.CompletedTask;
-
-    protected void Replace(Tool tool) => _tool = tool;
+        user.HasClaim(AdminForgeMcp.ToolClaim, toolName);
 
     protected abstract Task<CallToolResult> RunAsync(
-        IAdminUIBridge bridge,
+        AdminPanel panel,
         ToolArgs args,
         CancellationToken ct
     );
@@ -55,80 +53,83 @@ internal abstract class PanelTool(AdminForgeMcpOptions options) : McpServerTool
         var services =
             request.Services
             ?? throw new InvalidOperationException("MCP requests must run in a DI scope.");
-        var bridge = services.GetRequiredService<IAdminUIBridge>();
         if (!Granted(services.GetRequiredService<IUserAccessor>().GetUser(), ProtocolTool.Name))
             return Error($"Forbidden: this connection was not granted {ProtocolTool.Name}.");
-        var args = new ToolArgs(request.Params?.Arguments);
         try
         {
-            return await RunAsync(bridge, args, cancellationToken).ConfigureAwait(false);
+            return await RunAsync(
+                    Panel(services),
+                    new ToolArgs(
+                        request.Params?.Arguments,
+                        services.GetRequiredService<IUserAccessor>().GetUser()
+                    ),
+                    cancellationToken
+                )
+                .ConfigureAwait(false);
         }
         catch (AdminForbiddenException)
         {
             return Error($"Forbidden: {ProtocolTool.Name}.");
         }
-        catch (FormValidationException ex)
+        catch (AdminRejection ex)
         {
             return Error(
-                "Invalid input:\n"
-                    + string.Join('\n', ex.Errors.Select(e => $"- {e.Key}: {e.Value}"))
+                ex.FieldErrors.Count == 0
+                    ? ex.Message
+                    : "Invalid input:\n"
+                        + string.Join('\n', ex.FieldErrors.Select(e => $"- {e.Key}: {e.Value}"))
             );
         }
-        catch (Exception ex) when (ex is FormatException or OverflowException)
+        catch (ArgumentException ex)
         {
             return Error($"Invalid argument: {ex.Message}");
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            // A handler's failure is the tool's error text, as the panel's snackbar would show it.
-            return Error(ex.GetBaseException().Message);
-        }
+    }
+
+    /// <summary>"SiteSettings" → "site_settings".</summary>
+    public static string Snake(string id) => Members.Kebab(id).Replace('-', '_');
+
+    public static AdminPanel Panel(IServiceProvider services)
+    {
+        var panel = services.GetRequiredService<AdminPanel>();
+        panel.Surface = AdminSurface.Mcp;
+        return panel;
     }
 
     protected static CallToolResult Text(string text) =>
         new() { Content = [new TextContentBlock { Text = text }] };
 
-    protected CallToolResult JsonResult(object? value) =>
-        Text(JsonSerializer.Serialize(value, Json));
+    /// <summary>What the handler showed, or <paramref name="otherwise"/> when it showed nothing.</summary>
+    protected static CallToolResult Text(Outcome outcome, string otherwise) =>
+        Text(
+            string.Join(
+                "\n\n",
+                new[] { outcome.Message, outcome.Markdown }.Where(s => s is not null)
+            )
+                is { Length: > 0 } text
+                ? text
+                : otherwise
+        );
+
+    protected static CallToolResult JsonResult(JsonNode value) => Text(value.ToJsonString(Json));
 
     protected static CallToolResult Error(string text) =>
         new() { IsError = true, Content = [new TextContentBlock { Text = text }] };
 
-    protected static CallToolResult NotFound(string key) => Error($"No row with key '{key}'.");
+    protected static JsonNode? Value(object? value) =>
+        JsonSerializer.SerializeToNode(value, value?.GetType() ?? typeof(object), Json);
 
-    /// <summary>
-    /// A row as the agent sees it: its key and its values, written with the host's options. A
-    /// navigation is never a value, because a list does not load it; a list row carries only the
-    /// list columns, as its tool promises.
-    /// </summary>
-    protected JsonObject Row(
-        EntityMeta entity,
-        string key,
-        IReadOnlyDictionary<string, object?> values,
-        bool listed
-    )
+    /// <summary>A row as the agent sees it: its key and its values.</summary>
+    protected static JsonObject Row(RowView row)
     {
-        var columns = entity.Columns.ToDictionary(c => c.PropertyName, StringComparer.Ordinal);
-        var o = new JsonObject { ["key"] = key };
-        foreach (var (name, value) in values)
-        {
-            if (columns.TryGetValue(name, out var column))
-            {
-                if (
-                    column.Kind is ColumnKind.NavigationReference or ColumnKind.NavigationCollection
-                )
-                    continue;
-                if (listed && !column.ShowInList)
-                    continue;
-            }
-            o[name] = JsonSerializer.SerializeToNode(
-                value,
-                value?.GetType() ?? typeof(object),
-                Json
-            );
-        }
+        var o = new JsonObject { ["key"] = row.Key };
+        foreach (var (name, value) in row.Values)
+            o[name] = Value(value);
         return o;
     }
+
+    protected static JsonArray Rows(IEnumerable<RowView> rows) =>
+        new([.. rows.Select(r => (JsonNode)Row(r))]);
 
     protected static Tool Tool(
         string name,
@@ -154,8 +155,13 @@ internal abstract class PanelTool(AdminForgeMcpOptions options) : McpServerTool
 }
 
 /// <summary>The call's arguments by name.</summary>
-internal readonly struct ToolArgs(IDictionary<string, JsonElement>? values)
+internal readonly struct ToolArgs(IDictionary<string, JsonElement>? values, ClaimsPrincipal user)
 {
+    /// <summary>Whether the connection was granted a tool that reads <paramref name="tableId"/>'s rows.</summary>
+    public bool GrantsRowsOf(string tableId) =>
+        PanelTool.Granted(user, $"list_{PanelTool.Snake(tableId)}")
+        || PanelTool.Granted(user, $"get_{PanelTool.Snake(tableId)}");
+
     private readonly IDictionary<string, JsonElement> _values =
         values ?? new Dictionary<string, JsonElement>();
 
@@ -164,18 +170,31 @@ internal readonly struct ToolArgs(IDictionary<string, JsonElement>? values)
         && element.ValueKind is not (JsonValueKind.Null or JsonValueKind.Undefined);
 
     public string Required(string name) =>
-        TryGet(name, out var e)
-            ? (e.ValueKind == JsonValueKind.String ? e.GetString()! : e.ToString())
-            : throw new ArgumentException($"'{name}' is required.");
+        String(name) ?? throw new ArgumentException($"'{name}' is required.");
 
     public string? String(string name) =>
         TryGet(name, out var e)
             ? (e.ValueKind == JsonValueKind.String ? e.GetString() : e.ToString())
             : null;
 
-    public int? Int(string name) => TryGet(name, out var e) ? e.GetInt32() : null;
+    public int? Int(string name) =>
+        TryGet(name, out var e) && e.TryGetInt32(out var i) ? i
+        : TryGet(name, out _) ? throw new ArgumentException($"'{name}' must be an integer.")
+        : null;
 
     public bool Bool(string name) => TryGet(name, out var e) && e.ValueKind == JsonValueKind.True;
 
-    public IEnumerable<KeyValuePair<string, JsonElement>> All => _values;
+    /// <summary>Every argument but the key, as values the panel converts and validates; one it does not know is refused there.</summary>
+    public Dictionary<string, object?> Values()
+    {
+        var values = new Dictionary<string, object?>(StringComparer.Ordinal);
+        foreach (var (name, e) in _values.Where(a => a.Key != "key"))
+            values[name] =
+                e.ValueKind == JsonValueKind.Array
+                    ? e.EnumerateArray()
+                        .Select(i => JsonSchema.Scalar(i)?.ToString() ?? "")
+                        .ToList()
+                    : JsonSchema.Scalar(e);
+        return values;
+    }
 }

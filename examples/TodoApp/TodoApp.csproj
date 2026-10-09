@@ -4,29 +4,15 @@
     <RootNamespace>TodoApp</RootNamespace>
   </PropertyGroup>
 
-  <!--
-    Phase 6 packaging note: in-solution consumers reference each sub-project directly
-    because the meta-package's references are PrivateAssets="all" (so its compile-time
-    asset flow is cut to match the produced nupkg's single-package surface). A real
-    NuGet consumer who runs `dotnet add package AdminForge` picks up all five sub-DLLs
-    from the package's lib/net10.0/ folder automatically.
-  -->
   <ItemGroup>
     <ProjectReference Include="../../src/AdminForge/AdminForge.csproj" />
-    <ProjectReference Include="../../src/AdminForge.Core/AdminForge.Core.csproj" />
-    <ProjectReference Include="../../src/AdminForge.Auth/AdminForge.Auth.csproj" />
     <ProjectReference Include="../../src/AdminForge.Mcp/AdminForge.Mcp.csproj" />
-    <ProjectReference Include="../../src/AdminForge.DataAccess.EfCore/AdminForge.DataAccess.EfCore.csproj" />
-    <ProjectReference Include="../../src/AdminForge.LiveUpdates/AdminForge.LiveUpdates.csproj" />
-    <ProjectReference Include="../../src/AdminForge.UI.Blazor/AdminForge.UI.Blazor.csproj" />
-    <ProjectReference Include="../../src/AdminForge.Middleware/AdminForge.Middleware.csproj" />
+    <ProjectReference Include="../../src/AdminForge.EntityFrameworkCore/AdminForge.EntityFrameworkCore.csproj" />
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="SQLitePCLRaw.lib.e_sqlite3" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" />
     <!-- Implicit once a .razor file exists; central package management wants it named here. -->
-    <PackageReference Include="Microsoft.AspNetCore.App.Internal.Assets" VersionOverride="10.0.0" />
+    <PackageReference Include="Microsoft.AspNetCore.App.Internal.Assets" />
   </ItemGroup>
 </Project>

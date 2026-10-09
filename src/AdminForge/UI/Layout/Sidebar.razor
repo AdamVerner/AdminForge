@@ -1,0 +1,65 @@
+@* Groups are plain section labels; Settings is the one group that folds, pinned to the bottom. *@
+@inject AdminPanel Panel
+@inject NavigationManager Nav
+
+<div class="af-nav">
+    <ul>
+        <li data-af="nav:home"><NavLink href="@PanelModel.Root" class="af-nav-link" Match="NavLinkMatch.All">Home</NavLink></li>
+        @foreach (var group in _main)
+        {
+            if (group.Key is null)
+            {
+                @foreach (var item in group.Entries)
+                {
+                    <li data-af="nav:@item.Id"><NavLink href="@item.Href" class="af-nav-link">@item.Title</NavLink></li>
+                }
+                continue;
+            }
+            var heading = $"af-nav-{group.Key}";
+            <li>
+                <span class="af-nav-group" id="@heading">@group.Key</span>
+                <ul aria-labelledby="@heading">
+                    @foreach (var item in group.Entries)
+                    {
+                        <li data-af="nav:@item.Id"><NavLink href="@item.Href" class="af-nav-link">@item.Title</NavLink></li>
+                    }
+                </ul>
+            </li>
+        }
+    </ul>
+</div>
+@if (_settings.Count > 0)
+{
+    <details class="af-settings" open="@_settingsOpen">
+        <summary class="af-nav-link"><Icon Svg="@Icons.Material.Outlined.Settings" /> Settings <Icon Svg="@Icons.Material.Filled.ExpandMore" /></summary>
+        <ul>
+            @foreach (var item in _settings)
+            {
+                <li data-af="nav:@item.Id"><NavLink href="@item.Href" class="af-nav-link">@item.Title</NavLink></li>
+            }
+        </ul>
+    </details>
+}
+
+@code {
+    private IReadOnlyList<NavGrouping.Group<NavItem>> _main = [];
+    private IReadOnlyList<NavItem> _settings = [];
+    private bool _settingsOpen;
+
+    protected override async Task OnInitializedAsync()
+    {
+        IReadOnlyList<NavItem> items;
+        try
+        {
+            items = await Panel.NavAsync();
+        }
+        catch (AdminRejection)
+        {
+            return;
+        }
+        _main = NavGrouping.Arrange(items.Where(i => i.Nav.Area == NavArea.Main), i => i.Nav);
+        _settings = items.Where(i => i.Nav.Area == NavArea.Settings).ToList();
+        var path = "/" + Nav.ToBaseRelativePath(Nav.Uri).Split('?', '#')[0];
+        _settingsOpen = _settings.Any(i => path.StartsWith(i.Href, StringComparison.OrdinalIgnoreCase));
+    }
+}

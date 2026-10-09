@@ -16,7 +16,7 @@ jobs:
         with:
           global-json-file: global.json
       - run: dotnet build AdminForge.slnx -c Release
-      - run: dotnet test AdminForge.slnx -c Release --no-build
+      - run: dotnet test --solution AdminForge.slnx -c Release --no-build
 
   publish:
     needs: build
@@ -34,9 +34,9 @@ jobs:
         with:
           global-json-file: global.json
 
-      # The tag is the version: v0.0.1 packs 0.0.1, overriding the csproj default.
+      # The tag is the version: v0.0.1 packs 0.0.1, overriding the default. Each src project is a package.
       - name: Pack
-        run: dotnet pack src/AdminForge/AdminForge.csproj -c Release -p:Version="${GITHUB_REF_NAME#v}" -o nupkg
+        run: dotnet pack AdminForge.slnx -c Release -p:Version="${GITHUB_REF_NAME#v}" -o nupkg
 
       - name: Push to GitHub Packages
         run: >

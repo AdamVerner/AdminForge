@@ -1,0 +1,54 @@
+@* Asks before a destructive or announced step. The button says what happens; Esc cancels. *@
+@inject IJSRuntime JS
+<MudDialog Class="af-dialog-sm">
+    <TitleContent><h2>@Title</h2></TitleContent>
+    <DialogContent><p>@Text</p></DialogContent>
+    <DialogActions>
+        <button type="button" class="af-btn" @onclick="@(() => Dialog.Cancel())" @ref="_cancel">Cancel</button>
+        <button type="button" class="af-btn @(Danger ? "af-btn-danger" : "af-btn-primary")" @onclick="@(() => Dialog.Close(DialogResult.Ok(true)))"
+                data-af="confirm">@Verb</button>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance Dialog { get; set; } = default!;
+    [Parameter, EditorRequired] public string Title { get; set; } = "";
+    [Parameter, EditorRequired] public string Text { get; set; } = "";
+    [Parameter, EditorRequired] public string Verb { get; set; } = "";
+    [Parameter] public bool Danger { get; set; }
+
+    private ElementReference _cancel;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender) await JS.InvokeVoidAsync("adminforge.focusFirst", _cancel, "button");
+    }
+
+    /// <summary>True when the admin confirmed.</summary>
+    public static async Task<bool> AskAsync(IDialogService dialogs, string title, string text, string verb, bool danger = false)
+    {
+        var dialog = await dialogs.ShowAsync<ConfirmDialog>(
+            title,
+            new DialogParameters<ConfirmDialog> { { d => d.Title, title }, { d => d.Text, text }, { d => d.Verb, verb }, { d => d.Danger, danger } },
+            new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true, CloseButton = true, CloseOnEscapeKey = true, DefaultFocus = DefaultFocus.None });
+        return await dialog.Result is { Canceled: false };
+    }
+
+    /// <summary>Asks, deletes and says how it went; true when the row is gone.</summary>
+    internal static async Task<bool> DeleteAsync(IDialogService dialogs, ISnackbar snackbar, AdminPanel panel, string tableId, string key, string label)
+    {
+        if (!await AskAsync(dialogs, $"Delete “{label}”?", $"This removes “{label}” from {panel.Model.Table(tableId)!.Title}. It cannot be undone.", "Delete", danger: true))
+            return false;
+        try
+        {
+            await panel.DeleteAsync(tableId, key);
+            Toasts.Success(snackbar, $"Deleted “{label}”.");
+            return true;
+        }
+        catch (AdminRejection ex)
+        {
+            Toasts.Error(snackbar, ex.Message);
+            return false;
+        }
+    }
+}

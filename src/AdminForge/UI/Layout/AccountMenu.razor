@@ -1,0 +1,78 @@
+@* The signed-in admin's menu: their Account-area entries, the theme, sign-out. Anonymous, only the theme. *@
+@inject AdminPanel Panel
+@inject IJSRuntime JS
+
+@if (UserName is null)
+{
+    <button type="button" class="af-icon-btn af-icon-btn-lg" aria-label="Theme" title="Theme" aria-haspopup="menu" popovertarget="af-account-menu">
+        <Icon Svg="@Icons.Material.Outlined.Contrast" />
+    </button>
+}
+else
+{
+    <button type="button" class="af-avatar" aria-label="Account menu for @UserName" title="@UserName" aria-haspopup="menu" popovertarget="af-account-menu">
+        <span>@Initials</span>
+    </button>
+}
+<div id="af-account-menu" class="af-menu" role="menu" aria-label="@(UserName ?? "Theme")" popover>
+    @if (UserName is not null)
+    {
+        <div class="af-menu-head"><strong>@UserName</strong></div>
+    }
+    @foreach (var item in _entries)
+    {
+        <a class="af-menu-item" role="menuitem" href="@item.Href" data-af="account:@item.Id">@item.Title</a>
+    }
+    <div class="af-menu-label" id="af-theme-label">Theme</div>
+    <div class="af-segmented" role="radiogroup" aria-labelledby="af-theme-label">
+        @foreach (var (mode, label) in Modes)
+        {
+            <button type="button" role="radio" aria-checked="@(_mode == mode ? "true" : "false")" tabindex="@(_mode == mode ? 0 : -1)"
+                    @onclick="@(() => SetAsync(mode))">@label</button>
+        }
+    </div>
+    @if (Panel.Model.SignOutPath is { } signOut)
+    {
+        <div class="af-menu-divider" role="separator"></div>
+        <form method="post" action="@signOut">
+            <AntiforgeryToken />
+            <button type="submit" class="af-menu-item" role="menuitem" data-af="sign-out">
+                <Icon Svg="@Icons.Material.Outlined.Logout" /> Sign out
+            </button>
+        </form>
+    }
+</div>
+
+@code {
+    [Parameter] public string? UserName { get; set; }
+
+    private static readonly (string, string)[] Modes = [("light", "Light"), ("dark", "Dark"), ("system", "System")];
+
+    private IReadOnlyList<NavItem> _entries = [];
+    private string _mode = "system";
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _entries = (await Panel.NavAsync()).Where(i => i.Nav.Area == NavArea.Account).ToList();
+        }
+        catch (AdminRejection) { }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        _mode = await JS.InvokeAsync<string>("adminforge.theme");
+        StateHasChanged();
+    }
+
+    private async Task SetAsync(string mode)
+    {
+        _mode = mode;
+        await JS.InvokeVoidAsync("adminforge.setTheme", mode);
+    }
+
+    private string Initials =>
+        string.Concat(UserName!.Split(' ', StringSplitOptions.RemoveEmptyEntries).Take(2).Select(w => char.ToUpperInvariant(w[0])));
+}

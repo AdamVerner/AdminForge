@@ -1,0 +1,8 @@
+<EmptyState Page="true" Title="This page doesn't exist" Icon="@Icons.Material.Outlined.SearchOff"
+            Body="@Body">
+    <a class="af-btn" href="@PanelModel.Root">Go home</a>
+</EmptyState>
+
+@code {
+    [Parameter] public string? Body { get; set; }
+}

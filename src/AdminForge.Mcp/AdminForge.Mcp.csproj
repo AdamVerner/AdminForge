@@ -1,22 +1,17 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
+    <PackageId>AdminForge.Mcp</PackageId>
+    <Description>Serves an AdminForge panel as MCP tools behind the panel's own OAuth.</Description>
     <RootNamespace>AdminForge.Mcp</RootNamespace>
   </PropertyGroup>
 
   <ItemGroup>
-    <InternalsVisibleTo Include="AdminForge.UnitTests" />
+    <InternalsVisibleTo Include="AdminForge.Tests" />
   </ItemGroup>
 
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <ProjectReference Include="../AdminForge.Core/AdminForge.Core.csproj" />
-    <ProjectReference Include="../AdminForge.Bridge/AdminForge.Bridge.csproj" />
-  </ItemGroup>
-
-  <ItemGroup>
+    <ProjectReference Include="../AdminForge/AdminForge.csproj" />
     <PackageReference Include="ModelContextProtocol.AspNetCore" />
   </ItemGroup>
 </Project>

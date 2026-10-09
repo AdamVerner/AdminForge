@@ -1,0 +1,134 @@
+@page "/admin/entities/{TableId}/new"
+@page "/admin/entities/{TableId}/{Key}/edit"
+@inject AdminPanel Panel
+@inject NavigationManager Nav
+@inject ISnackbar Snackbar
+@inject IDialogService Dialogs
+
+@* One page for create and edit: the same inputs, in the table's order; the server validates. *@
+
+@if (_table is null)
+{
+    <NotFoundState Body="@($"There is no table '{TableId}'.")" />
+}
+else if (_refused is not null)
+{
+    <PageTitle>@_table.Title · @Panel.Model.Title</PageTitle>
+    <EmptyState Page="true" Title="@_refused" Hook="refused" Icon="@Icons.Material.Outlined.Block">
+        <a class="af-btn" href="@Back">Back</a>
+    </EmptyState>
+}
+else if (_form is not null)
+{
+    <PageHeader Title="@Heading" Crumbs="@Crumbs" />
+    <NavigationLock ConfirmExternalNavigation="@Changed" OnBeforeInternalNavigation="LeavingAsync" />
+    <form class="af-form" @onsubmit="Save" novalidate>
+        <div class="af-panel">
+            <CascadingValue Value="_form">
+                <FormFields TableId="@TableId" Error="@_error" />
+            </CascadingValue>
+        </div>
+        <div class="af-savebar">
+            <div class="af-savebar-inner">
+                <a class="af-btn" href="@Back">Cancel</a>
+                <button type="submit" class="af-btn af-btn-primary" disabled="@_saving" data-af="save">
+                    @if (_saving) { <span class="af-spinner" aria-hidden="true"></span> }
+                    @(Key is null ? "Create" : "Save changes")
+                </button>
+            </div>
+        </div>
+    </form>
+}
+
+@code {
+    [Parameter] public string TableId { get; set; } = "";
+    [Parameter] public string? Key { get; set; }
+
+    private TableModel? _table;
+    private FormView? _form;
+    private Dictionary<string, object?> _loaded = [];
+    private string? _label;
+    private string? _error;
+    private string? _refused;
+    private bool _saving;
+    private bool _saved;
+
+    private bool Changed => !_saved && _form is not null && _form.Values.Any(kv => !Equals(_loaded.GetValueOrDefault(kv.Key), kv.Value));
+
+    private async Task LeavingAsync(LocationChangingContext leaving)
+    {
+        if (Changed && !await ConfirmDialog.AskAsync(Dialogs, "Leave without saving?", "Your changes to this form will be lost.", "Leave", danger: true))
+            leaving.PreventNavigation();
+    }
+
+    private string RowKey => Key ?? "";
+    private string Heading => Key is null ? $"New row in {_table!.Title}" : $"Edit {_label}";
+
+    private List<(string, string?)> Crumbs
+    {
+        get
+        {
+            var crumbs = Links.Crumbs(_table!);
+            if (Key is not null && _table!.HasDetail) crumbs.Add((_label ?? RowKey, Links.Row(TableId, RowKey)));
+            return crumbs;
+        }
+    }
+
+    private string Back => _table is null ? PanelModel.Root
+        : Key is null || !_table.HasDetail ? Links.List(TableId)
+        : Links.Row(TableId, RowKey);
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _table = Panel.Model.Table(TableId);
+        if (_table is null) return;
+        try
+        {
+            _form = Key is null ? await Panel.NewAsync(TableId) : await Panel.EditAsync(TableId, RowKey);
+            if (_form is null) _refused = $"{_table.Title} has no row with the key '{RowKey}'";
+            else if (Key is not null) _label = (await Panel.GetAsync(TableId, RowKey))?.Row.Label ?? RowKey;
+            _loaded = new(_form?.Values ?? []);
+        }
+        catch (AdminRejection ex)
+        {
+            _refused = ex.Message;
+        }
+    }
+
+    private async Task Save()
+    {
+        if (_form is null || _saving) return;
+        _saving = true;
+        _error = null;
+        _form.Errors.Clear();
+        try
+        {
+            if (Key is null)
+            {
+                var key = await Panel.CreateAsync(TableId, _form.Values);
+                _saved = true;
+                Toasts.Success(Snackbar, $"Created a row in {_table!.Title}.");
+                Nav.NavigateTo(_table.HasDetail ? Links.Row(TableId, key) : Links.List(TableId));
+            }
+            else
+            {
+                // Sending untouched fields would write back what someone else changed since the form loaded.
+                var edited = _form.Values.Where(kv => !Equals(_loaded.GetValueOrDefault(kv.Key), kv.Value)).ToDictionary();
+                await Panel.UpdateAsync(TableId, RowKey, edited);
+                _saved = true;
+                Toasts.Success(Snackbar, $"Saved {_label}.");
+                Nav.NavigateTo(Back);
+            }
+        }
+        catch (AdminRejection ex)
+        {
+            foreach (var (field, message) in ex.FieldErrors)
+                _form.Errors[field] = message;
+            if (ex.FieldErrors.Count == 0) _error = ex.Message;
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+}

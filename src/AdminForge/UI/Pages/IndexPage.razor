@@ -1,0 +1,19 @@
+@page "/admin"
+@inject PanelModel Model
+
+<PageHeader Title="@(Model.Home?.Title ?? "Home")" />
+@if (Model.Welcome is not null)
+{
+    <p class="af-lead">@Model.Welcome</p>
+}
+<Slots Slot="AdminSlot.AboveHome" />
+@if (Model.Home is { } home)
+{
+    <DashboardGrid DashboardId="@home.Id" />
+}
+else if (!Model.Slots.Any(s => s.Slot is AdminSlot.AboveHome or AdminSlot.BelowHome))
+{
+    <EmptyState Title="Pick a page from the sidebar" Icon="@Icons.Material.Outlined.Dashboard"
+                Body="A dashboard marked Home() shows here." />
+}
+<Slots Slot="AdminSlot.BelowHome" />

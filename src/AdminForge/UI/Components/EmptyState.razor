@@ -1,0 +1,31 @@
+@* Nothing to show, said where the content would be: what happened and the one thing to do next. *@
+<div class="af-empty @(Page ? "af-empty-page" : null)" data-af="@Hook">
+    <Icon Svg="@(Icon ?? Icons.Material.Outlined.Inbox)" />
+    @if (Page)
+    {
+        <h1 data-af="title" tabindex="-1">@Title</h1>
+    }
+    else
+    {
+        <h2>@Title</h2>
+    }
+    @if (Body is not null)
+    {
+        <p>@Body</p>
+    }
+    @ChildContent
+</div>
+
+@code {
+    [Parameter, EditorRequired] public string Title { get; set; } = "";
+    [Parameter] public string? Body { get; set; }
+    [Parameter] public string? Icon { get; set; }
+
+    /// <summary>The whole page's content, so it also carries the page's heading.</summary>
+    [Parameter] public bool Page { get; set; }
+
+    [Parameter] public string? Hook { get; set; }
+
+    /// <summary>The one action, as a button or a link.</summary>
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

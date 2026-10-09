@@ -1,0 +1,130 @@
+@* The table's search and filters, applied as they change: search after a 300 ms pause, a filter
+   when its value is picked. Each active filter is a chip that removes it. *@
+@implements IDisposable
+@inject PanelModel Model
+
+@if (_table is not null)
+{
+    @if (_table.Searchable)
+    {
+        <span class="af-search-wrap">
+            <Icon Svg="@Icons.Material.Filled.Search" />
+            <input class="af-input af-search-field" type="search" placeholder="Search" aria-label="Search @_table.Title"
+                   value="@_search" @oninput="Typed" data-af="search" />
+        </span>
+    }
+    @foreach (var (name, value) in Filters.Where(f => f.Value is not (null or "")))
+    {
+        var column = _table.Column(name);
+        <span class="af-filter-chip">
+            <b>@(column?.Title ?? name):</b> @Shown(column, value)
+            <button type="button" class="af-icon-btn" aria-label="Remove filter @(column?.Title ?? name)" @onclick="@(() => SetAsync(name, null))">
+                <Icon Svg="@Icons.Material.Filled.Close" />
+            </button>
+        </span>
+    }
+    @if (Columns.Any())
+    {
+        <span>
+            <button type="button" class="af-btn af-add-filter" aria-expanded="@(_open ? "true" : "false")" @onclick="@(() => _open = !_open)">
+                <Icon Svg="@Icons.Material.Filled.Add" /> Filter
+            </button>
+            <MudPopover Open="_open" AnchorOrigin="Origin.BottomLeft" TransformOrigin="Origin.TopLeft" Paper="true">
+                <div class="af-filters" role="group" aria-label="Filters">
+                    @foreach (var column in Columns)
+                    {
+                        var type = Nullable.GetUnderlyingType(column.ClrType) ?? column.ClrType;
+                        var current = Filters.GetValueOrDefault(column.Name)?.ToString();
+                        var id = $"af-filter-{column.Name}";
+                        <div data-af="filter:@column.Name">
+                            <label class="af-label" for="@id">@column.Title</label>
+                            @if (type.IsEnum || type == typeof(bool))
+                            {
+                                <select class="af-select" id="@id" @onchange="@(e => SetAsync(column.Name, e.Value as string))">
+                                    <option value="" selected="@(current is null)">Any</option>
+                                    @foreach (var (value, label) in Choices(type))
+                                    {
+                                        <option value="@value" selected="@(current == value)">@label</option>
+                                    }
+                                </select>
+                            }
+                            else
+                            {
+                                <input class="af-input" id="@id" value="@current" placeholder="Equals…"
+                                       @onchange="@(e => SetAsync(column.Name, e.Value as string))" />
+                            }
+                        </div>
+                    }
+                </div>
+            </MudPopover>
+            <MudOverlay Visible="_open" OnClick="@(() => _open = false)" LockScroll="false" />
+        </span>
+    }
+}
+
+@code {
+    /// <summary>What the bar asks the list to narrow by.</summary>
+    public sealed record State(Dictionary<string, object?> Filters, string? Search);
+
+    [Parameter, EditorRequired] public string TableId { get; set; } = "";
+    [Parameter] public IReadOnlyDictionary<string, object?> Filters { get; set; } = new Dictionary<string, object?>();
+    [Parameter] public string? Search { get; set; }
+    [Parameter] public EventCallback<State> OnChange { get; set; }
+
+    /// <summary>Columns the caller pins itself; they get no control.</summary>
+    [Parameter] public IReadOnlyCollection<string>? PinnedColumns { get; set; }
+
+    private TableModel? _table;
+    private string? _search;
+    private bool _open;
+    private CancellationTokenSource? _typing;
+
+    protected override void OnParametersSet()
+    {
+        _table = Model.Table(TableId);
+        if (_typing is null) _search = Search;
+    }
+
+    private IEnumerable<ColumnModel> Columns =>
+        _table?.Columns.Where(c => c.Filterable && !c.IsKey && c.InList && PinnedColumns?.Contains(c.Name) != true) ?? [];
+
+    private static IEnumerable<(string, string)> Choices(Type type) =>
+        type == typeof(bool) ? [("True", "Yes"), ("False", "No")] : Enum.GetNames(type).Select(n => (n, Members.Humanize(n)));
+
+    private static string Shown(ColumnModel? column, object? value) =>
+        column is not null && ScalarTypes.TryCoerce(value, column.ClrType, out var typed) && typed is not null
+            ? ValueFormatter.Format(typed, column) ?? ""
+            : value?.ToString() ?? "";
+
+    private async Task Typed(ChangeEventArgs e)
+    {
+        _search = e.Value as string;
+        _typing?.Cancel();
+        var typing = _typing = new CancellationTokenSource();
+        try
+        {
+            await Task.Delay(300, typing.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+        _typing = null;
+        await OnChange.InvokeAsync(new State(Active(Filters), Trimmed(_search)));
+    }
+
+    private Task SetAsync(string column, string? value)
+    {
+        var filters = Active(Filters);
+        if (string.IsNullOrWhiteSpace(value)) filters.Remove(column);
+        else filters[column] = value.Trim();
+        return OnChange.InvokeAsync(new State(filters, Trimmed(_search)));
+    }
+
+    private static Dictionary<string, object?> Active(IReadOnlyDictionary<string, object?> filters) =>
+        filters.Where(kv => kv.Value is not (null or "")).ToDictionary(kv => kv.Key, kv => kv.Value);
+
+    private static string? Trimmed(string? search) => string.IsNullOrWhiteSpace(search) ? null : search.Trim();
+
+    public void Dispose() => _typing?.Cancel();
+}

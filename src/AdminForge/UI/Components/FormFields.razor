@@ -1,0 +1,189 @@
+@* The inputs of a create, an edit, an action or a form, in their configured order. The form arrives
+   cascaded; values go back into it as text, which the server converts and checks. A failed submit
+   shows one summary on top, which takes focus, and each field's message under it. *@
+@using System.Globalization
+@inject AdminPanel Panel
+@inject NavigationManager Nav
+
+@if (Error is not null || Form.Errors.Count > 0)
+{
+    <div class="af-alert af-alert-danger" role="alert" tabindex="-1" data-af="error" @ref="_summary">
+        <strong>@(Error ?? (Form.Errors.Count == 1 ? "1 field needs attention" : $"{Form.Errors.Count} fields need attention"))</strong>
+        @if (Form.Errors.Count > 0)
+        {
+            <ul>
+                @foreach (var (name, message) in Form.Errors)
+                {
+                    var field = Form.Fields.FirstOrDefault(f => f.Name == name);
+                    <li>
+                        @if (field is null)
+                        {
+                            @message
+                        }
+                        else
+                        {
+                            <a href="@($"{Here}#{Id(field)}")">@Named(field, message)</a>
+                        }
+                    </li>
+                }
+            </ul>
+        }
+    </div>
+}
+
+<div class="af-fields">
+    @foreach (var field in Form.Fields)
+    {
+        Form.Values.TryGetValue(field.Name, out var current);
+        var error = Form.Errors.GetValueOrDefault(field.Name);
+        var id = Id(field);
+        var note = error is not null ? $"{id}-error" : field.Description is not null ? $"{id}-help" : null;
+        var column = TableId is null ? null : Panel.Model.Table(TableId)?.Column(field.Name);
+        var target = column?.LinksTo;
+        // A text field shown as long content is edited the way it is shown.
+        var kind = field.Kind == FieldKind.Text && column?.Content is { } content
+            ? content == Content.Markdown ? FieldKind.Markdown : FieldKind.Multiline
+            : field.Kind;
+        <div class="af-field @(error is null ? null : "af-invalid")" data-af="field:@field.Name" @key="field.Name">
+            @if (field.Kind == FieldKind.Bool)
+            {
+                <label class="af-check">
+                    <input type="checkbox" id="@id" checked="@(current is true)" aria-describedby="@note"
+                           @onchange="@(e => Form.Values[field.Name] = e.Value is true)" />
+                    @field.Title
+                </label>
+            }
+            else
+            {
+                <label class="af-label" for="@id">@(field.Title + " ")@if (field.Required) { <em>Required</em> }</label>
+                @switch (kind)
+                {
+                    case FieldKind.Enum:
+                        var names = Enum.GetNames(Nullable.GetUnderlyingType(field.ClrType) ?? field.ClrType);
+                        <select class="af-select" id="@id" aria-describedby="@note" aria-invalid="@Invalid(error)"
+                                @onchange="@(e => Form.Values[field.Name] = e.Value as string)">
+                            @if (!field.Required || current is null)
+                            {
+                                <option value="" selected="@(current is null)">@(field.Required ? "Choose…" : "—")</option>
+                            }
+                            @foreach (var n in names)
+                            {
+                                <option value="@n" selected="@(Raw(current) == n)">@Members.Humanize(n)</option>
+                            }
+                        </select>
+                        break;
+                    case FieldKind.Select when field.Multiple:
+                        <MudSelect T="string" MultiSelection="true" ToStringFunc="@(v => LabelOf(field, v))" UserAttributes="@Attributes(id, note)"
+                                   SelectedValues="@(current is IEnumerable<string> many ? many.ToList() : [])"
+                                   SelectedValuesChanged="@(values => Form.Values[field.Name] = values.ToList())"
+                                   Variant="Variant.Outlined" Margin="Margin.Dense" Error="@(error is not null)" Placeholder="Choose…">
+                            @foreach (var option in Form.Options.GetValueOrDefault(field.Name) ?? [])
+                            {
+                                <MudSelectItem T="string" Value="@option.Value">@option.Label</MudSelectItem>
+                            }
+                        </MudSelect>
+                        break;
+                    case FieldKind.Select:
+                        <select class="af-select" id="@id" aria-describedby="@note" aria-invalid="@Invalid(error)"
+                                @onchange="@(e => Form.Values[field.Name] = e.Value as string)">
+                            <option value="" selected="@(current is null)">@(field.Required ? "Choose…" : "—")</option>
+                            @foreach (var option in Form.Options.GetValueOrDefault(field.Name) ?? [])
+                            {
+                                <option value="@option.Value" selected="@(Raw(current) == option.Value)">@option.Label</option>
+                            }
+                        </select>
+                        break;
+                    case FieldKind.Markdown:
+                        <MarkdownEditor Id="@id" DescribedBy="@note" Value="@(current as string ?? "")"
+                                        ValueChanged="@(v => Form.Values[field.Name] = v)" />
+                        break;
+                    case FieldKind.File:
+                        <FileUploadField Id="@id" DescribedBy="@note" Accept="@field.Accept" MaxBytes="@field.MaxBytes"
+                                         FileChanged="@(f => Form.Values[field.Name] = f)" />
+                        break;
+                    case FieldKind.Multiline:
+                        <textarea class="af-textarea" id="@id" rows="4" maxlength="@field.MaxLength" aria-describedby="@note" aria-invalid="@Invalid(error)"
+                                  value="@Raw(current)" @oninput="@(e => Form.Values[field.Name] = e.Value as string)"></textarea>
+                        break;
+                    case FieldKind.Integer or FieldKind.Number when target is null:
+                        <input class="af-input" id="@id" type="number" step="@(field.Kind == FieldKind.Integer ? "1" : "any")"
+                               min="@field.Min?.ToString(CultureInfo.InvariantCulture)" max="@field.Max?.ToString(CultureInfo.InvariantCulture)"
+                               aria-describedby="@note" aria-invalid="@Invalid(error)"
+                               value="@Raw(current)" @oninput="@(e => Form.Values[field.Name] = e.Value as string)" />
+                        break;
+                    case FieldKind.Date or FieldKind.DateTime:
+                        <input class="af-input" id="@id" type="@(field.Kind == FieldKind.Date ? "date" : "datetime-local")"
+                               aria-describedby="@note" aria-invalid="@Invalid(error)"
+                               value="@Raw(current, field.Kind)" @onchange="@(e => Form.Values[field.Name] = e.Value as string)" />
+                        break;
+                    default:
+                        if (target is not null)
+                        {
+                            <LinkPicker Id="@id" DescribedBy="@note" TableId="@target" Value="@Raw(current)" Invalid="@(error is not null)"
+                                        ValueChanged="@(v => Form.Values[field.Name] = v)" />
+                        }
+                        else
+                        {
+                            <input class="af-input" id="@id" type="text" maxlength="@field.MaxLength" aria-describedby="@note" aria-invalid="@Invalid(error)"
+                                   value="@Raw(current)" @oninput="@(e => Form.Values[field.Name] = e.Value as string)" />
+                        }
+                        break;
+                }
+            }
+            @if (error is not null)
+            {
+                <div class="af-field-error" id="@id-error">@error</div>
+            }
+            else if (field.Description is not null)
+            {
+                <div class="af-help" id="@id-help">@field.Description</div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [CascadingParameter] private FormView Form { get; set; } = default!;
+
+    /// <summary>The table whose columns these are; its link columns get a picker over the linked table.</summary>
+    [Parameter] public string? TableId { get; set; }
+
+    /// <summary>A refusal that names no field; it heads the summary.</summary>
+    [Parameter] public string? Error { get; set; }
+
+    private ElementReference _summary;
+    private string? _shown;
+
+    private string Here => Nav.Uri.Split('#')[0];
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        var shown = Error is null && Form.Errors.Count == 0 ? null : Error + string.Join('|', Form.Errors);
+        if (shown is not null && shown != _shown)
+            await _summary.FocusAsync();
+        _shown = shown;
+    }
+
+    private static string Id(FieldModel field) => $"af-f-{field.Name}";
+
+    private static string? Invalid(string? error) => error is null ? null : "true";
+
+    private static string Named(FieldModel field, string message) =>
+        message.Contains(field.Title, StringComparison.Ordinal) ? message : $"{field.Title}: {message}";
+
+    private static Dictionary<string, object?> Attributes(string id, string? note) =>
+        note is null ? new() { ["id"] = id } : new() { ["id"] = id, ["aria-describedby"] = note };
+
+    private string LabelOf(FieldModel field, string? value) =>
+        Form.Options.GetValueOrDefault(field.Name)?.FirstOrDefault(o => o.Value == value)?.Label ?? value ?? "";
+
+    // The browser's own controls read and write invariant ISO text; the server parses it back.
+    private static string? Raw(object? value, FieldKind kind = FieldKind.Text) => value switch
+    {
+        null => null,
+        DateTime dt => dt.ToString(kind == FieldKind.Date ? "yyyy-MM-dd" : "yyyy-MM-ddTHH:mm", CultureInfo.InvariantCulture),
+        DateTimeOffset dto => dto.ToString("yyyy-MM-ddTHH:mm", CultureInfo.InvariantCulture),
+        DateOnly d => d.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+        _ => Convert.ToString(value, CultureInfo.InvariantCulture),
+    };
+}

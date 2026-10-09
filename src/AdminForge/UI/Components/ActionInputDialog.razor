@@ -1,0 +1,89 @@
+@* An action's inputs. Submitting runs it; the server's refusal stays in the dialog, which stays open. *@
+@inject AdminPanel Panel
+@inject IJSRuntime JS
+
+<MudDialog Class="af-dialog-md">
+    <TitleContent><h2>@Title</h2></TitleContent>
+    <DialogContent>
+        <form id="af-action-form" class="af-dialog-body" @onsubmit="Submit" @ref="_body" novalidate>
+            @if (!string.IsNullOrEmpty(Message))
+            {
+                <p>@Message</p>
+            }
+            @if (_form is not null)
+            {
+                <CascadingValue Value="_form">
+                    <FormFields Error="@_error" />
+                </CascadingValue>
+            }
+            else if (_error is not null)
+            {
+                <div class="af-alert af-alert-danger" role="alert" data-af="error"><strong>@_error</strong></div>
+            }
+        </form>
+    </DialogContent>
+    <DialogActions>
+        <button type="button" class="af-btn" @onclick="@(() => Dialog.Cancel())">Cancel</button>
+        <button type="submit" form="af-action-form" class="af-btn af-btn-primary" disabled="@(_submitting || _form is null)" data-af="save">
+            @if (_submitting) { <span class="af-spinner" aria-hidden="true"></span> }
+            @Title
+        </button>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance Dialog { get; set; } = default!;
+    [Parameter, EditorRequired] public string TableId { get; set; } = "";
+    [Parameter, EditorRequired] public string RowKey { get; set; } = "";
+    [Parameter, EditorRequired] public string ActionId { get; set; } = "";
+    [Parameter, EditorRequired] public string Title { get; set; } = "";
+    [Parameter] public string? Message { get; set; }
+
+    private FormView? _form;
+    private string? _error;
+    private bool _submitting;
+    private bool _focused;
+    private ElementReference _body;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _form = await Panel.ActionFormAsync(TableId, RowKey, ActionId);
+        }
+        catch (AdminRejection ex)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_form is null || _focused) return;
+        _focused = true;
+        await JS.InvokeVoidAsync("adminforge.focusFirst", _body);
+    }
+
+    private async Task Submit()
+    {
+        if (_form is null || _submitting) return;
+        _submitting = true;
+        _error = null;
+        _form.Errors.Clear();
+        try
+        {
+            var outcome = await Panel.RunActionAsync(TableId, RowKey, ActionId, _form.Values);
+            Dialog.Close(DialogResult.Ok(outcome));
+        }
+        catch (AdminRejection ex)
+        {
+            foreach (var (field, message) in ex.FieldErrors)
+                _form.Errors[field] = message;
+            if (ex.FieldErrors.Count == 0) _error = ex.Message;
+        }
+        finally
+        {
+            _submitting = false;
+        }
+    }
+}

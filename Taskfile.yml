@@ -15,23 +15,17 @@ tasks:
   test:
     desc: Run all tests
     cmds:
-      - dotnet test AdminForge.slnx
+      - dotnet test --solution AdminForge.slnx
 
   example:todo:
     desc: Run the TodoApp example
     cmds:
       - dotnet run --project examples/TodoApp
 
-  example:crm:
-    desc: Run the CrmApp example (no DbContext; every table is provider-backed)
+  example:todo:reset:
+    desc: Delete the TodoApp database; the next run seeds a fresh one
     cmds:
-      - dotnet run --project examples/CrmApp
-
-  example:todo:seed:
-    desc: Seed the TodoApp SQLite database
-    cmds:
-      - rm -f examples/TodoApp/todapp.db
-      - dotnet run --project examples/TodoApp -- seed
+      - rm -f examples/TodoApp/todoapp.db
 
   clean:
     desc: Remove build artifacts

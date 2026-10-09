@@ -1,0 +1,119 @@
+@inherits LayoutComponentBase
+@implements IDisposable
+@using Microsoft.AspNetCore.Components.Authorization
+@inject AdminPanel Panel
+@inject NavigationManager Nav
+@inject AuthenticationStateProvider AuthenticationState
+@inject ISnackbar Snackbar
+
+<MudThemeProvider />
+<MudPopoverProvider />
+<MudDialogProvider />
+<MudSnackbarProvider />
+
+@* The class appears once the circuit renders, so a browser can tell when clicks count. *@
+<div class="@Classes">
+    <a class="af-skip" href="@SkipHref">Skip to content</a>
+    @if (Panel.Model.Environment is not null)
+    {
+        <div class="af-rail" aria-hidden="true"></div>
+    }
+    <header class="af-topbar">
+        <button type="button" class="af-icon-btn af-icon-btn-lg af-menu-btn" aria-label="Navigation"
+                aria-expanded="@(_drawerOpen ? "true" : "false")" aria-controls="af-sidebar" @onclick="@(() => _drawerOpen = !_drawerOpen)">
+            <Icon Svg="@Icons.Material.Filled.Menu" />
+        </button>
+        <a class="af-brand" href="@PanelModel.Root">
+            @if (!string.IsNullOrWhiteSpace(Panel.Model.Theme.LogoUrl))
+            {
+                <img src="@Panel.Model.Theme.LogoUrl" alt="@(Panel.Model.Theme.LogoAlt ?? "")" />
+            }
+            <span>@Panel.Model.Title</span>
+        </a>
+        @if (Panel.Model.Environment is { } env)
+        {
+            <span class="af-env-badge" data-af="environment">@env.Label</span>
+        }
+        @if (Panel.Model.Tables.Any(t => t.Searchable && !t.Nav.Hidden))
+        {
+            <GlobalSearch @ref="_search" />
+            <span class="af-spacer"></span>
+            <button type="button" class="af-icon-btn af-icon-btn-lg af-search-toggle" aria-label="Search"
+                    aria-expanded="@(_searchOpen ? "true" : "false")" @onclick="@(() => _searchOpen = _focusSearch = !_searchOpen)">
+                <Icon Svg="@Icons.Material.Filled.Search" />
+            </button>
+        }
+        else
+        {
+            <span class="af-spacer"></span>
+        }
+        <AccountMenu UserName="@_userName" />
+    </header>
+    <div class="af-body">
+        <nav id="af-sidebar" class="af-sidebar" aria-label="Main">
+            <Sidebar />
+        </nav>
+        <div class="af-scrim" @onclick="@(() => _drawerOpen = false)"></div>
+        <main id="af-main" class="af-main" tabindex="-1">
+            <ErrorBoundary @ref="_boundary">
+                <ChildContent>@Body</ChildContent>
+                <ErrorContent>
+                    <EmptyState Page="true" Title="This page failed" Body="The error is logged. Reload to try again." Hook="failed"
+                                Icon="@Icons.Material.Outlined.ErrorOutline">
+                        <a class="af-btn" href="@PanelModel.Root">Home</a>
+                    </EmptyState>
+                </ErrorContent>
+            </ErrorBoundary>
+        </main>
+    </div>
+</div>
+
+@code {
+    private bool _drawerOpen;
+    private bool _searchOpen;
+    private bool _focusSearch;
+    private GlobalSearch? _search;
+    private string? _userName;
+    private ErrorBoundary? _boundary;
+
+    private string Classes => string.Join(' ', new[]
+    {
+        "af-app",
+        RendererInfo.IsInteractive ? "adminforge-interactive" : null,
+        Panel.Model.Environment is null ? null : "af-has-rail",
+        _drawerOpen ? "af-drawer-open" : null,
+        _searchOpen ? "af-search-open" : null,
+    }.Where(c => c is not null));
+
+    // A bare "#af-main" resolves against <base href="/">, which is another page.
+    private string SkipHref => Nav.Uri.Split('#')[0] + "#af-main";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var user = (await AuthenticationState.GetAuthenticationStateAsync()).User;
+        if (user.Identity?.IsAuthenticated == true)
+            _userName = user.Identity.Name;
+        Snackbar.Configuration.PositionClass = Defaults.Classes.Position.BottomRight;
+        Snackbar.Configuration.SnackbarVariant = Variant.Text;
+        Snackbar.Configuration.PreventDuplicates = false;
+        Snackbar.Configuration.VisibleStateDuration = 4000;
+        Nav.LocationChanged += Closed;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!_focusSearch || _search is null) return;
+        _focusSearch = false;
+        await _search.FocusAsync();
+    }
+
+    private void Closed(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
+    {
+        _boundary?.Recover();
+        if (!_drawerOpen && !_searchOpen) return;
+        _drawerOpen = _searchOpen = false;
+        InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose() => Nav.LocationChanged -= Closed;
+}

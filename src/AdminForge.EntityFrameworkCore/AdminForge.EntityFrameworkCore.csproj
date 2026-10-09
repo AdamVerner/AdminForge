@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <PackageId>AdminForge.EntityFrameworkCore</PackageId>
+    <Description>Serves AdminForge tables from an EF Core DbContext.</Description>
+    <RootNamespace>AdminForge</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="AdminForge.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../AdminForge/AdminForge.csproj" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore" />
+  </ItemGroup>
+</Project>

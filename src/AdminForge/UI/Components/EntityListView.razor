@@ -1,0 +1,317 @@
+@* The table surface: toolbar, rows, footer. On the list page its search, filters, sort and page live
+   in the URL; embedded in a detail page it keeps them itself, with the parent's key pinned. *@
+@implements IDisposable
+@using System.Globalization
+@using Microsoft.AspNetCore.WebUtilities
+@inject AdminPanel Panel
+@inject NavigationManager Nav
+@inject ISnackbar Snackbar
+@inject IDialogService Dialogs
+
+@if (_table is not null)
+{
+    <div class="@(Embedded ? "af-embedded" : "af-panel")">
+        @if (_table.Searchable || HasFilters)
+        {
+            <div class="af-toolbar">
+                <FilterBar TableId="@_table.Id" Filters="_state.Filters" Search="@_state.Search" OnChange="ApplyAsync"
+                           PinnedColumns="@FixedFilters?.Keys.ToList()" />
+            </div>
+        }
+        <div class="@(Embedded ? "af-panel" : null)">
+            @if (_error is not null)
+            {
+                <EmptyState Title="@($"Couldn't load {_table.Title}")" Body="@_error" Icon="@Icons.Material.Outlined.ErrorOutline" Hook="error">
+                    <button type="button" class="af-btn" @onclick="ReloadAsync">Retry</button>
+                </EmptyState>
+            }
+            else if (_list is { Rows.Count: 0 })
+            {
+                @if (_state.Filters.Count > 0 || _state.Search is not null)
+                {
+                    <EmptyState Title="@($"No rows in {_table.Title} match these filters")" Icon="@Icons.Material.Outlined.FilterListOff" Hook="empty">
+                        <button type="button" class="af-btn" @onclick="@(() => ApplyAsync(new FilterBar.State([], null)))">Clear filters</button>
+                    </EmptyState>
+                }
+                else
+                {
+                    <EmptyState Title="@($"No rows in {_table.Title} yet")" Body="@_table.Empty" Hook="empty">
+                        @if (_list.CanCreate && !Embedded)
+                        {
+                            <a class="af-btn" href="@Links.New(_table.Id)">New</a>
+                        }
+                    </EmptyState>
+                }
+            }
+            else
+            {
+                <div class="af-table-wrap">
+                    <table class="af-table af-table-fixed">
+                        <thead>
+                            <tr>
+                                @foreach (var col in _columns)
+                                {
+                                    var sorted = _state.SortBy == col.Name;
+                                    <th scope="col" class="@Cells.Align(col)" style="@Cells.Width(col)" data-af="column:@col.Name"
+                                        aria-sort="@(sorted ? _state.Descending ? "descending" : "ascending" : null)">
+                                        @if (col.Sortable)
+                                        {
+                                            <button type="button" class="af-sort" @onclick="@(() => SortAsync(col.Name))">
+                                                @col.Title
+                                                <Icon Svg="@(sorted && _state.Descending ? Icons.Material.Filled.ArrowDownward : sorted ? Icons.Material.Filled.ArrowUpward : Icons.Material.Filled.UnfoldMore)" />
+                                            </button>
+                                        }
+                                        else
+                                        {
+                                            @col.Title
+                                        }
+                                    </th>
+                                }
+                                @if (HasRowActions)
+                                {
+                                    <th scope="col" style="width: 80px"><span class="af-sr">Actions</span></th>
+                                }
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @if (_list is null)
+                            {
+                                @for (var i = 0; i < 5; i++)
+                                {
+                                    <tr aria-hidden="true">
+                                        @foreach (var _ in _columns)
+                                        {
+                                            <td><span class="af-skel"></span></td>
+                                        }
+                                    </tr>
+                                }
+                            }
+                            else
+                            {
+                                @foreach (var row in _list.Rows)
+                                {
+                                    var href = _table.HasDetail ? Links.Row(_table.Id, row.Key) : null;
+                                    <tr data-af="row" data-key="@row.Key" @key="row.Key">
+                                        @for (var i = 0; i < _columns.Count; i++)
+                                        {
+                                            var col = _columns[i];
+                                            <td class="@Cells.Align(col)">@Cells.Render(row.Values.GetValueOrDefault(col.Name), col, Panel.Model, row.Links.GetValueOrDefault(col.Name), i == 0 ? href : null, row.Label)</td>
+                                        }
+                                        @if (HasRowActions)
+                                        {
+                                            <td class="af-row-actions">
+                                                @if (row.Allowed.Update)
+                                                {
+                                                    <a class="af-icon-btn" href="@Links.Edit(_table.Id, row.Key)" aria-label="Edit @row.Label" title="Edit" data-af="edit">
+                                                        <Icon Svg="@Icons.Material.Outlined.Edit" />
+                                                    </a>
+                                                }
+                                                @if (row.Allowed.Delete)
+                                                {
+                                                    <button type="button" class="af-icon-btn af-danger" aria-label="Delete @row.Label" title="Delete"
+                                                            @onclick="@(() => DeleteAsync(row))" data-af="delete">
+                                                        <Icon Svg="@Icons.Material.Outlined.Delete" />
+                                                    </button>
+                                                }
+                                            </td>
+                                        }
+                                    </tr>
+                                }
+                            }
+                        </tbody>
+                    </table>
+                    @if (_loading && _list is not null)
+                    {
+                        <div class="af-progress" role="progressbar" aria-label="Loading"></div>
+                    }
+                </div>
+                @if (_list is not null && (!Embedded || _list.Total > _list.PageSize))
+                {
+                    <div class="af-table-foot">
+                        <span>@Range</span>
+                        <span class="af-spacer"></span>
+                        @if (!Embedded)
+                        {
+                            <label>
+                                <select class="af-select" value="@_state.PageSize" @onchange="@(e => PageSizeAsync(e.Value as string))">
+                                    @foreach (var size in PageSizes)
+                                    {
+                                        <option value="@size">@size</option>
+                                    }
+                                </select>
+                                per page
+                            </label>
+                        }
+                        <button type="button" class="af-icon-btn" aria-label="Previous page" title="Previous page" disabled="@(_state.Page <= 0)"
+                                @onclick="@(() => PageAsync(_state.Page - 1))"><Icon Svg="@Icons.Material.Filled.ChevronLeft" /></button>
+                        <button type="button" class="af-icon-btn" aria-label="Next page" title="Next page" disabled="@((_state.Page + 1) * _state.PageSize >= _list.Total)"
+                                @onclick="@(() => PageAsync(_state.Page + 1))"><Icon Svg="@Icons.Material.Filled.ChevronRight" /></button>
+                    </div>
+                }
+            }
+        </div>
+    </div>
+}
+
+@code {
+    private static readonly int[] PageSizes = [10, 25, 50, 100];
+
+    [Parameter, EditorRequired] public string TableId { get; set; } = "";
+
+    /// <summary>Applied to every query and not editable in the filter bar.</summary>
+    [Parameter] public IReadOnlyDictionary<string, object?>? FixedFilters { get; set; }
+
+    /// <summary>Column names to show, in this order. Null shows the table's list columns.</summary>
+    [Parameter] public IReadOnlyList<string>? Columns { get; set; }
+
+    /// <summary>On a detail page: no create, a smaller toolbar, a footer only past one page, nothing in the URL.</summary>
+    [Parameter] public bool Embedded { get; set; }
+
+    /// <summary>Each page as it loads: a detail page's tab shows its total, the list page its create button.</summary>
+    [Parameter] public EventCallback<(int Total, bool CanCreate)> OnLoaded { get; set; }
+
+    private sealed record ListState(int Page, int PageSize, string? Search, string? SortBy, bool Descending, Dictionary<string, object?> Filters);
+
+    private TableModel? _table;
+    private List<ColumnModel> _columns = [];
+    private ListView? _list;
+    private ListState _state = new(0, 25, null, null, false, []);
+    private string? _error;
+    private bool _loading;
+    private bool _reloadRequested;
+    private string? _loadedFor;
+
+    private bool HasFilters => _table!.Columns.Any(c => c.Filterable && !c.IsKey && c.InList && FixedFilters?.ContainsKey(c.Name) != true);
+    private bool HasRowActions => _list?.Rows.Any(r => r.Allowed.Update || r.Allowed.Delete) == true;
+
+    private string Range => _list is null || _list.Total == 0 ? "0 rows"
+        : $"{_list.Page * _list.PageSize + 1}–{Math.Min(_list.Total, (_list.Page + 1) * _list.PageSize)} of {_list.Total}";
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _table = Panel.Model.Table(TableId);
+        if (_table is null) return;
+        // An inline table hides the column that pins it to its parent.
+        _columns = Columns is null
+            ? _table.ListColumns.Where(c => FixedFilters?.ContainsKey(c.Name) != true).ToList()
+            : Columns.Select(_table.Column).OfType<ColumnModel>().ToList();
+        var identity = TableId + "|" + string.Join(',', FixedFilters?.Select(f => $"{f.Key}={f.Value}") ?? []);
+        if (_loadedFor == identity) return;
+        if (_loadedFor is null && !Embedded) Nav.LocationChanged += Moved;
+        _loadedFor = identity;
+        _list = null;
+        _state = Embedded ? new(0, 10, null, null, false, []) : FromUrl();
+        await ReloadAsync();
+    }
+
+    private async void Moved(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
+    {
+        if (!Nav.ToAbsoluteUri(e.Location).AbsolutePath.Equals(Nav.ToAbsoluteUri(Links.List(TableId)).AbsolutePath, StringComparison.OrdinalIgnoreCase))
+            return;
+        _state = FromUrl();
+        await InvokeAsync(ReloadAsync);
+    }
+
+    private ListState FromUrl()
+    {
+        var query = QueryHelpers.ParseQuery(new Uri(Nav.Uri).Query);
+        string? Get(string key) => query.TryGetValue(key, out var v) && !string.IsNullOrEmpty(v) ? v.ToString() : null;
+        var filters = query.Where(q => q.Key.StartsWith("filter:", StringComparison.Ordinal))
+            .ToDictionary(q => q.Key["filter:".Length..], q => (object?)q.Value.ToString());
+        return new(
+            Math.Max(0, (int.TryParse(Get("page"), out var p) ? p : 1) - 1),
+            int.TryParse(Get("size"), out var s) && PageSizes.Contains(s) ? s : 25,
+            Get("q"),
+            Get("sort"),
+            Get("desc") == "1",
+            filters);
+    }
+
+    private string ToUrl(ListState s)
+    {
+        var query = new List<string>();
+        void Add(string key, string? value)
+        {
+            if (value is not null) query.Add($"{Uri.EscapeDataString(key)}={Uri.EscapeDataString(value)}");
+        }
+        Add("q", s.Search);
+        foreach (var (k, v) in s.Filters) Add($"filter:{k}", Convert.ToString(v, CultureInfo.InvariantCulture));
+        Add("sort", s.SortBy);
+        Add("desc", s.Descending ? "1" : null);
+        Add("page", s.Page > 0 ? (s.Page + 1).ToString(CultureInfo.InvariantCulture) : null);
+        Add("size", s.PageSize != 25 ? s.PageSize.ToString(CultureInfo.InvariantCulture) : null);
+        return Links.List(TableId) + (query.Count > 0 ? "?" + string.Join('&', query) : "");
+    }
+
+    private async Task GoAsync(ListState next)
+    {
+        if (Embedded)
+        {
+            _state = next;
+            await ReloadAsync();
+        }
+        else
+            Nav.NavigateTo(ToUrl(next), replace: true);
+    }
+
+    // One query at a time: the circuit's scoped services are not safe under two concurrent
+    // operations. A change that lands mid-load runs once, after the current one.
+    private async Task ReloadAsync()
+    {
+        if (_loading)
+        {
+            _reloadRequested = true;
+            return;
+        }
+        _loading = true;
+        try
+        {
+            do
+            {
+                _reloadRequested = false;
+                var filters = new Dictionary<string, object?>(_state.Filters);
+                foreach (var (k, v) in FixedFilters ?? new Dictionary<string, object?>())
+                    filters[k] = v;
+                try
+                {
+                    _list = await Panel.ListAsync(TableId, new ListRequest(_state.Page, _state.PageSize, _state.Search, _state.SortBy, _state.Descending, filters));
+                    _error = null;
+                    await OnLoaded.InvokeAsync((_list.Total, _list.CanCreate));
+                }
+                catch (AdminRejection ex)
+                {
+                    _error = ex.Message;
+                }
+                StateHasChanged();
+            } while (_reloadRequested);
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private Task PageAsync(int page) => GoAsync(_state with { Page = page });
+
+    private Task PageSizeAsync(string? size) =>
+        GoAsync(_state with { PageSize = int.TryParse(size, out var s) ? s : 25, Page = 0 });
+
+    // Ascending, then descending, then back to the source's own order.
+    private Task SortAsync(string column) =>
+        GoAsync(
+            _state.SortBy != column ? _state with { SortBy = column, Descending = false }
+            : !_state.Descending ? _state with { Descending = true }
+            : _state with { SortBy = null, Descending = false });
+
+    private Task ApplyAsync(FilterBar.State filter) =>
+        GoAsync(_state with { Filters = filter.Filters, Search = filter.Search, Page = 0 });
+
+    private async Task DeleteAsync(RowView row)
+    {
+        if (await ConfirmDialog.DeleteAsync(Dialogs, Snackbar, Panel, TableId, row.Key, row.Label))
+            await ReloadAsync();
+    }
+
+    public void Dispose() => Nav.LocationChanged -= Moved;
+}

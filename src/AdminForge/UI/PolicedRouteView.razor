@@ -1,0 +1,42 @@
+@* A host page renders only when the policy allows its PageRequest; the panel's own pages ask per operation. *@
+@inject AdminPanel Panel
+
+@if (_allowed is true)
+{
+    <RouteView RouteData="@RouteData" DefaultLayout="@typeof(AdminShell)" />
+}
+else if (_allowed is false)
+{
+    <LayoutView Layout="@typeof(AdminShell)">
+        <PageTitle>No access · @Panel.Model.Title</PageTitle>
+        <EmptyState Page="true" Title="You don't have access to this page" Hook="refused" Icon="@Icons.Material.Outlined.Block" />
+    </LayoutView>
+}
+
+@code {
+    [Parameter, EditorRequired] public RouteData RouteData { get; set; } = default!;
+
+    private bool? _allowed;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var asked = RouteData;
+        var page = Panel.Model.Pages.FirstOrDefault(p => p.Component == asked.PageType);
+        // Cleared before the await, or the render it yields would show the new page under the old verdict.
+        _allowed = page is not null ? null
+            // A routable component in a host assembly that is not registered has no PageRequest to ask.
+            : asked.PageType.Assembly == typeof(Routes).Assembly;
+        if (page is null) return;
+        bool allowed;
+        try
+        {
+            allowed = await Panel.CanPageAsync(page.Id);
+        }
+        catch (AdminRejection)
+        {
+            allowed = false;
+        }
+        // A check that outlives a later navigation answers for a page no longer shown.
+        if (ReferenceEquals(asked, RouteData)) _allowed = allowed;
+    }
+}

@@ -1,7 +1,5 @@
 using System.Security.Claims;
 using System.Text.Json.Nodes;
-using AdminForge.Core.Configuration;
-using AdminForge.Core.Contracts;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -17,6 +15,21 @@ namespace AdminForge.Mcp;
 /// </summary>
 internal static class OAuthEndpoints
 {
+    private static readonly TimeSpan AccessTokenLifetime = TimeSpan.FromMinutes(15);
+
+    /// <summary>What the consent page offers for a connection's lifetime; the first is the default.</summary>
+    private static readonly TimeSpan[] ConnectionLifetimes =
+    [
+        TimeSpan.FromHours(24),
+        TimeSpan.FromHours(1),
+        TimeSpan.FromHours(8),
+        TimeSpan.FromDays(7),
+        TimeSpan.FromDays(30),
+    ];
+
+    /// <summary>How long an ended or expired connection stays listed before the next consent purges it.</summary>
+    private static readonly TimeSpan Retention = TimeSpan.FromDays(30);
+
     private static readonly string[] OAuthRequestKeys =
     [
         "client_id",
@@ -48,8 +61,14 @@ internal static class OAuthEndpoints
             .MapGet("/.well-known/oauth-authorization-server", ServerMetadata)
             .AllowAnonymous();
         endpoints.MapPost(oauth + "/register", Register).AllowAnonymous().DisableAntiforgery();
-        endpoints.MapGet(oauth + "/authorize", AuthorizeAsync).RequireAuthorization(panelPolicy);
-        endpoints.MapPost(oauth + "/authorize", ConsentAsync).RequireAuthorization(panelPolicy);
+        endpoints
+            .MapGet(oauth + "/authorize", AuthorizeAsync)
+            .RequireAuthorization(panelPolicy)
+            .DenyFraming();
+        endpoints
+            .MapPost(oauth + "/authorize", ConsentAsync)
+            .RequireAuthorization(panelPolicy)
+            .DenyFraming();
         endpoints.MapPost(oauth + "/token", TokenAsync).AllowAnonymous().DisableAntiforgery();
         endpoints.MapPost(oauth + "/revoke", RevokeAsync).AllowAnonymous().DisableAntiforgery();
     }
@@ -126,25 +145,25 @@ internal static class OAuthEndpoints
     private static async Task<IResult> AuthorizeAsync(
         HttpContext http,
         AdminForgeMcpOptions o,
-        AdminForgeOptions forge,
+        PanelModel forge,
         TokenSealer sealer,
         IAntiforgery antiforgery,
-        IAdminUIBridge bridge,
         PanelTools tools
     )
     {
         var request = http.Request.Query.ToDictionary(q => q.Key, q => q.Value.ToString());
         var (client, error) = Validate(request, o, http, sealer);
         if (client is null)
-            return Results.BadRequest(error);
+            return error!;
 
-        var offered = await AllowedToolsAsync(tools, bridge, http.RequestAborted)
+        var offered = await AllowedToolsAsync(tools, http.RequestServices, http.RequestAborted)
             .ConfigureAwait(false);
         return ConsentPage.Render(
-            forge.Title,
+            forge,
             client.Name,
+            new Uri(request["redirect_uri"]),
             offered,
-            o.ConnectionLifetimes,
+            ConnectionLifetimes,
             request.Where(kv => OAuthRequestKeys.Contains(kv.Key)).ToDictionary(),
             antiforgery.GetAndStoreTokens(http),
             http.Request.Path
@@ -156,7 +175,6 @@ internal static class OAuthEndpoints
         AdminForgeMcpOptions o,
         TokenSealer sealer,
         IMcpConnectionStore store,
-        IAdminUIBridge bridge,
         PanelTools panelTools,
         TimeProvider clock,
         IAntiforgery antiforgery
@@ -171,7 +189,7 @@ internal static class OAuthEndpoints
             .ToDictionary(kv => kv.Key, kv => kv.Value.ToString());
         var (client, error) = Validate(request, o, http, sealer);
         if (client is null)
-            return Results.BadRequest(error);
+            return error!;
 
         var redirect = request["redirect_uri"];
         var state = request.GetValueOrDefault("state");
@@ -181,7 +199,8 @@ internal static class OAuthEndpoints
             );
 
         var allowed = (
-            await AllowedToolsAsync(panelTools, bridge, http.RequestAborted).ConfigureAwait(false)
+            await AllowedToolsAsync(panelTools, http.RequestServices, http.RequestAborted)
+                .ConfigureAwait(false)
         )
             .Select(t => t.ProtocolTool.Name)
             .ToHashSet(StringComparer.Ordinal);
@@ -190,24 +209,25 @@ internal static class OAuthEndpoints
             .Select(t => t!)
             .Distinct()
             .ToList();
-        var lifetime = o.ConnectionLifetimes.Contains(TimeSpan.FromMinutes(expires))
+        var lifetime = ConnectionLifetimes.Contains(TimeSpan.FromMinutes(expires))
             ? TimeSpan.FromMinutes(expires)
-            : o.ConnectionLifetimes[0];
+            : ConnectionLifetimes[0];
 
         var user = http.User;
         var now = clock.GetUtcNow().UtcDateTime;
         var connection = new McpConnection
         {
             Id = Guid.NewGuid().ToString("N"),
-            AdminId = UserIdentity.IdOf(user) ?? "",
-            AdminName = user.Identity?.Name ?? UserIdentity.IdOf(user) ?? "",
+            AdminId = CurrentUserAccessor.IdOf(user) ?? "",
+            AdminName = user.Identity?.Name ?? CurrentUserAccessor.IdOf(user) ?? "",
             ClientName = client.Name,
             Grant = grant,
             Claims = user.Claims.Select(c => new McpClaim(c.Type, c.Value)).ToList(),
             CreatedAt = now,
             ExpiresAt = now + lifetime,
         };
-        await store.SaveAsync(connection, http.RequestAborted).ConfigureAwait(false);
+        await store.PurgeExpiredAsync(now - Retention, http.RequestAborted).ConfigureAwait(false);
+        await store.AddAsync(connection, http.RequestAborted).ConfigureAwait(false);
 
         var code = sealer.Seal(
             new AuthCode(
@@ -241,7 +261,8 @@ internal static class OAuthEndpoints
     {
         var form = await http.Request.ReadFormAsync(http.RequestAborted).ConfigureAwait(false);
         var now = clock.GetUtcNow().UtcDateTime;
-        McpConnection? connection;
+        string? cid;
+        int counter;
         switch (form["grant_type"].ToString())
         {
             case "authorization_code":
@@ -264,45 +285,15 @@ internal static class OAuthEndpoints
                         "invalid_grant",
                         "code_verifier does not match the challenge."
                     );
-                connection = await store
-                    .FindAsync(code.Cid, http.RequestAborted)
-                    .ConfigureAwait(false);
-                if (connection is null || !connection.IsLive(now))
-                    return OAuthError("invalid_grant", "The connection has ended.");
-                if (connection.CodeRedeemed)
-                {
-                    // A replayed code means it leaked: the whole connection goes.
-                    connection.Revoked = true;
-                    await store.SaveAsync(connection, http.RequestAborted).ConfigureAwait(false);
-                    return OAuthError(
-                        "invalid_grant",
-                        "The code was already used; the connection is revoked."
-                    );
-                }
-                connection.CodeRedeemed = true;
+                (cid, counter) = (code.Cid, 0);
                 break;
             }
             case "refresh_token":
             {
                 var refresh = sealer.Unseal<RefreshToken>(form["refresh_token"]);
-                connection = refresh is null
-                    ? null
-                    : await store.FindAsync(refresh.Cid, http.RequestAborted).ConfigureAwait(false);
-                if (refresh is null || connection is null || !connection.IsLive(now))
-                    return OAuthError(
-                        "invalid_grant",
-                        "The refresh token is invalid or the connection has ended."
-                    );
-                if (refresh.Counter != connection.RefreshCounter)
-                {
-                    connection.Revoked = true;
-                    await store.SaveAsync(connection, http.RequestAborted).ConfigureAwait(false);
-                    return OAuthError(
-                        "invalid_grant",
-                        "The refresh token was already used; the connection is revoked."
-                    );
-                }
-                connection.RefreshCounter++;
+                if (refresh is null)
+                    return OAuthError("invalid_grant", "The refresh token is invalid.");
+                (cid, counter) = (refresh.Cid, refresh.Counter);
                 break;
             }
             default:
@@ -312,8 +303,24 @@ internal static class OAuthEndpoints
                 );
         }
 
-        await store.SaveAsync(connection, http.RequestAborted).ConfigureAwait(false);
-        var expiresAt = now + o.AccessTokenLifetime;
+        var connection = await store.FindAsync(cid, http.RequestAborted).ConfigureAwait(false);
+        if (connection is null || !connection.IsLive(now))
+            return OAuthError("invalid_grant", "The connection has ended.");
+        // The code is counter 0, so a replayed code and a replayed refresh token fail alike, and a leak ends the connection.
+        if (
+            !await store
+                .TryAdvanceRefreshAsync(cid, counter, http.RequestAborted)
+                .ConfigureAwait(false)
+        )
+        {
+            await store.RevokeAsync(cid, http.RequestAborted).ConfigureAwait(false);
+            return OAuthError(
+                "invalid_grant",
+                "The code or refresh token was already used; the connection is revoked."
+            );
+        }
+
+        var expiresAt = now + AccessTokenLifetime;
         if (expiresAt > connection.ExpiresAt)
             expiresAt = connection.ExpiresAt;
         return Results.Json(
@@ -322,9 +329,7 @@ internal static class OAuthEndpoints
                 access_token = sealer.Seal(new AccessToken(connection.Id, expiresAt)),
                 token_type = "Bearer",
                 expires_in = (long)(expiresAt - now).TotalSeconds,
-                refresh_token = sealer.Seal(
-                    new RefreshToken(connection.Id, connection.RefreshCounter)
-                ),
+                refresh_token = sealer.Seal(new RefreshToken(connection.Id, counter + 1)),
                 scope = "",
             }
         );
@@ -340,18 +345,12 @@ internal static class OAuthEndpoints
         var form = await http.Request.ReadFormAsync(http.RequestAborted).ConfigureAwait(false);
         var token = form["token"].ToString();
         var cid = sealer.Unseal<AccessToken>(token)?.Cid ?? sealer.Unseal<RefreshToken>(token)?.Cid;
-        if (
-            cid is not null
-            && await store.FindAsync(cid, http.RequestAborted).ConfigureAwait(false) is { } c
-        )
-        {
-            c.Revoked = true;
-            await store.SaveAsync(c, http.RequestAborted).ConfigureAwait(false);
-        }
+        if (cid is not null)
+            await store.RevokeAsync(cid, http.RequestAborted).ConfigureAwait(false);
         return Results.Ok();
     }
 
-    private static (ClientRegistration? Client, object? Error) Validate(
+    private static (ClientRegistration? Client, IResult? Error) Validate(
         IReadOnlyDictionary<string, string> r,
         AdminForgeMcpOptions o,
         HttpContext http,
@@ -360,52 +359,30 @@ internal static class OAuthEndpoints
     {
         var client = sealer.Unseal<ClientRegistration>(r.GetValueOrDefault("client_id"));
         if (client is null)
-            return (
-                null,
-                new
-                {
-                    error = "invalid_client",
-                    error_description = "Unknown client_id; register first.",
-                }
-            );
+            return (null, OAuthError("invalid_client", "Unknown client_id; register first."));
         if (r.GetValueOrDefault("response_type") != "code")
-            return (
-                null,
-                new { error = "unsupported_response_type", error_description = "Only code." }
-            );
+            return (null, OAuthError("unsupported_response_type", "Only code."));
         if (!client.RedirectUris.Contains(r.GetValueOrDefault("redirect_uri") ?? ""))
-            return (
-                null,
-                new
-                {
-                    error = "invalid_request",
-                    error_description = "redirect_uri is not registered.",
-                }
-            );
+            return (null, OAuthError("invalid_request", "redirect_uri is not registered."));
         if (
             r.GetValueOrDefault("code_challenge_method") != "S256"
             || string.IsNullOrEmpty(r.GetValueOrDefault("code_challenge"))
         )
-            return (
-                null,
-                new { error = "invalid_request", error_description = "PKCE with S256 is required." }
-            );
+            return (null, OAuthError("invalid_request", "PKCE with S256 is required."));
         var resource = r.GetValueOrDefault("resource");
         if (!string.IsNullOrEmpty(resource) && resource != Resource(o, http).ToString())
-            return (
-                null,
-                new { error = "invalid_target", error_description = "resource is not this server." }
-            );
+            return (null, OAuthError("invalid_target", "resource is not this server."));
         return (client, null);
     }
 
     /// <summary>The tools this admin may run today; the consent page offers nothing else.</summary>
     private static async Task<IReadOnlyList<PanelTool>> AllowedToolsAsync(
         PanelTools tools,
-        IAdminUIBridge bridge,
+        IServiceProvider services,
         CancellationToken ct
     )
     {
+        var bridge = PanelTool.Panel(services);
         var allowed = new List<PanelTool>();
         foreach (var tool in tools.All)
             if (await tool.IsAllowedAsync(bridge, ct).ConfigureAwait(false))

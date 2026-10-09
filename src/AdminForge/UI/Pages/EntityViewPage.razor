@@ -1,0 +1,240 @@
+@page "/admin/entities/{TableId}/{Key}"
+@implements IDisposable
+@inject AdminPanel Panel
+@inject ISnackbar Snackbar
+
+@if (_table is null)
+{
+    <NotFoundState Body="@($"There is no table '{TableId}'.")" />
+}
+else if (_refused is not null)
+{
+    <PageTitle>@_table.Title · @Panel.Model.Title</PageTitle>
+    <EmptyState Page="true" Title="@_refused" Hook="refused" Icon="@(_missing ? Icons.Material.Outlined.SearchOff : Icons.Material.Outlined.Block)">
+        <a class="af-btn" href="@Links.List(_table.Id)">Back to @_table.Title</a>
+    </EmptyState>
+}
+else if (_view is null)
+{
+    <span class="af-skel" aria-label="Loading"></span>
+}
+else
+{
+    var row = _view.Row;
+    <div class="af-detail">
+        <PageHeader Title="@row.Label" Crumbs="@Links.Crumbs(_table)">
+            <Chips>
+                @foreach (var (column, value) in StatusValues(row))
+                {
+                    <span class="af-chip @Cells.ToneClass(Cells.Tone(value, column) ?? Tone.Neutral)" title="@column.Title">@Cells.Text(value, column, Panel.Model)</span>
+                }
+                @if (_table.Poll is { } every)
+                {
+                    <span class="af-chip af-dot" title="@LiveTitle(every)">Auto-refresh</span>
+                }
+            </Chips>
+            <Actions>
+                <RowActions TableId="@_table.Id" RowKey="@row.Key" RowLabel="@row.Label" Actions="@row.Allowed.Actions"
+                            CanEdit="@row.Allowed.Update" CanDelete="@row.Allowed.Delete" OnInvoked="Refresh" />
+            </Actions>
+            <Subtitle>
+                <span class="af-copy">key <span class="af-mono">@row.Key</span>
+                    <button type="button" class="af-icon-btn" aria-label="Copy key" title="Copy key"
+                            data-copy="@row.Key" onclick="navigator.clipboard.writeText(this.dataset.copy)">
+                        <Icon Svg="@Icons.Material.Outlined.ContentCopy" />
+                    </button>
+                </span>
+            </Subtitle>
+        </PageHeader>
+
+        <Slots Slot="AdminSlot.AboveDetail" TableId="@_table.Id" Key="@row.Key" />
+
+        <div class="af-sections">
+            @foreach (var (heading, wide) in new[] { ("Details", false), ("Content", true) })
+            {
+                var columns = _table.Columns.Where(c => Long(c) == wide).ToList();
+                if (columns.Count == 0) continue;
+                <section class="af-panel af-section" aria-labelledby="af-@heading.ToLowerInvariant()">
+                    <h2 id="af-@heading.ToLowerInvariant()">@heading</h2>
+                    <dl class="af-dl @(wide ? "af-dl-stacked" : null)">
+                        @foreach (var column in columns)
+                        {
+                            var value = row.Values.GetValueOrDefault(column.Name);
+                            <dt>@column.Title</dt>
+                            <dd data-af="value:@column.Name">
+                                @if (column.Content is { } kind && value is string text)
+                                {
+                                    <ContentCell Value="@text" Kind="@kind" Title="@column.Title" Whole="true" />
+                                }
+                                else
+                                {
+                                    @Cells.Render(value, column, Panel.Model, row.Links.GetValueOrDefault(column.Name))
+                                }
+                            </dd>
+                        }
+                    </dl>
+                </section>
+            }
+        </div>
+
+        @if (_table.Live.Count > 0)
+        {
+            <div class="af-stack">
+                @foreach (var live in _table.Live)
+                {
+                    <section class="af-panel af-section" @key="(row.Key, live.Id)" data-af="live:@live.Id" aria-label="@live.Title">
+                        <div class="af-section-head"><h2>@live.Title</h2><span class="af-chip af-dot">Live</span></div>
+                        @if (live.Chart)
+                        {
+                            <LineChart Title="@live.Title" Window="@live.Keep" Stream="@(ct => Panel.StreamLiveAsync(_table.Id, row.Key, live.Id, ct))" />
+                        }
+                        else
+                        {
+                            <LiveFeed Columns="@live.Cells.Select(c => c.Title).ToList()" Keep="@live.Keep"
+                                      Stream="@(ct => Panel.StreamLiveAsync(_table.Id, row.Key, live.Id, ct))" />
+                        }
+                    </section>
+                }
+            </div>
+        }
+
+        @if (_view.Related.Count > 0)
+        {
+            var inline = _view.Related.Where(r => r.Model.Inline).ToList();
+            <div class="af-tabs" role="tablist" aria-label="Related">
+                @foreach (var link in inline)
+                {
+                    var selected = link == Selected(inline);
+                    <button type="button" role="tab" class="af-tab" id="af-tab-@link.Model.TableId" data-af="tab:@link.Model.TableId" aria-selected="@(selected ? "true" : "false")"
+                            aria-controls="af-tabpanel" tabindex="@(selected ? 0 : -1)" @onclick="@(() => _tab = link.Model.TableId)">
+                        @link.Model.Title
+                        @if (_counts.GetValueOrDefault(link.Model.TableId) is { } count)
+                        {
+                            <span class="af-chip">@count</span>
+                        }
+                    </button>
+                }
+                @foreach (var link in _view.Related.Where(r => !r.Model.Inline))
+                {
+                    <a class="af-tab @(inline.Count == 0 ? null : "af-tab-link")" href="@Links.Filtered(link.Model.TableId, link.Filter)">@link.Model.Title →</a>
+                }
+            </div>
+            @if (Selected(inline) is { } tab)
+            {
+                <div id="af-tabpanel" role="tabpanel" aria-labelledby="af-tab-@tab.Model.TableId" class="af-panel af-tabpanel af-section"
+                     data-af="related:@tab.Model.TableId" @key="tab.Model.TableId">
+                    <EntityListView TableId="@tab.Model.TableId" Embedded="true" FixedFilters="@tab.Filter" Columns="@tab.Model.Columns"
+                                    OnLoaded="@(((int Total, bool) l) => _counts[tab.Model.TableId] = l.Total)" />
+                </div>
+            }
+        }
+
+        <Slots Slot="AdminSlot.BelowDetail" TableId="@_table.Id" Key="@row.Key" />
+    </div>
+}
+
+@code {
+    [Parameter] public string TableId { get; set; } = "";
+    [Parameter] public string Key { get; set; } = "";
+
+    private TableModel? _table;
+    private DetailView? _view;
+    private string? _refused;
+    private string? _tab;
+    private readonly Dictionary<string, int> _counts = [];
+    private DateTimeOffset? _refreshedAt;
+    private CancellationTokenSource? _poll;
+    private bool _tickFailed;
+    private bool _missing;
+
+    // A poll tick and an action's refresh may meet; the scoped services take one operation at a time.
+    private readonly SemaphoreSlim _fetch = new(1, 1);
+
+    private IEnumerable<(ColumnModel, object)> StatusValues(RowView row) =>
+        _table!.Columns.Where(c => c.Tones is not null && row.Values.GetValueOrDefault(c.Name) is not null)
+            .Select(c => (c, row.Values[c.Name]!));
+
+    private string LiveTitle(TimeSpan every) =>
+        $"Refreshes every {every.TotalSeconds:0} s" + (_refreshedAt is { } at ? $", last at {at.ToLocalTime():HH:mm:ss}" : "");
+
+    private RelatedView? Selected(List<RelatedView> inline) =>
+        inline.FirstOrDefault(r => r.Model.TableId == _tab) ?? inline.FirstOrDefault();
+
+    // Long text and lists read better in their own section than squeezed into the details.
+    private static bool Long(ColumnModel c) => c.Content is not null || c.Kind == ColumnKind.Collection;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _table = Panel.Model.Table(TableId);
+        _refused = null;
+        _tab = null;
+        _counts.Clear();
+        StopPolling();
+        if (_table is null) return;
+        await Refresh();
+        if (_view is not null)
+            foreach (var related in _view.Related.Where(r => r.Model.Inline))
+                try
+                {
+                    _counts[related.Model.TableId] = (await Panel.ListAsync(related.Model.TableId, new ListRequest(PageSize: 1, Filters: related.Filter))).Total;
+                }
+                catch (AdminRejection) { }
+        if (_table.Poll is { } interval && _view is not null)
+        {
+            _poll = new CancellationTokenSource();
+            _ = PollAsync(interval, _poll.Token);
+        }
+    }
+
+    private async Task PollAsync(TimeSpan interval, CancellationToken ct)
+    {
+        using var timer = new PeriodicTimer(interval);
+        try
+        {
+            while (await timer.WaitForNextTickAsync(ct))
+            {
+                await Refresh(tick: true);
+                _refreshedAt = DateTimeOffset.UtcNow;
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+        catch (OperationCanceledException) { }
+    }
+
+    private Task Refresh() => Refresh(tick: false);
+
+    // A failed poll tick keeps the last view and says so once; the next good tick carries on.
+    private async Task Refresh(bool tick)
+    {
+        await _fetch.WaitAsync();
+        try
+        {
+            _view = await Panel.GetAsync(TableId, Key);
+            _missing = _view is null;
+            _refused = _missing ? $"{_table!.Title} has no row with the key '{Key}'" : null;
+            _tickFailed = false;
+        }
+        catch (AdminRejection ex) when (tick && _view is not null)
+        {
+            if (!_tickFailed) await InvokeAsync(() => Toasts.Error(Snackbar, ex.Message));
+            _tickFailed = true;
+        }
+        catch (AdminRejection ex)
+        {
+            _refused = ex.Message;
+        }
+        finally
+        {
+            _fetch.Release();
+        }
+    }
+
+    public void Dispose() => StopPolling();
+
+    private void StopPolling()
+    {
+        _poll?.Cancel();
+        _poll?.Dispose();
+        _poll = null;
+    }
+}

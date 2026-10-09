@@ -1,0 +1,63 @@
+@* Buffers the chosen file in memory, up to MaxBytes, and hands it to the form. *@
+
+<label class="af-drop @(_tooLarge is null ? null : "af-drop-invalid")">
+    <InputFile id="@Id" aria-describedby="@DescribedBy" OnChange="@Picked" accept="@(Accept is { Count: > 0 } a ? string.Join(",", a) : null)" />
+    <Icon Svg="@Icons.Material.Outlined.UploadFile" />
+    <span>
+        @if (_picked is not null)
+        {
+            <span><strong>@_picked.Name</strong> · @Size(_picked.Length) · <span class="af-muted">choose another</span></span>
+        }
+        else
+        {
+            <span><strong>Choose file</strong> or drop it here</span>
+        }
+        <br /><span class="af-caption">@Limits</span>
+    </span>
+</label>
+@if (_tooLarge is not null)
+{
+    <div class="af-field-error">@_tooLarge</div>
+}
+
+@code {
+    private const long DefaultMax = 50 * 1024 * 1024;
+
+    [Parameter] public string? Id { get; set; }
+    [Parameter] public string? DescribedBy { get; set; }
+    [Parameter] public IReadOnlyList<string>? Accept { get; set; }
+    [Parameter] public long? MaxBytes { get; set; }
+    [Parameter] public EventCallback<AdminFile?> FileChanged { get; set; }
+
+    private AdminFile? _picked;
+    private string? _tooLarge;
+
+    private string Limits =>
+        (Accept is { Count: > 0 } a ? string.Join(", ", a) + " · " : "") + $"up to {Size(MaxBytes ?? DefaultMax)}";
+
+    private async Task Picked(InputFileChangeEventArgs args)
+    {
+        _tooLarge = null;
+        _picked = null;
+        if (args.FileCount > 0)
+        {
+            var file = args.File;
+            var max = MaxBytes ?? DefaultMax;
+            if (file.Size > max)
+                _tooLarge = $"{file.Name} is {Size(file.Size)}, larger than {Size(max)}.";
+            else
+            {
+                using var stream = file.OpenReadStream(max);
+                using var buffer = new MemoryStream();
+                await stream.CopyToAsync(buffer);
+                _picked = new AdminFile(file.Name, file.ContentType is { Length: > 0 } t ? t : "application/octet-stream", buffer.ToArray());
+            }
+        }
+        await FileChanged.InvokeAsync(_picked);
+    }
+
+    private static string Size(long bytes) =>
+        bytes >= 1024 * 1024 ? FormattableString.Invariant($"{bytes / (1024.0 * 1024):0.#} MB")
+        : bytes >= 1024 ? FormattableString.Invariant($"{bytes / 1024.0:0.#} KB")
+        : $"{bytes} bytes";
+}

@@ -1,0 +1,6 @@
+@* A MudBlazor icon path as an inline SVG in the current text colour; decorative, so its button carries the label. *@
+<svg class="af-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">@((MarkupString)Svg)</svg>
+
+@code {
+    [Parameter, EditorRequired] public string Svg { get; set; } = "";
+}

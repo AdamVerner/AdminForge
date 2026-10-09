@@ -1,0 +1,142 @@
+@* A line chart of [x, y] points: loaded once, reloaded every Poll, or appended from Stream and
+   trimmed to Window. A stream starts once the circuit is interactive; its failure is the chart's error. *@
+@implements IDisposable
+@using MudBlazor.Charts
+
+@if ((_error ?? Error) is { } error)
+{
+    <div class="af-chart-empty af-inline-error" data-af="error">@error</div>
+}
+else if (_points.Count < 2)
+{
+    <div class="af-chart-empty" data-af="empty">@(_points.Count == 0 && Stream is not null ? "Waiting for the first value…" : "Not enough data yet")</div>
+}
+else
+{
+    <div class="af-chart">
+        <MudChart ChartType="@(_options is TimeSeriesChartOptions ? ChartType.Timeseries : ChartType.Line)"
+                  ChartSeries="@_series" ChartLabels="@_labels" ChartOptions="@_options"
+                  MatchBoundsToSize="true" Width="100%" Height="200px" T="double" />
+    </div>
+    @if (!string.IsNullOrEmpty(YLabel))
+    {
+        <div class="af-caption">@YLabel</div>
+    }
+}
+
+@code {
+    [Parameter] public string Title { get; set; } = "";
+    [Parameter] public string? YLabel { get; set; }
+    [Parameter] public string? Error { get; set; }
+    [Parameter] public IReadOnlyList<IReadOnlyList<object?>> Points { get; set; } = [];
+    [Parameter] public int Window { get; set; } = 50;
+    [Parameter] public TimeSpan? Poll { get; set; }
+    [Parameter] public Func<CancellationToken, Task<IReadOnlyList<IReadOnlyList<object?>>>>? Reload { get; set; }
+    [Parameter] public Func<CancellationToken, IAsyncEnumerable<IReadOnlyList<object?>>>? Stream { get; set; }
+
+    private List<IReadOnlyList<object?>> _points = [];
+    private List<ChartSeries<double>> _series = [];
+    private string[] _labels = [];
+    private DefaultAxisLineChartOptions _options = new LineChartOptions();
+    private string? _error;
+    private readonly CancellationTokenSource _cts = new();
+
+    protected override void OnInitialized()
+    {
+        _points = Points.TakeLast(Window).ToList();
+        Rebuild();
+    }
+
+    protected override void OnAfterRender(bool firstRender)
+    {
+        if (!firstRender) return;
+        if (Stream is { } stream) _ = StreamAsync(stream);
+        else if (Poll is { } every && Reload is { } reload) _ = PollAsync(every, reload);
+    }
+
+    private async Task StreamAsync(Func<CancellationToken, IAsyncEnumerable<IReadOnlyList<object?>>> stream)
+    {
+        try
+        {
+            await foreach (var point in stream(_cts.Token))
+            {
+                _points.Add(point);
+                if (_points.Count > Window) _points.RemoveRange(0, _points.Count - Window);
+                Rebuild();
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            _error = ex is AdminRejection ? ex.Message : "The stream failed.";
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task PollAsync(TimeSpan every, Func<CancellationToken, Task<IReadOnlyList<IReadOnlyList<object?>>>> reload)
+    {
+        using var timer = new PeriodicTimer(every);
+        try
+        {
+            while (await timer.WaitForNextTickAsync(_cts.Token))
+            {
+                try
+                {
+                    _points = (await reload(_cts.Token)).TakeLast(Window).ToList();
+                    _error = null;
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    _error = ex is AdminRejection ? ex.Message : "The chart failed to reload.";
+                }
+                Rebuild();
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+        catch (OperationCanceledException) { }
+    }
+
+    private void Rebuild()
+    {
+        _series = [];
+        _labels = [];
+        if (_points.Count == 0) return;
+        var name = YLabel ?? Title;
+        var timed = _points.Select(p => (T: ToDateTime(p[0]), Y: Convert.ToDouble(p[1]))).ToList();
+        if (timed.All(p => p.T is not null))
+        {
+            _series.Add(new ChartSeries<double> { Name = name, Data = timed.Select(p => (p.T!.Value, p.Y)).ToList() });
+            var spacing = TimeAxis.LabelSpacing(timed.Max(p => p.T!.Value) - timed.Min(p => p.T!.Value));
+            _options = new TimeSeriesChartOptions
+            {
+                TimeLabelSpacing = spacing,
+                TimeLabelSpacingRounding = true,
+                TimeLabelFormat = TimeAxis.LabelFormat(spacing),
+                TooltipTimeLabelFormat = "yyyy-MM-dd HH:mm:ss",
+            };
+        }
+        else
+        {
+            _options = new LineChartOptions();
+            _series.Add(new ChartSeries<double> { Name = name, Data = timed.Select(p => p.Y).ToArray() });
+            // MudChart draws every label; blank all but every n-th so about eight remain.
+            var step = (int)Math.Ceiling(_points.Count / 8.0);
+            _labels = _points.Select((p, i) => i % step == 0 ? ValueFormatter.Format(p[0]) ?? "" : "").ToArray();
+        }
+    }
+
+    private static DateTime? ToDateTime(object? x) => x switch
+    {
+        DateTime dt => dt,
+        DateTimeOffset dto => dto.DateTime,
+        DateOnly d => d.ToDateTime(TimeOnly.MinValue),
+        _ => null,
+    };
+
+    public void Dispose()
+    {
+        _cts.Cancel();
+        _cts.Dispose();
+    }
+}

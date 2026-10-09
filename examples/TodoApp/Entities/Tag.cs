@@ -10,9 +10,7 @@ public sealed class Tag
     [MaxLength(50)]
     public string Name { get; set; } = string.Empty;
 
-    /// <summary>
-    /// Hex colour like "#a1b2c3". Free-form for now.
-    /// </summary>
+    /// <summary>A hex colour such as "#a1b2c3".</summary>
     [MaxLength(9)]
     public string? Color { get; set; }
 

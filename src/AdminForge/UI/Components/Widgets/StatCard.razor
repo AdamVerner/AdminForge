@@ -1,0 +1,26 @@
+<div class="af-panel af-stat">
+    <div class="af-stat-label">@Title</div>
+    @if (Error is not null)
+    {
+        <div class="af-inline-error" data-af="error">@Error</div>
+    }
+    else
+    {
+        <div class="af-stat-value"><strong data-af="stat">@Format(Value)</strong>@if (!string.IsNullOrEmpty(Suffix)) { <span>@Suffix</span> }</div>
+    }
+</div>
+
+@code {
+    [Parameter] public string Title { get; set; } = "";
+    [Parameter] public object? Value { get; set; }
+    [Parameter] public string? Suffix { get; set; }
+    [Parameter] public string? Error { get; set; }
+
+    private static string Format(object? value) => value switch
+    {
+        null => "—",
+        double or float or decimal => Convert.ToDouble(value).ToString("#,0.##", System.Globalization.CultureInfo.InvariantCulture),
+        int or long => Convert.ToInt64(value).ToString("#,0", System.Globalization.CultureInfo.InvariantCulture),
+        _ => value.ToString() ?? "—",
+    };
+}

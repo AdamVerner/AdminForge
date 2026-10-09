@@ -1,0 +1,55 @@
+@* Picks a row of the linked table by its label; searching and reading go through the pipeline like any list. *@
+@inject AdminPanel Panel
+
+<MudAutocomplete T="RowView" Value="_row" ValueChanged="Pick" SearchFunc="SearchAsync"
+                 ToStringFunc="@(r => r?.Label ?? _unread ?? "")" UserAttributes="@_attributes"
+                 Clearable="true" ResetValueOnEmptyText="true" CoerceText="true" DebounceInterval="300"
+                 Variant="Variant.Outlined" Margin="Margin.Dense" Error="Invalid" Placeholder="Choose…">
+    <ItemTemplate Context="row">
+        <span class="af-hit">@row.Label <small class="af-mono">@row.Key</small></span>
+    </ItemTemplate>
+    <NoItemsTemplate><div class="af-hit-state">No matches</div></NoItemsTemplate>
+</MudAutocomplete>
+
+@code {
+    [Parameter, EditorRequired] public string TableId { get; set; } = "";
+    [Parameter] public string? Value { get; set; }
+    [Parameter] public EventCallback<string?> ValueChanged { get; set; }
+    [Parameter] public string? Id { get; set; }
+    [Parameter] public string? DescribedBy { get; set; }
+    [Parameter] public bool Invalid { get; set; }
+
+    private RowView? _row;
+
+    // The key, shown when the caller may not read the linked row; a key that matches no row (a new form's 0) shows nothing.
+    private string? _unread;
+    private Dictionary<string, object?> _attributes = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        _attributes = new() { ["id"] = Id, ["aria-describedby"] = DescribedBy };
+        if (string.IsNullOrEmpty(Value)) return;
+        try
+        {
+            _row = (await Panel.GetAsync(TableId, Value))?.Row;
+        }
+        catch (AdminRejection)
+        {
+            _unread = Value;
+        }
+    }
+
+    private async Task<IEnumerable<RowView>> SearchAsync(string? text, CancellationToken ct)
+    {
+        var rows = (await Panel.ListAsync(TableId, new ListRequest(PageSize: 20, Search: text), ct)).Rows;
+        return Panel.Model.Table(TableId)!.Searchable || string.IsNullOrWhiteSpace(text)
+            ? rows
+            : rows.Where(r => r.Label.Contains(text, StringComparison.CurrentCultureIgnoreCase));
+    }
+
+    private Task Pick(RowView? row)
+    {
+        _row = row;
+        return ValueChanged.InvokeAsync(row?.Key);
+    }
+}
