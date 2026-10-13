@@ -87,7 +87,7 @@ panel.Table<Company>(t => t.Source<CrmStore, int>(
     s => s.Search(findsKey: true).Filters(c => c.Plan).Sorts(c => c.Name)));
 ```
 
-When the admin pastes a key into the search box, `Search(findsKey: true)` opens that row.
+When the admin pastes a key into the search box, `Search(findsKey: true)` narrows the list to that row.
 
 **A source class.** Implement `IAdminSource<T, TKey>`, and `IAdminWritable<T>` and
 `IAdminDeletable<T>` for writes. The panel resolves it from the operation's scope.
