@@ -51,7 +51,8 @@ internal sealed record FormView(
 }
 
 /// <summary>What a handler reported: a one-line message and a Markdown result.</summary>
-internal sealed record Outcome(string? Message, string? Markdown);
+/// <param name="Open">The key of the row to open next, in the action's table.</param>
+internal sealed record Outcome(string? Message, string? Markdown, string? Open = null);
 
 internal sealed record DashboardView(
     DashboardModel Model,

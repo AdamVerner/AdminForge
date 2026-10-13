@@ -249,14 +249,31 @@ internal sealed class AdminPanel(PanelModel model, OperationRunner runner)
                 var action = Action(t, actionId);
                 var row = key is null ? null : await RequireAsync(op, t, key);
                 await op.EnsureAsync(op.AllowsAsync(t, action, row), $"run {action.Title}");
+                if (row is not null)
+                    EnsureApplies(t, action, row);
                 if (action.Input is not { } input)
                     return new FormView(
                         [],
                         [],
                         new Dictionary<string, IReadOnlyList<AdminOption>>()
                     );
+                if (row is not null && action.Prefill is { } prefill)
+                {
+                    var given = await prefill(op.Services, row, op.CancellationToken);
+                    return await FormAsync(
+                        op,
+                        input.Fields,
+                        f => given.GetType().GetProperty(f.Name)!.GetValue(given),
+                        row
+                    );
+                }
                 var defaults = input.Factory.Defaults();
-                return await FormAsync(op, input.Fields, f => defaults.GetValueOrDefault(f.Name));
+                return await FormAsync(
+                    op,
+                    input.Fields,
+                    f => defaults.GetValueOrDefault(f.Name),
+                    row
+                );
             },
             ct
         );
@@ -276,11 +293,13 @@ internal sealed class AdminPanel(PanelModel model, OperationRunner runner)
                 var action = Action(t, actionId);
                 var row = await RequireAsync(op, t, key);
                 await op.EnsureAsync(op.AllowsAsync(t, action, row), $"run {action.Title}");
+                EnsureApplies(t, action, row);
                 var valid = await Validator.CheckAsync(
                     action.Input?.Fields ?? [],
                     values,
                     partial: false,
-                    op
+                    op,
+                    row
                 );
                 var input = action.Input?.Factory.Create(valid);
                 var done = await action.Run(op.Services, row, input, op.User, op.CancellationToken);
@@ -292,7 +311,11 @@ internal sealed class AdminPanel(PanelModel model, OperationRunner runner)
                     action: action.Id,
                     input: Logged(valid)
                 );
-                return new Outcome(done.Message, done.Markdown);
+                return new Outcome(
+                    done.Message,
+                    done.Markdown,
+                    done.Opened is { } opened ? t.Key.Encode(opened) : null
+                );
             },
             ct
         );
@@ -638,7 +661,7 @@ internal sealed class AdminPanel(PanelModel model, OperationRunner runner)
         var actions = new HashSet<string>(StringComparer.Ordinal);
         if (t.HasDetail && !listed)
             foreach (var a in t.Actions)
-                if (await op.AllowsAsync(t, a, row))
+                if (a.When?.Invoke(row) != false && await op.AllowsAsync(t, a, row))
                     actions.Add(a.Id);
         var allowed = new Allowed(
             t.Source.Update is not null && await op.AllowsAsync(t, AdminOp.Update, row),
@@ -678,16 +701,25 @@ internal sealed class AdminPanel(PanelModel model, OperationRunner runner)
         return seen[(tableId, key)] = label;
     }
 
+    private static void EnsureApplies(TableModel t, ActionModel action, object row)
+    {
+        if (action.When?.Invoke(row) == false)
+            throw new AdminRejection($"{action.Title} does not apply to {t.Label(row)}.");
+    }
+
     private static async Task<FormView> FormAsync(
         Operation op,
         IReadOnlyList<FieldModel> fields,
-        Func<FieldModel, object?> value
+        Func<FieldModel, object?> value,
+        object? row = null
     )
     {
         var options = new Dictionary<string, IReadOnlyList<AdminOption>>(StringComparer.Ordinal);
         foreach (var f in fields)
             if (f.Options is { } load)
                 options[f.Name] = await load(op.Services, op.CancellationToken);
+            else if (f.RowOptions is { } forRow && row is not null)
+                options[f.Name] = await forRow(op.Services, row, op.CancellationToken);
         return new FormView(fields, fields.ToDictionary(f => f.Name, value), options);
     }
 

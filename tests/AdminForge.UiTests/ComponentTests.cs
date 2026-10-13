@@ -91,6 +91,20 @@ public sealed class ComponentTests : BunitContext
                                     })
                         )
                         .Action("issue", "Issue key", a => a.Run(ctx => ctx.Result("```\nak_1\n```")))
+                        .Action(
+                            "copy",
+                            "Copy",
+                            a =>
+                                a.Run<Items>(
+                                    (items, ctx) =>
+                                    {
+                                        var copy = ctx.Row with { Id = items.Rows.Max(r => r.Id) + 1 };
+                                        items.Rows.Add(copy);
+                                        ctx.Open(copy);
+                                        return Task.CompletedTask;
+                                    }
+                                )
+                        )
                 )
         );
         Services.AddMudServices();
@@ -177,6 +191,24 @@ public sealed class ComponentTests : BunitContext
         actions.Find("[data-af='action:issue']").Click();
         dialogs.WaitForAssertion(() => Assert.Contains("ak_1", dialogs.Markup));
         Assert.Empty(Services.GetRequiredService<ISnackbar>().ShownSnackbars);
+    }
+
+    [Fact]
+    public void An_action_that_opens_a_row_takes_the_admin_there()
+    {
+        Render<MudPopoverProvider>();
+        Render<MudDialogProvider>();
+        var actions = Render<RowActions>(ps =>
+            ps.Add(r => r.TableId, "item")
+                .Add(r => r.RowKey, "1")
+                .Add(r => r.RowLabel, "First")
+                .Add(r => r.Actions, new HashSet<string> { "copy" })
+        );
+
+        actions.Find("[data-af='action:copy']").Click();
+        actions.WaitForAssertion(() =>
+            Assert.EndsWith("/admin/entities/item/3", Services.GetRequiredService<NavigationManager>().Uri)
+        );
     }
 
     [Fact]

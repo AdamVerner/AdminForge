@@ -12,7 +12,8 @@ internal static class Validator
         IReadOnlyList<FieldModel> fields,
         IReadOnlyDictionary<string, object?> submitted,
         bool partial,
-        Operation op
+        Operation op,
+        object? row = null
     )
     {
         var errors = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -38,7 +39,7 @@ internal static class Validator
                     values[field.Name] = value;
                 continue;
             }
-            var error = await CheckAsync(field, value, op).ConfigureAwait(false);
+            var error = await CheckAsync(field, value, op, row).ConfigureAwait(false);
             if (error is not null)
                 errors[field.Name] = error;
             else
@@ -49,14 +50,24 @@ internal static class Validator
         return values;
     }
 
-    private static async Task<string?> CheckAsync(FieldModel field, object value, Operation op)
+    private static async Task<string?> CheckAsync(
+        FieldModel field,
+        object value,
+        Operation op,
+        object? row
+    )
     {
         if (value is Enum e && !Enum.IsDefined(e.GetType(), e))
             return $"{field.Title}: '{value}' is not one of {string.Join(", ", Enum.GetNames(e.GetType()))}.";
-        if (field.Options is { } load)
+        var choices =
+            field.Options is { } load ? load(op.Services, op.CancellationToken)
+            : field.RowOptions is { } forRow && row is not null
+                ? forRow(op.Services, row, op.CancellationToken)
+            : null;
+        if (choices is not null)
         {
             // Checked against the choices as they are now, not as they were when the field showed.
-            var allowed = (await load(op.Services, op.CancellationToken).ConfigureAwait(false))
+            var allowed = (await choices.ConfigureAwait(false))
                 .Select(o => o.Value)
                 .ToHashSet(StringComparer.Ordinal);
             var chosen = value is string or not IEnumerable

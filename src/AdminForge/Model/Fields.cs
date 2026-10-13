@@ -16,6 +16,14 @@ internal sealed class FieldSettings
         CancellationToken,
         Task<IReadOnlyList<AdminOption>>
     >? Options { get; set; }
+
+    /// <summary>Choices that depend on the row an action runs on.</summary>
+    public Func<
+        IServiceProvider,
+        object,
+        CancellationToken,
+        Task<IReadOnlyList<AdminOption>>
+    >? RowOptions { get; set; }
     public IReadOnlyList<string>? Accept { get; set; }
     public long? MaxBytes { get; set; }
     public List<Func<object?, string?>> Rules { get; } = [];
@@ -51,7 +59,7 @@ internal static class Fields
                 .Any(d => d.DataType == DataType.MultilineText);
 
         FieldKind? kind =
-            settings?.Options is not null ? FieldKind.Select
+            settings?.Options is not null || settings?.RowOptions is not null ? FieldKind.Select
             : t == typeof(AdminFile) ? FieldKind.File
             : t == typeof(string)
                 ? (
@@ -114,6 +122,7 @@ internal static class Fields
             Max = range is null ? null : Convert.ToDouble(range.Maximum),
             Rules = rules,
             Options = settings?.Options,
+            RowOptions = settings?.RowOptions,
             Multiple = kind == FieldKind.Select && ScalarTypes.ElementType(t) == typeof(string),
             Accept = settings?.Accept,
             MaxBytes = settings?.MaxBytes,

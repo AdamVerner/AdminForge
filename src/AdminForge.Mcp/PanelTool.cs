@@ -104,7 +104,12 @@ internal abstract class PanelTool : McpServerTool
         Text(
             string.Join(
                 "\n\n",
-                new[] { outcome.Message, outcome.Markdown }.Where(s => s is not null)
+                new[]
+                {
+                    outcome.Message,
+                    outcome.Markdown,
+                    outcome.Open is { } key ? $"Opened the row with key {key}." : null,
+                }.Where(s => s is not null)
             )
                 is { Length: > 0 } text
                 ? text

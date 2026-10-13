@@ -12,6 +12,8 @@ internal sealed class ActionDraft(string id, string title)
     public Tone Tone { get; set; }
     public Type? InputType { get; set; }
     public Dictionary<string, FieldSettings> Fields { get; } = new(StringComparer.Ordinal);
+    public Func<object, bool>? When { get; set; }
+    public Func<IServiceProvider, object, CancellationToken, Task<object>>? Prefill { get; set; }
     public Func<
         IServiceProvider,
         object,
@@ -29,6 +31,8 @@ internal sealed class ActionDraft(string id, string title)
             Confirm = Confirm,
             Tone = Tone,
             Input = InputType is null ? null : AdminForge.Fields.Input(InputType, Fields),
+            When = When,
+            Prefill = Prefill,
             Run =
                 Run
                 ?? throw new InvalidOperationException(
@@ -55,6 +59,13 @@ public sealed class ActionBuilder<T>
     public ActionBuilder<T> Tone(Tone tone)
     {
         _draft.Tone = tone;
+        return this;
+    }
+
+    /// <summary>Offers the action only on rows that pass <paramref name="applies"/>, such as Activate on an inactive row.</summary>
+    public ActionBuilder<T> When(Func<T, bool> applies)
+    {
+        _draft.When = row => applies((T)row);
         return this;
     }
 
@@ -111,6 +122,45 @@ public sealed class ActionBuilder<T, TInput>
     public ActionBuilder<T, TInput> Tone(Tone tone)
     {
         _draft.Tone = tone;
+        return this;
+    }
+
+    /// <inheritdoc cref="ActionBuilder{T}.When"/>
+    public ActionBuilder<T, TInput> When(Func<T, bool> applies)
+    {
+        _draft.When = row => applies((T)row);
+        return this;
+    }
+
+    /// <summary>The input the dialog opens with, from the row, such as the permissions a role has now.</summary>
+    public ActionBuilder<T, TInput> Prefill(Func<T, TInput> input)
+    {
+        _draft.Prefill = (_, row, _) => Task.FromResult<object>(input((T)row));
+        return this;
+    }
+
+    /// <summary>The input the dialog opens with, from <typeparamref name="TService"/> and the row.</summary>
+    public ActionBuilder<T, TInput> Prefill<TService>(
+        Func<TService, T, CancellationToken, Task<TInput>> input
+    )
+        where TService : notnull
+    {
+        _draft.Prefill = async (sp, row, ct) =>
+            await input(ActivatorUtilities.GetServiceOrCreateInstance<TService>(sp), (T)row, ct)
+                .ConfigureAwait(false);
+        return this;
+    }
+
+    /// <summary>Choices for <paramref name="field"/> from <typeparamref name="TService"/> and the row, loaded when the dialog opens and again on submit.</summary>
+    /// <remarks>Over MCP the tool cannot list them before a row is named; a call is checked against them.</remarks>
+    public ActionBuilder<T, TInput> Options<TService>(
+        Expression<Func<TInput, object?>> field,
+        Func<TService, T, CancellationToken, Task<IReadOnlyList<AdminOption>>> options
+    )
+        where TService : notnull
+    {
+        FieldSettings.Of(_draft.Fields, Members.Name(field)).RowOptions = (sp, row, ct) =>
+            options(ActivatorUtilities.GetServiceOrCreateInstance<TService>(sp), (T)row, ct);
         return this;
     }
 

@@ -16,6 +16,7 @@ public abstract class AdminContext
 
     internal string? Message { get; private set; }
     internal string? Markdown { get; private set; }
+    internal object? Opened { get; private protected set; }
 
     /// <summary>A one-line confirmation: a toast in the panel, the tool's text over MCP.</summary>
     public void Success(string message) => Message = message;
@@ -31,6 +32,9 @@ public class ActionContext<T> : AdminContext
         : base(user, ct) => Row = row;
 
     public T Row { get; }
+
+    /// <summary>Opens <paramref name="row"/> of this action's table once the action is done, such as a copy it made.</summary>
+    public void Open(T row) => Opened = row;
 }
 
 /// <summary>An action's context with the input the admin submitted, validated.</summary>

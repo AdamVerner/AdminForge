@@ -207,6 +207,27 @@ annotations set the rules. `Field(...)` adds what a type cannot say:
 `ctx.Success(message)` shows a toast. `ctx.Result(markdown)` shows a Markdown document. An uploaded
 file is held in memory. Its audit entry records its name, type and size, never its bytes.
 
+An action can also take its shape from the row:
+
+```csharp
+panel.Table<Role>(t => t
+    .Action("edit-permissions", "Edit permissions", a => a
+        .Input<PermissionsInput>()
+        .Prefill(role => new PermissionsInput(role.Permissions))
+        .Options<PermissionCatalog>(i => i.Permissions, (catalog, role, ct) => catalog.ForOrgAsync(role.OrgId, ct))
+        .Run<RoleStore>((store, ctx) => store.SetPermissionsAsync(ctx.Row, ctx.Input.Permissions, ctx.CancellationToken)))
+    .Action("duplicate", "Duplicate", a => a
+        .When(role => !role.BuiltIn)
+        .Run<RoleStore>(async (store, ctx) => ctx.Open(await store.CopyAsync(ctx.Row, ctx.CancellationToken)))));
+```
+
+| Call | Effect |
+|---|---|
+| `Prefill(row => input)`, `Prefill<TService>((svc, row, ct) => ...)` | The dialog opens with this input instead of the input record's defaults. |
+| `Options<TService>(i => i.Field, (svc, row, ct) => ...)` | Choices that depend on the row. They are loaded when the dialog opens and again on submit. MCP cannot list them before the row is known, but it checks a call against them. |
+| `When(row => ...)` | The action shows only on rows that pass. A direct call on another row is refused with "does not apply". This is separate from authorization. |
+| `ctx.Open(row)` | After the action, the panel opens that row of the same table. Over MCP, the result names its key. |
+
 ## Forms
 
 A form is a page of its own at `/admin/forms/{id}`, with an input record and a handler.

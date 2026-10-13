@@ -86,7 +86,10 @@
             Toasts.Success(Snackbar, outcome.Message ?? $"{action.Title}: done.");
         if (outcome.Markdown is { } markdown)
             await ContentDialog.ShowAsync(Dialogs, $"{action.Title} — result", markdown, Content.Markdown);
-        await OnInvoked.InvokeAsync();
+        if (outcome.Open is { } key)
+            Nav.NavigateTo(Links.Row(TableId, key));
+        else
+            await OnInvoked.InvokeAsync();
     }
 
     private async Task DeleteAsync()

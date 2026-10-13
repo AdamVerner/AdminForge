@@ -232,6 +232,14 @@ internal sealed record FieldModel
         CancellationToken,
         Task<IReadOnlyList<AdminOption>>
     >? Options { get; init; }
+
+    /// <summary>Choices loaded with the row an action runs on; without a row there are none to list.</summary>
+    public Func<
+        IServiceProvider,
+        object,
+        CancellationToken,
+        Task<IReadOnlyList<AdminOption>>
+    >? RowOptions { get; init; }
     public bool Multiple { get; init; }
     public IReadOnlyList<string>? Accept { get; init; }
     public long? MaxBytes { get; init; }
@@ -247,6 +255,12 @@ internal sealed record ActionModel
     public string? Confirm { get; init; }
     public Tone Tone { get; init; }
     public InputModel? Input { get; init; }
+
+    /// <summary>False hides the action on that row and refuses it there; authorization is asked separately.</summary>
+    public Func<object, bool>? When { get; init; }
+
+    /// <summary>The input the dialog opens with for a row, in place of the input type's defaults.</summary>
+    public Func<IServiceProvider, object, CancellationToken, Task<object>>? Prefill { get; init; }
 
     /// <summary>Services of the operation, the row, the input (null without one), the user, the cancellation.</summary>
     public required Func<

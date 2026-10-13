@@ -12,6 +12,8 @@ public sealed record NoticeInput(string Channel, IReadOnlyList<string>? Recipien
 
 public sealed record PickInput(int Number, Guid Ref, TicketStatus Status);
 
+public sealed record RetitleInput(string Title, string Team);
+
 /// <summary>Input is converted and checked on the server, whichever surface sent it; a refusal is shown once and never audited.</summary>
 public class InputTests
 {
@@ -134,6 +136,93 @@ public class InputTests
             (audit.Operation, audit.Table, audit.Key, audit.Action)
         );
         Assert.Equal(2, audit.Input["Priority"]);
+    }
+
+    [Fact]
+    public async Task An_action_takes_its_input_choices_and_presence_from_the_row_and_can_open_another()
+    {
+        await using var host = await PanelHost.StartAsync(p =>
+            p.Table<Ticket>(t =>
+                t.Action(
+                        "retitle",
+                        "Retitle",
+                        a =>
+                            a.Input<RetitleInput>()
+                                .When(x => x.Status == TicketStatus.Open)
+                                .Prefill(x => new RetitleInput(x.Title, ""))
+                                .Options<TestDb>(
+                                    i => i.Team,
+                                    (_, x, _) =>
+                                        Task.FromResult<IReadOnlyList<AdminOption>>(
+                                            [new($"{x.Status}-team", "Team")]
+                                        )
+                                )
+                                .Run(ctx => ctx.Success($"{ctx.Input.Title} for {ctx.Input.Team}"))
+                    )
+                    .Action(
+                        "duplicate",
+                        "Duplicate",
+                        a =>
+                            a.Run<TestDb>(
+                                async (db, ctx) =>
+                                {
+                                    var copy = new Ticket { Title = ctx.Row.Title + " (copy)" };
+                                    db.Tickets.Add(copy);
+                                    await db.SaveChangesAsync();
+                                    ctx.Open(copy);
+                                }
+                            )
+                    )
+            )
+        );
+        var rows = await host.Db(Seed.OpenAndDoneAsync);
+        var (open, done) = (rows[0].Id.ToString(), rows[1].Id.ToString());
+        using var admin = host.As();
+
+        // The dialog opens with the row's values and the row's choices; submit checks the same choices.
+        var form = await admin.Panel.ActionFormAsync("ticket", open, "retitle");
+        Assert.Equal("Open one", form.Values["Title"]);
+        Assert.Equal(["Open-team"], form.Options["Team"].Select(o => o.Value));
+        var refused = await Assert.ThrowsAsync<AdminRejection>(() =>
+            admin.Panel.RunActionAsync(
+                "ticket",
+                open,
+                "retitle",
+                Args(("Title", "Renamed"), ("Team", "Done-team"))
+            )
+        );
+        Assert.Equal("Team: 'Done-team' is not a choice.", refused.FieldErrors["Team"]);
+        Assert.Equal(
+            "Renamed for Open-team",
+            (
+                await admin.Panel.RunActionAsync(
+                    "ticket",
+                    open,
+                    "retitle",
+                    Args(("Title", "Renamed"), ("Team", "Open-team"))
+                )
+            ).Message
+        );
+
+        // A row the action does not apply to does not offer it, and a direct call says why.
+        Assert.DoesNotContain("retitle", (await admin.Panel.GetAsync("ticket", done))!.Row.Allowed.Actions);
+        Assert.Equal(
+            "Retitle does not apply to Done one.",
+            (
+                await Assert.ThrowsAsync<AdminRejection>(() =>
+                    admin.Panel.ActionFormAsync("ticket", done, "retitle")
+                )
+            ).Message
+        );
+
+        // Over MCP the row's choices cannot be listed up front; the tool names the row an action opened.
+        Assert.False((await admin.Panel.ActionFormAsync("ticket", null, "retitle")).Options.ContainsKey("Team"));
+        var outcome = await admin.Panel.RunActionAsync("ticket", open, "duplicate", Args());
+        Assert.Equal("Open one (copy)", (await admin.Panel.GetAsync("ticket", outcome.Open!))!.Row.Label);
+        await using var mcp = await host.ConnectMcpAsync();
+        var duplicated = Text(await mcp.CallToolAsync("ticket_duplicate", Args(("key", open))));
+        var last = await host.Db(db => db.Tickets.MaxAsync(x => x.Id));
+        Assert.Equal($"Opened the row with key {last}.", duplicated);
     }
 
     [Fact]
