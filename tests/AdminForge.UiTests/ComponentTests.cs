@@ -1,3 +1,4 @@
+using AdminForge.UI;
 using AdminForge.UI.Components;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Hosting;
@@ -285,7 +286,23 @@ public sealed class FormatterTests
     [InlineData(2.5, "2.5")]
     [InlineData(0.0, "0")]
     public void A_small_double_never_reads_as_zero(double value, string text) =>
-        Assert.Equal(text, AdminForge.UI.ValueFormatter.Format(value));
+        Assert.Equal(text, ValueFormatter.Format(value));
+
+    [Fact]
+    public void A_number_groups_its_thousands_unless_it_identifies_a_row()
+    {
+        static ColumnModel Column(string name, bool key = false, string? links = null) =>
+            new() { Name = name, Title = name, ClrType = typeof(long), IsKey = key, LinksTo = links };
+
+        Assert.Equal("97,586,799", ValueFormatter.Format(97586799L, Column("Bytes")));
+        Assert.Equal("3,768", ValueFormatter.Format(3768));
+        Assert.Equal("1,234.50", ValueFormatter.Format(1234.50m));
+        Assert.Equal("12,345.6789", ValueFormatter.Format(12345.6789));
+        Assert.Equal("97586799", ValueFormatter.Format(97586799L, Column("Id", key: true)));
+        Assert.Equal("97586799", ValueFormatter.Format(97586799L, Column("Org", links: "org")));
+        Assert.Equal("97586799", ValueFormatter.Format(97586799L, Column("OwnerId")));
+        Assert.Equal("2025", ValueFormatter.Format(2025L, Column("Year") with { Format = "0" }));
+    }
 }
 
 public sealed class ThemeTests

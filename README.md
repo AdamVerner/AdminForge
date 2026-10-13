@@ -149,7 +149,7 @@ panel.Table<Todo>(t => t
 | `Status(...)` | Shows the value as a coloured chip. |
 | `LinksTo<T>()` | The value is a key of another table. The cell links to that row, and the column is filterable. |
 | `Content(kind)` | A long value. The cell shows its first line and opens the whole value as `Text`, `Markdown`, `Json` or `Html`. HTML opens in a sandboxed frame with no scripts. |
-| `Format(...)` | A .NET format string for this column. `panel.Format<DateTime>(...)` sets one for every column of a type. |
+| `Format(...)` | A .NET format string for this column. `panel.Format<DateTime>(...)` sets one for every column of a type. Numbers group their thousands in cells and stat cards alike, except keys, links and columns named `...Id`. `Format("0")` shows plain digits, such as for a year. |
 | `ReadOnly()` | Shown, never written. |
 | `Hide(...)` | Removed from every surface. Writes keep the stored value. |
 | `Computed(...)` | A value computed from the row, on the detail page. `InList()` adds it to the list page too, with one computation per row shown. |

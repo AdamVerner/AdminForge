@@ -1,3 +1,5 @@
+@inject PanelModel Model
+
 <div class="af-panel af-stat">
     <div class="af-stat-label">@Title</div>
     @if (Error is not null)
@@ -6,7 +8,7 @@
     }
     else
     {
-        <div class="af-stat-value"><strong data-af="stat">@Format(Value)</strong>@if (!string.IsNullOrEmpty(Suffix)) { <span>@Suffix</span> }</div>
+        <div class="af-stat-value"><strong data-af="stat">@(ValueFormatter.Format(Value, null, Model) ?? "—")</strong>@if (!string.IsNullOrEmpty(Suffix)) { <span>@Suffix</span> }</div>
     }
 </div>
 
@@ -15,12 +17,4 @@
     [Parameter] public object? Value { get; set; }
     [Parameter] public string? Suffix { get; set; }
     [Parameter] public string? Error { get; set; }
-
-    private static string Format(object? value) => value switch
-    {
-        null => "—",
-        double or float or decimal => Convert.ToDouble(value).ToString("#,0.##", System.Globalization.CultureInfo.InvariantCulture),
-        int or long => Convert.ToInt64(value).ToString("#,0", System.Globalization.CultureInfo.InvariantCulture),
-        _ => value.ToString() ?? "—",
-    };
 }
