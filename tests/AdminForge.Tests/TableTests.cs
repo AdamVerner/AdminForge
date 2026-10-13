@@ -263,6 +263,7 @@ public class TableTests
                         .Column(c => c.Notes, c => c.Content(Content.Markdown))
                         .Computed("domain-count", c => c.Domains.Count, c => c.InList())
                         .Computed("initial", c => c.Name[..1])
+                        .Computed("domain-list", c => c.Domains.ToList())
                         .Related<Contact>(
                             c => c.CompanyId,
                             r => r.Inline().Columns(c => c.Name, c => c.Email)
@@ -295,6 +296,8 @@ public class TableTests
         Assert.Equal("Northwind", detail.Text("title"));
         Assert.Contains("nw.test", detail.Text("value:Domains"));
         Assert.Equal("N", detail.Text("value:initial").Split(' ')[^1]);
+        Assert.Contains("nw.test", detail.Text("value:domain-list"));
+        Assert.DoesNotContain("System.Collections", detail.Text("value:domain-list"));
         Assert.Contains("04.03.2025", detail.Text("value:JoinedAt"));
         Assert.Contains("Pays late", detail.Text("value:Notes"));
         Assert.StartsWith("People", detail.Text("tab:contact"));

@@ -374,9 +374,12 @@ public sealed class TableBuilder<T>
         {
             if (columns.Any(x => x.Name == c.Name))
                 throw new InvalidOperationException($"{who} has two columns named '{c.Name}'.");
+            var element = ScalarTypes.IsScalar(c.Type) ? null : ScalarTypes.ElementType(c.Type);
             columns.Add(
                 Column(c.Name, c.Type, c.Settings) with
                 {
+                    Kind = element is null ? ColumnKind.Value : ColumnKind.Collection,
+                    ElementType = element,
                     Compute = c.Compute,
                     InList = c.Settings.InList,
                     ListOrder = int.MaxValue,
