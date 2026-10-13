@@ -374,7 +374,11 @@ public class McpTests
     [Fact]
     public async Task A_replayed_code_or_refresh_token_ends_the_connection()
     {
-        await using var host = await PanelHost.StartAsync(Panel());
+        var clock = new ManualClock();
+        await using var host = await PanelHost.StartAsync(
+            Panel(),
+            s => s.AddSingleton<TimeProvider>(clock)
+        );
         var first = await TokensAsync(host, Exchange(await AuthorizeAsync(host)));
         var refresh = first.GetProperty("refresh_token").GetString()!;
         var access = first.GetProperty("access_token").GetString()!;
@@ -382,6 +386,11 @@ public class McpTests
         var rotated = await TokensAsync(host, Refresh(refresh));
         Assert.NotEqual(refresh, rotated.GetProperty("refresh_token").GetString());
         Assert.True(await Authorized(host, rotated.GetProperty("access_token").GetString()!));
+
+        // A client that refreshed from two requests at once reuses the token within seconds: a race, not a replay.
+        var raced = await TokensAsync(host, Refresh(refresh));
+        Assert.True(await Authorized(host, raced.GetProperty("access_token").GetString()!));
+        clock.Now += TimeSpan.FromSeconds(11);
         Assert.Equal(HttpStatusCode.BadRequest, (await Token(host, Refresh(refresh))).StatusCode);
         Assert.False(await Authorized(host, access));
         Assert.Equal(

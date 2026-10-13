@@ -30,6 +30,7 @@ public static class McpPanelExtensions
         services.TryAddSingleton(TimeProvider.System);
         services.TryAddSingleton<IMcpConnectionStore, InMemoryMcpConnectionStore>();
         services.AddSingleton<TokenSealer>();
+        services.AddSingleton<RefreshGrace>();
         services.AddSingleton(sp =>
             PanelTools.Build(
                 sp.GetRequiredService<PanelModel>(),

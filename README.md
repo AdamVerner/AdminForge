@@ -431,6 +431,9 @@ panel, so use it with `RequireAuthorization(...)` or `UseLogin<T>()`.
 - Connections live in memory and end on a restart. To keep them, register your own
   `IMcpConnectionStore` that advances a refresh token atomically, and persist the Data Protection
   keys. Without persisted keys, every token dies on a restart.
+- A refresh token that is used again ends its connection as a replay. The exception is reuse within
+  10 seconds of its first use, while the token that replaced it is still the newest. That is a
+  client refreshing from two requests at once. The grace is held per process.
 - The pipeline checks every tool call against the claims captured at consent. To cut off an admin
   at once, make your umbrella policy check live state, not only claims.
 - Grants use the stable ids of tables and actions, so a renamed title keeps existing grants.

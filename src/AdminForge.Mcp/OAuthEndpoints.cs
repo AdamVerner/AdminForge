@@ -256,11 +256,13 @@ internal static class OAuthEndpoints
         AdminForgeMcpOptions o,
         TokenSealer sealer,
         IMcpConnectionStore store,
+        RefreshGrace grace,
         TimeProvider clock
     )
     {
         var form = await http.Request.ReadFormAsync(http.RequestAborted).ConfigureAwait(false);
         var now = clock.GetUtcNow().UtcDateTime;
+        var refreshing = false;
         string? cid;
         int counter;
         switch (form["grant_type"].ToString())
@@ -293,7 +295,7 @@ internal static class OAuthEndpoints
                 var refresh = sealer.Unseal<RefreshToken>(form["refresh_token"]);
                 if (refresh is null)
                     return OAuthError("invalid_grant", "The refresh token is invalid.");
-                (cid, counter) = (refresh.Cid, refresh.Counter);
+                (cid, counter, refreshing) = (refresh.Cid, refresh.Counter, true);
                 break;
             }
             default:
@@ -307,11 +309,22 @@ internal static class OAuthEndpoints
         if (connection is null || !connection.IsLive(now))
             return OAuthError("invalid_grant", "The connection has ended.");
         // The code is counter 0, so a replayed code and a replayed refresh token fail alike, and a leak ends the connection.
-        if (
-            !await store
-                .TryAdvanceRefreshAsync(cid, counter, http.RequestAborted)
-                .ConfigureAwait(false)
-        )
+        // Only the newest token starts a window; one presented after it was replaced never does.
+        if (refreshing && connection.RefreshCounter == counter)
+            grace.Presented(cid, counter, now);
+        var advanced = await store
+            .TryAdvanceRefreshAsync(cid, counter, http.RequestAborted)
+            .ConfigureAwait(false);
+        // A reuse is let through only while it is fresh and the token that replaced it is still the newest.
+        var raced =
+            !advanced
+            && refreshing
+            && grace.Fresh(cid, counter, now)
+            && await store.FindAsync(cid, http.RequestAborted).ConfigureAwait(false) is
+                { RefreshCounter: var stored } current
+            && stored == counter + 1
+            && current.IsLive(now);
+        if (!advanced && !raced)
         {
             await store.RevokeAsync(cid, http.RequestAborted).ConfigureAwait(false);
             return OAuthError(
