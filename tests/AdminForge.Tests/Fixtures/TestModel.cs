@@ -147,3 +147,32 @@ public static class Seed
         return rows;
     }
 }
+
+/// <summary>A row keyed by two parts its store assigns; the organization holds the separators a route key uses.</summary>
+public sealed record Grant([property: Key] string Org, [property: Key] string User, string Role);
+
+public sealed class GrantStore : IAdminSource<Grant, object?[]>, IAdminWritable<Grant>
+{
+    public List<Grant> Rows { get; } = [];
+
+    public Task<AdminPage<Grant>> ListAsync(AdminQuery<Grant> query, CancellationToken ct) =>
+        Task.FromResult(AdminPage.From(Rows, query));
+
+    public Task<Grant?> FindAsync(object?[] key, CancellationToken ct) =>
+        Task.FromResult(
+            Rows.FirstOrDefault(r => r.Org == (string?)key[0] && r.User == (string?)key[1])
+        );
+
+    public Task<Grant> CreateAsync(Grant row, CancellationToken ct)
+    {
+        var stored = row with { Org = "north,eu/1", User = $"u{Rows.Count + 1}" };
+        Rows.Add(stored);
+        return Task.FromResult(stored);
+    }
+
+    public Task<Grant> UpdateAsync(Grant row, IReadOnlySet<string> changed, CancellationToken ct)
+    {
+        Rows[Rows.FindIndex(r => r.Org == row.Org && r.User == row.User)] = row;
+        return Task.FromResult(row);
+    }
+}

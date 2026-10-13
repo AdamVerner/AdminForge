@@ -254,6 +254,15 @@ public sealed class PanelBuilder
                     $"Table '{table.Id}' has a composite key, so Related cannot pin a child to it."
                 );
         }
+        foreach (var table in tables)
+        foreach (var column in table.Columns)
+            if (
+                column.LinksTo is { } target
+                && tables.First(t => t.Id == target).Key.Properties.Count != 1
+            )
+                throw new InvalidOperationException(
+                    $"Table '{table.Id}' column {column.Name} links to '{target}', which has a composite key; a link holds one value."
+                );
         return new PanelModel
         {
             Title = _title,

@@ -1,3 +1,4 @@
+using AdminForge.UI;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Client;
@@ -331,6 +332,22 @@ public class TableTests
 
         // A table whose source fails drops out of the global search; the others still answer.
         Assert.Equal("Northwind", Assert.Single(await admin.Panel.SearchAsync("north")).Label);
+    }
+
+    [Fact]
+    public async Task A_row_with_a_composite_key_opens_where_create_sends_the_admin()
+    {
+        await using var host = await PanelHost.StartAsync(
+            p => p.Table<Grant>(t => t.Source<GrantStore>()),
+            s => s.AddSingleton<GrantStore>()
+        );
+        using var admin = host.As();
+
+        var key = await admin.Panel.CreateAsync("grant", Args(("Role", "owner")));
+
+        var detail = await host.PageAsync(Links.Row("grant", key));
+        Assert.Contains("owner", detail.Text("value:Role"));
+        Assert.Contains("north,eu/1", detail.Text("value:Org"));
     }
 
     [Fact]

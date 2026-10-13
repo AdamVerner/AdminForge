@@ -312,6 +312,17 @@ public class StartupTests
                         ),
                 "names table 'nope', which is not registered"
             },
+            {
+                "link to a composite key",
+                p =>
+                    p.AllowAnonymous()
+                        .Table<Grant>(t => t.Source<GrantStore>())
+                        .Table<Contact>(t =>
+                            t.Source<ContactStore>()
+                                .Column(c => c.Name, c => c.LinksTo<Grant>())
+                        ),
+                "column Name links to 'grant', which has a composite key"
+            },
         };
 
     [Theory]
