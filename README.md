@@ -308,9 +308,9 @@ The panel has three layers.
    ```
 
    The request is a `TableRequest<T>`, an `ActionRequest<T>`, a `FormRequest`, a
-   `DashboardRequest` or a `PageRequest`, each with the `User`. `Row` is the stored row whenever
+   `DashboardRequest` or a `HostPageRequest`, each with the `User`. `Row` is the stored row whenever
    the operation has one. For a list, a create, or a check whether to offer a button, it is null.
-   A refused `PageRequest` drops the host page from the sidebar and renders a refusal in its place.
+   A refused `HostPageRequest` drops the host page from the sidebar and renders a refusal in its place.
 
    **A Read rule about the row does not filter lists or search.** They ask Read with a null row,
    so every row the source returns is listed. Your source must leave out the rows the caller may

@@ -1,4 +1,4 @@
-@* A host page renders only when the policy allows its PageRequest; the panel's own pages ask per operation. *@
+@* A host page renders only when the policy allows its HostPageRequest; the panel's own pages ask per operation. *@
 @inject AdminPanel Panel
 
 @if (_allowed is true)
@@ -24,7 +24,7 @@ else if (_allowed is false)
         var page = Panel.Model.Pages.FirstOrDefault(p => p.Component == asked.PageType);
         // Cleared before the await, or the render it yields would show the new page under the old verdict.
         _allowed = page is not null ? null
-            // A routable component in a host assembly that is not registered has no PageRequest to ask.
+            // A routable component in a host assembly that is not registered has no HostPageRequest to ask.
             : asked.PageType.Assembly == typeof(Routes).Assembly;
         if (page is null) return;
         bool allowed;

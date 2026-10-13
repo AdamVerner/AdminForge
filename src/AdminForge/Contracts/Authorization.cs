@@ -38,12 +38,12 @@ public sealed record DashboardRequest(ClaimsPrincipal User, string DashboardId)
     : AdminRequest(User);
 
 /// <summary>A host page registered with <c>Page&lt;T&gt;</c>: whether the sidebar lists it and whether it renders.</summary>
-public sealed record PageRequest(ClaimsPrincipal User, string PageId) : AdminRequest(User);
+public sealed record HostPageRequest(ClaimsPrincipal User, string PageId) : AdminRequest(User);
 
 /// <summary>The host's per-operation decision, asked after the panel's umbrella policy allowed the caller.</summary>
 /// <remarks>
 /// A request is a <see cref="TableRequest{T}"/>, <see cref="ActionRequest{T}"/>, <see cref="FormRequest"/>,
-/// <see cref="DashboardRequest"/> or <see cref="PageRequest"/>. A list or a search asks Read with a null row,
+/// <see cref="DashboardRequest"/> or <see cref="HostPageRequest"/>. A list or a search asks Read with a null row,
 /// so a rule about the row never filters them: the source must leave out rows the caller may not read.
 /// </remarks>
 public interface IAdminPolicy

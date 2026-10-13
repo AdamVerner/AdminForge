@@ -488,7 +488,7 @@ internal sealed class AdminPanel(PanelModel model, OperationRunner runner)
                     if (await op.AllowsAsync(new FormRequest(op.User, f.Id)))
                         items.Add(new(f.Id, f.Title, $"{PanelModel.Root}/forms/{f.Id}", f.Nav));
                 foreach (var p in model.Pages.Where(p => !p.Nav.Hidden))
-                    if (await op.AllowsAsync(new PageRequest(op.User, p.Id)))
+                    if (await op.AllowsAsync(new HostPageRequest(op.User, p.Id)))
                         items.Add(new(p.Id, p.Title, p.Route, p.Nav));
                 return (IReadOnlyList<NavItem>)items.OrderBy(i => i.Nav.Order).ToList();
             },
@@ -516,7 +516,7 @@ internal sealed class AdminPanel(PanelModel model, OperationRunner runner)
         Can(o => o.AllowsAsync(new DashboardRequest(o.User, Dashboard(dashboardId).Id)), ct);
 
     public Task<bool> CanPageAsync(string pageId, CancellationToken ct = default) =>
-        Can(o => o.AllowsAsync(new PageRequest(o.User, pageId)), ct);
+        Can(o => o.AllowsAsync(new HostPageRequest(o.User, pageId)), ct);
 
     private async Task<bool> Can(Func<Operation, Task<bool>> ask, CancellationToken ct)
     {

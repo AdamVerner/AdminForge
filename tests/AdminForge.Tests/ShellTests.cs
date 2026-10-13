@@ -107,7 +107,7 @@ public class ShellTests
         Assert.True(page.Has("nav:ticket"));
 
         // A refused host page leaves the sidebar and renders the refused state instead of itself.
-        host.Policy.Allows = r => r is not PageRequest { PageId: "who-am-i" };
+        host.Policy.Allows = r => r is not HostPageRequest { PageId: "who-am-i" };
         var refused = await host.PageAsync("/admin/whoami", "ada");
         Assert.True(refused.Has("refused"));
         Assert.False(refused.Has("host-page"));

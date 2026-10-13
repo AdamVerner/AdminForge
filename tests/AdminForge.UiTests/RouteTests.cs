@@ -27,7 +27,7 @@ public sealed class SlowPolicy : IAdminPolicy
     public static TaskCompletionSource<bool> Reports { get; } = new();
 
     public async ValueTask<bool> AllowsAsync(AdminRequest request, CancellationToken ct) =>
-        request is not PageRequest page || page.PageId == "reports" && await Reports.Task;
+        request is not HostPageRequest page || page.PageId == "reports" && await Reports.Task;
 }
 
 public sealed class RouteTests : BunitContext
