@@ -1,6 +1,9 @@
 using Markdig;
+using Markdig.Renderers;
+using Markdig.Renderers.Html;
 using Markdig.Syntax;
 using Markdig.Syntax.Inlines;
+using MudBlazor;
 
 namespace AdminForge.UI;
 
@@ -22,7 +25,35 @@ internal static class MarkdownRenderer
         foreach (var link in document.Descendants<AutolinkInline>())
             if (!IsSafe(link.Url))
                 link.Url = "";
-        return document.ToHtml(Pipeline);
+        using var writer = new StringWriter();
+        var renderer = new HtmlRenderer(writer);
+        Pipeline.Setup(renderer);
+        var plain = renderer.ObjectRenderers.FindExact<CodeBlockRenderer>();
+        renderer.ObjectRenderers.Replace<CodeBlockRenderer>(new CopyableCodeBlockRenderer(plain));
+        renderer.Render(document);
+        return writer.ToString();
+    }
+
+    /// <summary>A code block with a copy button; adminforge.js copies the block's text on click.</summary>
+    private sealed class CopyableCodeBlockRenderer : CodeBlockRenderer
+    {
+        private static readonly string Button =
+            "<button type=\"button\" class=\"af-icon-btn\" aria-label=\"Copy\" title=\"Copy\" data-af=\"copy-code\">"
+            + $"<svg class=\"af-icon\" viewBox=\"0 0 24 24\" aria-hidden=\"true\" focusable=\"false\">{Icons.Material.Outlined.ContentCopy}</svg>"
+            + "</button>";
+
+        public CopyableCodeBlockRenderer(CodeBlockRenderer? plain)
+        {
+            if (plain is not null)
+                BlocksAsDiv.UnionWith(plain.BlocksAsDiv);
+        }
+
+        protected override void Write(HtmlRenderer renderer, CodeBlock block)
+        {
+            renderer.Write("<div class=\"af-code\">").Write(Button);
+            base.Write(renderer, block);
+            renderer.WriteLine("</div>");
+        }
     }
 
     // Browsers drop whitespace and control characters inside a scheme, so "java\tscript:" is still javascript.

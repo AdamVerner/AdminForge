@@ -83,6 +83,12 @@
     if (e.target instanceof Element) e.target.closest(".af-menu [role=menuitem]")?.closest("[popover]")?.hidePopover();
   });
 
+  // Markdown renders as markup, so its code blocks' copy buttons carry no Blazor handler.
+  document.addEventListener("click", (e) => {
+    const button = e.target instanceof Element && e.target.closest("[data-af=copy-code]");
+    if (button) navigator.clipboard.writeText(button.parentElement.querySelector("pre").textContent);
+  });
+
   // The filter popover closes on an outside click only; a dialog handles Esc itself.
   document.addEventListener("keydown", (e) => {
     if (e.key !== "Escape" || document.querySelector(".mud-dialog")) return;

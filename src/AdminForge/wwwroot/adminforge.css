@@ -684,6 +684,8 @@ th[aria-sort] .af-sort .af-icon { opacity: 1; }
 .adminforge-markdown code { padding: 1px 4px; border-radius: 3px; background: var(--af-surface-sunken); font-size: 0.9em; }
 .adminforge-markdown pre { padding: var(--af-space-3); overflow: auto; border-radius: var(--af-radius-sm); background: var(--af-surface-sunken); }
 .adminforge-markdown pre code { padding: 0; background: none; }
+.adminforge-markdown .af-code { position: relative; }
+.adminforge-markdown .af-code > .af-icon-btn { position: absolute; top: var(--af-space-1); right: var(--af-space-1); }
 .adminforge-markdown table { border-collapse: collapse; margin: 0 0 var(--af-space-3); font: var(--af-text-sm); }
 .adminforge-markdown th, .adminforge-markdown td { padding: var(--af-space-1) var(--af-space-2); border: 1px solid var(--af-border); text-align: left; }
 .adminforge-markdown th { background: var(--af-surface-sunken); font-weight: 500; }

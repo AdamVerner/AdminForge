@@ -297,6 +297,17 @@ public class UnitTests
     }
 
     [Fact]
+    public void A_Markdown_code_block_carries_a_copy_button()
+    {
+        var html = MarkdownRenderer.ToHtml("Your key:\n\n```\nak_<secret>\n```\n\nand `inline`.");
+        Assert.Matches(
+            "<div class=\"af-code\"><button [^>]*data-af=\"copy-code\">.*</button>\n<pre><code>ak_&lt;secret&gt;\n</code></pre>\n</div>",
+            html
+        );
+        Assert.Single(System.Text.RegularExpressions.Regex.Matches(html, "copy-code"));
+    }
+
+    [Fact]
     public void Markdown_renders_tables_and_escapes_raw_html()
     {
         var html = MarkdownRenderer.ToHtml("| a | b |\n|---|---|\n| 1 | <script>x()</script> |");
