@@ -90,7 +90,8 @@ else if (_form is not null)
             var outcome = await Panel.SubmitFormAsync(FormId, _form.Values);
             _result = outcome.Markdown;
             _showResult = _result is not null;
-            Toasts.Success(Snackbar, outcome.Message ?? $"{_model!.Title}: done.");
+            if (outcome.Message is not null || outcome.Markdown is null)
+                Toasts.Success(Snackbar, outcome.Message ?? $"{_model!.Title}: done.");
         }
         catch (AdminRejection ex)
         {

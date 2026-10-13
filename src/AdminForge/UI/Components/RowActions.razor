@@ -82,7 +82,8 @@
 
     private async Task DoneAsync(ActionModel action, Outcome outcome)
     {
-        Toasts.Success(Snackbar, outcome.Message ?? $"{action.Title}: done.");
+        if (outcome.Message is not null || outcome.Markdown is null)
+            Toasts.Success(Snackbar, outcome.Message ?? $"{action.Title}: done.");
         if (outcome.Markdown is { } markdown)
             await ContentDialog.ShowAsync(Dialogs, $"{action.Title} — result", markdown, Content.Markdown);
         await OnInvoked.InvokeAsync();

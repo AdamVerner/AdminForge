@@ -90,6 +90,7 @@ public sealed class ComponentTests : BunitContext
                                         ctx.Success($"Postponed {ctx.Input.Days} days.");
                                     })
                         )
+                        .Action("issue", "Issue key", a => a.Run(ctx => ctx.Result("```\nak_1\n```")))
                 )
         );
         Services.AddMudServices();
@@ -159,6 +160,23 @@ public sealed class ComponentTests : BunitContext
         provider.Find("form").Submit();
         var result = await dialog.Result;
         Assert.Equal("Postponed 3 days.", Assert.IsType<Outcome>(result!.Data).Message);
+    }
+
+    [Fact]
+    public void An_action_that_shows_a_result_raises_no_toast_beside_it()
+    {
+        Render<MudPopoverProvider>();
+        var dialogs = Render<MudDialogProvider>();
+        var actions = Render<RowActions>(ps =>
+            ps.Add(r => r.TableId, "item")
+                .Add(r => r.RowKey, "1")
+                .Add(r => r.RowLabel, "First")
+                .Add(r => r.Actions, new HashSet<string> { "issue" })
+        );
+
+        actions.Find("[data-af='action:issue']").Click();
+        dialogs.WaitForAssertion(() => Assert.Contains("ak_1", dialogs.Markup));
+        Assert.Empty(Services.GetRequiredService<ISnackbar>().ShownSnackbars);
     }
 
     [Fact]
