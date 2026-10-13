@@ -309,6 +309,19 @@ public class TableTests
             "href=\"/admin/entities/company/7\"",
             (await host.PageAsync("/admin/entities/contact")).Html
         );
+        Assert.Equal(
+            "Company id: Northwind",
+            (await host.PageAsync("/admin/entities/contact?filter:CompanyId=7")).Text(
+                "filter:CompanyId"
+            )
+        );
+
+        // A first cell with no text still links its row, by the row's label.
+        host.Contacts.Rows.Add(new Contact(3, "", "nameless@example.com", 8));
+        Assert.Contains(
+            "href=\"/admin/entities/contact/3\">3</a>",
+            (await host.PageAsync("/admin/entities/contact")).Html
+        );
 
         // A pasted key opens its row; text searches the source; computed values follow the list rule.
         using var admin = host.As();

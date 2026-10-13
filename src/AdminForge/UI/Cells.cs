@@ -25,7 +25,8 @@ internal static class Cells
                 b.OpenElement(0, "a");
                 b.AddAttribute(1, "class", "af-rowlink");
                 b.AddAttribute(2, "href", rowHref);
-                b.AddContent(3, value is null ? "—" : Text(value, column, panel));
+                var text = value is null ? "" : Text(value, column, panel);
+                b.AddContent(3, text.Length > 0 ? text : rowLabel is { Length: > 0 } ? rowLabel : "—");
                 b.CloseElement();
                 return;
             }

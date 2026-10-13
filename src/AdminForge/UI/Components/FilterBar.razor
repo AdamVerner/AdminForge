@@ -2,6 +2,7 @@
    when its value is picked. Each active filter is a chip that removes it. *@
 @implements IDisposable
 @inject PanelModel Model
+@inject AdminPanel Panel
 
 @if (_table is not null)
 {
@@ -16,8 +17,8 @@
     @foreach (var (name, value) in Filters.Where(f => f.Value is not (null or "")))
     {
         var column = _table.Column(name);
-        <span class="af-filter-chip">
-            <b>@(column?.Title ?? name):</b> @Shown(column, value)
+        <span class="af-filter-chip" data-af="filter:@name">
+            <b>@(column?.Title ?? name):</b> @(_labels.GetValueOrDefault((name, value!.ToString()!)) ?? Shown(column, value))
             <button type="button" class="af-icon-btn" aria-label="Remove filter @(column?.Title ?? name)" @onclick="@(() => SetAsync(name, null))">
                 <Icon Svg="@Icons.Material.Filled.Close" />
             </button>
@@ -78,11 +79,23 @@
     private string? _search;
     private bool _open;
     private CancellationTokenSource? _typing;
+    private readonly Dictionary<(string, string), string?> _labels = [];
 
-    protected override void OnParametersSet()
+    protected override async Task OnParametersSetAsync()
     {
         _table = Model.Table(TableId);
         if (_typing is null) _search = Search;
+        if (_table is null) return;
+        foreach (var (name, value) in Active(Filters))
+            if (_table.Column(name)?.LinksTo is { } target && !_labels.ContainsKey((name, value!.ToString()!)))
+                try
+                {
+                    _labels[(name, value.ToString()!)] = await Panel.LinkLabelAsync(target, value);
+                }
+                catch (AdminRejection)
+                {
+                    _labels[(name, value.ToString()!)] = null;
+                }
     }
 
     private IEnumerable<ColumnModel> Columns =>

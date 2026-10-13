@@ -435,6 +435,13 @@ internal sealed class AdminPanel(PanelModel model, OperationRunner runner)
             ct
         );
 
+    /// <summary>The label of the row of <paramref name="tableId"/> keyed <paramref name="value"/>; null when it is missing or the caller may not read it.</summary>
+    public Task<string?> LinkLabelAsync(
+        string tableId,
+        object value,
+        CancellationToken ct = default
+    ) => runner.RunAsync($"Reading {tableId}", op => LabelAsync(op, tableId, value, []), ct);
+
     /// <summary>The rows matching <paramref name="text"/> in every searchable table the caller may read.</summary>
     public async Task<IReadOnlyList<SearchHit>> SearchAsync(
         string text,
