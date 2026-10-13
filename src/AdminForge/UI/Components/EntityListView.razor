@@ -274,7 +274,7 @@
                     filters[k] = v;
                 try
                 {
-                    _list = await Panel.ListAsync(TableId, new ListRequest(_state.Page, _state.PageSize, _state.Search, _state.SortBy, _state.Descending, filters));
+                    _list = await Panel.ListAsync(TableId, new ListRequest(_state.Page, _state.PageSize, _state.Search, _state.SortBy, _state.Descending, filters, Columns: Columns));
                     _error = null;
                     await OnLoaded.InvokeAsync((_list.Total, _list.CanCreate));
                 }

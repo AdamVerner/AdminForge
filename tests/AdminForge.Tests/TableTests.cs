@@ -266,13 +266,14 @@ public class TableTests
                         .Computed("domain-list", c => c.Domains.ToList())
                         .Related<Contact>(
                             c => c.CompanyId,
-                            r => r.Inline().Columns(c => c.Name, c => c.Email)
+                            r => r.Inline().Columns("Name", "Email", "initial")
                         )
                 )
                 .Table<Contact>(t =>
                     t.Title("People")
                         .Source<ContactStore>(s => s.Filters(c => c.CompanyId))
                         .Column(c => c.CompanyId, c => c.LinksTo<Company>())
+                        .Computed("initial", c => c.Name[..1])
                 )
                 .Table<Event>(t =>
                     t.Source<EventLog>(
@@ -302,7 +303,10 @@ public class TableTests
         Assert.Contains("Pays late", detail.Text("value:Notes"));
         Assert.StartsWith("People", detail.Text("tab:contact"));
         Assert.Contains("Brian", detail.Text("related:contact"));
-        Assert.Equal(["Name", "Email"], detail.Within("related:contact").Hooks("column:"));
+        // An inline table can show a computed column the child's own list leaves out.
+        var related = detail.Within("related:contact");
+        Assert.Equal(["Name", "Email", "initial"], related.Hooks("column:"));
+        Assert.Equal("Adaada@example.comA", related.Text("row"));
 
         // A foreign key cell links to the row it names.
         Assert.Contains(

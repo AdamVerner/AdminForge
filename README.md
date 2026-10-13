@@ -166,6 +166,9 @@ panel.Table<Company>(t => t
     .Related<Contact>(c => c.CompanyId, r => r.Title("People").Inline().Columns(c => c.Name, c => c.Email)));
 ```
 
+`Columns("Name", "open-tickets")` names the inline table's columns as strings. Use it to show a
+computed column that the child's own list leaves out.
+
 ## Actions and input records
 
 An action is a button on a row. The panel loads the row, asks the policy with it, and then runs the

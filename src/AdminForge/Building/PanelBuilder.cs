@@ -260,6 +260,10 @@ public sealed class PanelBuilder
                 throw new InvalidOperationException(
                     $"Table '{table.Id}' has a composite key, so Related cannot pin a child to it."
                 );
+            if (related.Columns?.FirstOrDefault(c => child.Column(c) is null) is { } unknown)
+                throw new InvalidOperationException(
+                    $"Table '{table.Id}' shows '{child.Id}' with a column '{unknown}', which '{child.Id}' does not have."
+                );
         }
         foreach (var table in tables)
         foreach (var column in table.Columns)

@@ -38,7 +38,7 @@ internal sealed class AdminPanel(PanelModel model, OperationRunner runner)
                 var views = new List<RowView>(rows.Count);
                 var labels = new Dictionary<(string, string), string?>();
                 foreach (var row in rows)
-                    views.Add(await ViewAsync(op, t, row, listed: true, labels));
+                    views.Add(await ViewAsync(op, t, row, listed: true, labels, request.Columns));
                 var canCreate =
                     t.Source.Create is not null && await op.AllowsAsync(t, AdminOp.Create, null);
                 return new ListView(t.Id, views, total, page, size, canCreate);
@@ -646,13 +646,14 @@ internal sealed class AdminPanel(PanelModel model, OperationRunner runner)
         TableModel t,
         object row,
         bool listed,
-        Dictionary<(string, string), string?> labels
+        Dictionary<(string, string), string?> labels,
+        IReadOnlyCollection<string>? shown = null
     )
     {
         var values = new Dictionary<string, object?>(StringComparer.Ordinal);
         foreach (var c in t.Columns)
         {
-            if (listed && !c.InList)
+            if (listed && !c.InList && shown?.Contains(c.Name) != true)
                 continue;
             values[c.Name] = c.Compute is { } compute
                 ? await compute(op.Services, row, op.CancellationToken)

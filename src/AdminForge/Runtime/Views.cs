@@ -7,7 +7,8 @@ internal sealed record ListRequest(
     string? SortBy = null,
     bool Descending = false,
     IReadOnlyDictionary<string, object?>? Filters = null,
-    IReadOnlySet<string>? Exact = null
+    IReadOnlySet<string>? Exact = null,
+    IReadOnlyCollection<string>? Columns = null
 );
 
 /// <summary>What the caller may do to one row, decided by the pipeline with the row.</summary>

@@ -313,6 +313,20 @@ public class StartupTests
                 "names table 'nope', which is not registered"
             },
             {
+                "unknown related column",
+                p =>
+                    p.AllowAnonymous()
+                        .Table<Company>(t =>
+                            t.Source<CompanyList, int>(
+                                    (list, q, _) => list.ListAsync(q),
+                                    (list, id, _) => list.FindAsync(id)
+                                )
+                                .Related<Contact>(c => c.CompanyId, r => r.Inline().Columns("nope"))
+                        )
+                        .Table<Contact>(t => t.Source<ContactStore>(s => s.Filters(c => c.CompanyId))),
+                "shows 'contact' with a column 'nope'"
+            },
+            {
                 "link to a composite key",
                 p =>
                     p.AllowAnonymous()

@@ -578,6 +578,13 @@ public sealed class RelatedBuilder<TChild>
         return this;
     }
 
+    /// <summary>The inline table's columns by name, which also reaches the child's computed columns.</summary>
+    public RelatedBuilder<TChild> Columns(params string[] columns)
+    {
+        _columns = [.. columns];
+        return this;
+    }
+
     internal RelatedModel Build(BuildContext ctx, string who) =>
         // An empty title takes the child table's own, once every table is built.
         new(
