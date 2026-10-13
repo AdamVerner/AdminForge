@@ -28,6 +28,32 @@ public sealed class LockingLogin : IAdminCredentialValidator
 public class LoginTests
 {
     [Fact]
+    public async Task The_host_adds_its_own_conventions_to_the_login_endpoints()
+    {
+        await using var host = await PanelHost.StartAsync(
+            p =>
+                p.UseLogin<LockingLogin>(
+                    endpoints: e =>
+                        e.AddEndpointFilter(
+                            async (context, next) =>
+                            {
+                                context.HttpContext.Response.Headers["X-Host-Filter"] = "ran";
+                                return await next(context);
+                            }
+                        )
+                ),
+            login: true
+        );
+        var browser = host.Http(null, new CookieContainer());
+
+        Assert.Equal("ran", (await browser.GetAsync("/admin/login")).Headers.GetValues("X-Host-Filter").Single());
+        Assert.Equal(
+            "ran",
+            (await SignInAsync(browser, "admin", "nope")).Headers.GetValues("X-Host-Filter").Single()
+        );
+    }
+
+    [Fact]
     public async Task Sign_in_refuses_locks_out_redirects_only_locally_and_signs_out()
     {
         await using var host = await PanelHost.StartAsync(

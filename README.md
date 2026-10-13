@@ -402,6 +402,9 @@ public sealed class Credentials(AdminStore admins) : IAdminCredentialValidator
 `Locked` answers 429 with a `Retry-After` header. If the `returnUrl` is a path on this site,
 sign-in redirects there. Otherwise it opens the panel.
 
+`UseLogin<TValidator>(endpoints: e => ...)` runs on the login page, sign-in and sign-out endpoints.
+Use it to add an endpoint filter, such as one that pads sign-in to a constant time, or a rate limit.
+
 ## MCP
 
 `AdminForge.Mcp` serves the panel as MCP tools for AI agents:

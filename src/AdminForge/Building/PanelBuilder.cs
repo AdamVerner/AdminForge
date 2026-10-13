@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Routing;
@@ -139,11 +140,17 @@ public sealed class PanelBuilder
     }
 
     /// <summary>The panel's own sign-in over <typeparamref name="TValidator"/>: a cookie, a login page at <c>/admin/login</c>, and sign-out.</summary>
-    /// <remarks>Its signed-in policy becomes the umbrella policy.</remarks>
-    public PanelBuilder UseLogin<TValidator>(Action<CookieAuthenticationOptions>? configure = null)
+    /// <remarks>
+    /// Its signed-in policy becomes the umbrella policy. <paramref name="endpoints"/> runs on the login
+    /// page, sign-in and sign-out endpoints, such as to add an endpoint filter or a rate limit.
+    /// </remarks>
+    public PanelBuilder UseLogin<TValidator>(
+        Action<CookieAuthenticationOptions>? configure = null,
+        Action<IEndpointConventionBuilder>? endpoints = null
+    )
         where TValidator : class, IAdminCredentialValidator
     {
-        Login.Register<TValidator>(this, configure);
+        Login.Register<TValidator>(this, configure, endpoints);
         RequireAuthorization(Login.Policy);
         SignOut(Login.LogoutPath);
         return this;

@@ -47,7 +47,8 @@ internal static class Login
 
     public static void Register<TValidator>(
         PanelBuilder panel,
-        Action<CookieAuthenticationOptions>? configure
+        Action<CookieAuthenticationOptions>? configure,
+        Action<IEndpointConventionBuilder>? conventions
     )
         where TValidator : class, IAdminCredentialValidator
     {
@@ -69,14 +70,22 @@ internal static class Login
         services
             .AddAuthorizationBuilder()
             .AddPolicy(Policy, p => p.AddAuthenticationSchemes(Scheme).RequireAuthenticatedUser());
-        panel.Endpoints.Add((endpoints, _) => Map(endpoints));
+        panel.Endpoints.Add((endpoints, _) => Map(endpoints, conventions));
     }
 
-    private static void Map(IEndpointRouteBuilder endpoints)
+    private static void Map(
+        IEndpointRouteBuilder endpoints,
+        Action<IEndpointConventionBuilder>? conventions
+    )
     {
-        endpoints.MapGet(LoginPath, Show).AllowAnonymous().DenyFraming();
-        endpoints.MapPost(LoginPath, SignInAsync).AllowAnonymous().DenyFraming();
-        endpoints.MapPost(LogoutPath, SignOut).RequireAuthorization(Policy);
+        IEndpointConventionBuilder[] mapped =
+        [
+            endpoints.MapGet(LoginPath, Show).AllowAnonymous().DenyFraming(),
+            endpoints.MapPost(LoginPath, SignInAsync).AllowAnonymous().DenyFraming(),
+            endpoints.MapPost(LogoutPath, SignOut).RequireAuthorization(Policy),
+        ];
+        foreach (var endpoint in mapped)
+            conventions?.Invoke(endpoint);
     }
 
     private static IResult Show(
