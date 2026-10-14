@@ -1,7 +1,10 @@
 using System.Net;
+using System.Reflection;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http.Metadata;
+using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using static AdminForge.Tests.PanelHost;
 
@@ -51,6 +54,14 @@ public class LoginTests
             "ran",
             (await SignInAsync(browser, "admin", "nope")).Headers.GetValues("X-Host-Filter").Single()
         );
+
+        // The panel's own endpoints stay out of the host's OpenAPI document.
+        var described = host.Services.GetRequiredService<EndpointDataSource>().Endpoints
+            .OfType<RouteEndpoint>()
+            .Where(e => e.Metadata.GetMetadata<MethodInfo>() is not null)
+            .Where(e => e.Metadata.GetMetadata<IExcludeFromDescriptionMetadata>()?.ExcludeFromDescription != true)
+            .Select(e => e.RoutePattern.RawText);
+        Assert.Empty(described);
     }
 
     [Fact]

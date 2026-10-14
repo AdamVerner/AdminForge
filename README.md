@@ -407,6 +407,9 @@ sign-in redirects there. Otherwise it opens the panel.
 
 `UseLogin<TValidator>(endpoints: e => ...)` runs on the login page, sign-in and sign-out endpoints.
 Use it to add an endpoint filter, such as one that pads sign-in to a constant time, or a rate limit.
+The callback gets an `IEndpointConventionBuilder`, so name it in a generic filter:
+`e => e.AddEndpointFilter<IEndpointConventionBuilder, PadSignIn>()`. The panel's endpoints stay out of
+the host's OpenAPI document.
 
 ## MCP
 

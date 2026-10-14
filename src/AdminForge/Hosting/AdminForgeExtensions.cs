@@ -82,8 +82,11 @@ public static class AdminForgeExtensions
                 )
                     e.Metadata.Add(new AllowAnonymousAttribute());
             });
+        // The panel's endpoints are its own, not part of the host's API, so they stay out of its OpenAPI document.
+        var own = endpoints.MapGroup("");
+        own.ExcludeFromDescription();
         foreach (var map in builder.Endpoints)
-            map(endpoints, panel);
+            map(own, panel);
 
         var components = endpoints
             .MapRazorComponents<App>()
@@ -96,7 +99,7 @@ public static class AdminForgeExtensions
         var notFound = endpoints.MapFallback(
             $"{PanelModel.Root}/{{**path}}",
             () => new RazorComponentResult<App> { StatusCode = StatusCodes.Status404NotFound }
-        );
+        ).ExcludeFromDescription();
         if (panel.Policy is not null)
         {
             components.RequireAuthorization(panel.Policy);
