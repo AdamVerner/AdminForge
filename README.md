@@ -116,6 +116,7 @@ What a source receives:
 | `SortBy`, `SortDescending`, `SortedBy(x => x.Prop, out desc)` | The sorted column. Null keeps the source's own order. |
 | `Filters`, `Filter(x => x.Prop)` | Filter values, already converted to the column's type. |
 | `Exact` | Filters that must match exactly even on text: a related table's pin to its parent, and link columns. |
+| `Hidden` | Columns removed with `Hide(...)`. A search must not match on them, or it would reveal their values. |
 
 `AdminPage.From(rows, query)` filters, sorts and pages a list in memory. Text filters match a
 substring in any case, and other filters and those in `Exact` match exactly.
@@ -442,8 +443,9 @@ panel, so use it with `RequireAuthorization(...)` or `UseLogin<T>()`.
 - Set `PublicBaseUrl` behind a proxy. Without it, the OAuth documents take their URLs from the
   request's Host header.
 - Connections live in memory and end on a restart. To keep them, register your own
-  `IMcpConnectionStore` that advances a refresh token atomically, and persist the Data Protection
-  keys. Without persisted keys, every token dies on a restart.
+  `IMcpConnectionStore` that advances a refresh token atomically and stores every `McpConnection`
+  property, including the admin's `NameClaimType` and `RoleClaimType`. Persist the Data Protection
+  keys too. Without persisted keys, every token dies on a restart.
 - A refresh token that is used again ends its connection as a replay. The exception is reuse within
   10 seconds of its first use, while the token that replaced it is still the newest. That is a
   client refreshing from two requests at once. The grace is held per process.
