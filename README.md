@@ -45,6 +45,11 @@ signed-in user on every operation.
 here, at startup, and the message names the fix. For example, a panel with neither
 `RequireAuthorization(...)`, `UseLogin<T>()` nor `AllowAnonymous()` does not start.
 
+Everything the panel serves lives under `/admin`. That includes its Blazor circuit at
+`/admin/_blazor`, which carries every write, so a host that sorts traffic by path finds it there.
+The framework's own `/_blazor` endpoints stay mapped for its one-time initializer fetch and its
+disconnect beacon.
+
 `examples/TodoApp` uses every feature in this file except `RequireAuthorization(...)` and
 `AllowAnonymous()`, which cannot run beside its `UseLogin<T>()`. Run it with `task example:todo` and
 sign in as `admin` / `admin`.

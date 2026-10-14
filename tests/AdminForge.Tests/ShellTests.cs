@@ -126,6 +126,17 @@ public class ShellTests
         Assert.Contains("This page doesn't exist", shell.Html.Replace("&#x27;", "'"));
         Assert.True(shell.Has("nav:ticket"));
 
+        // The circuit, which carries every write, runs under the panel's root, under its policy.
+        Assert.Contains("withUrl(\"admin/_blazor\")", shell.Html);
+        Assert.Equal(
+            System.Net.HttpStatusCode.OK,
+            (await host.Http().PostAsync("/admin/_blazor/negotiate?negotiateVersion=1", null)).StatusCode
+        );
+        Assert.NotEqual(
+            System.Net.HttpStatusCode.OK,
+            (await host.Http(null).PostAsync("/admin/_blazor/negotiate?negotiateVersion=1", null)).StatusCode
+        );
+
         // A page that finds nothing at its address answers 404 too, with its own message.
         foreach (var (path, message) in new[]
         {

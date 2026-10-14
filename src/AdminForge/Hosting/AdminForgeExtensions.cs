@@ -102,6 +102,10 @@ public static class AdminForgeExtensions
             .MapRazorComponents<App>()
             .AddInteractiveServerRenderMode(o => o.ContentSecurityFrameAncestorsPolicy = "'none'")
             .AddAdditionalAssemblies([.. panel.HostAssemblies]);
+        // The panel's circuit, and with it every write, runs under the panel's root, where a host
+        // that sorts traffic by path finds it; App.razor points the client here.
+        var hub = endpoints.MapBlazorHub(App.Hub);
+        hub.ExcludeFromDescription();
 
         // On the endpoints the host's scheme decides what a refused request gets: a cookie
         // scheme redirects to its login, a bearer scheme answers 401.
@@ -113,6 +117,7 @@ public static class AdminForgeExtensions
         if (panel.Policy is not null)
         {
             components.RequireAuthorization(panel.Policy);
+            hub.RequireAuthorization(panel.Policy);
             notFound.RequireAuthorization(panel.Policy);
         }
         return components;
