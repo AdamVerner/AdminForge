@@ -141,12 +141,12 @@ public sealed class PanelBuilder
 
     /// <summary>The panel's own sign-in over <typeparamref name="TValidator"/>: a cookie, a login page at <c>/admin/login</c>, and sign-out.</summary>
     /// <remarks>
-    /// Its signed-in policy becomes the umbrella policy. <paramref name="endpoints"/> runs on the login
-    /// page, sign-in and sign-out endpoints, such as to add an endpoint filter or a rate limit.
+    /// Its signed-in policy becomes the umbrella policy. <paramref name="endpoints"/> runs on each of the
+    /// login page, sign-in and sign-out endpoints, named, such as to add an endpoint filter or a rate limit.
     /// </remarks>
     public PanelBuilder UseLogin<TValidator>(
         Action<CookieAuthenticationOptions>? configure = null,
-        Action<IEndpointConventionBuilder>? endpoints = null
+        Action<LoginEndpoint, IEndpointConventionBuilder>? endpoints = null
     )
         where TValidator : class, IAdminCredentialValidator
     {

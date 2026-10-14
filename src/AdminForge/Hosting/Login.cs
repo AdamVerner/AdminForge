@@ -37,6 +37,19 @@ public abstract record LoginResult
     internal sealed record LockedOut(TimeSpan RetryAfter) : LoginResult;
 }
 
+/// <summary>One of the endpoints <c>UseLogin</c> maps.</summary>
+public enum LoginEndpoint
+{
+    /// <summary>GET of the login page.</summary>
+    Page,
+
+    /// <summary>POST of the login form.</summary>
+    SignIn,
+
+    /// <summary>POST of sign-out.</summary>
+    SignOut,
+}
+
 /// <summary>The panel's own sign-in: a cookie scheme, a policy over it, a login page and sign-out.</summary>
 internal static class Login
 {
@@ -48,7 +61,7 @@ internal static class Login
     public static void Register<TValidator>(
         PanelBuilder panel,
         Action<CookieAuthenticationOptions>? configure,
-        Action<IEndpointConventionBuilder>? conventions
+        Action<LoginEndpoint, IEndpointConventionBuilder>? conventions
     )
         where TValidator : class, IAdminCredentialValidator
     {
@@ -75,17 +88,17 @@ internal static class Login
 
     private static void Map(
         IEndpointRouteBuilder endpoints,
-        Action<IEndpointConventionBuilder>? conventions
+        Action<LoginEndpoint, IEndpointConventionBuilder>? conventions
     )
     {
-        IEndpointConventionBuilder[] mapped =
+        (LoginEndpoint, IEndpointConventionBuilder)[] mapped =
         [
-            endpoints.MapGet(LoginPath, Show).AllowAnonymous().DenyFraming(),
-            endpoints.MapPost(LoginPath, SignInAsync).AllowAnonymous().DenyFraming(),
-            endpoints.MapPost(LogoutPath, SignOut).RequireAuthorization(Policy),
+            (LoginEndpoint.Page, endpoints.MapGet(LoginPath, Show).AllowAnonymous().DenyFraming()),
+            (LoginEndpoint.SignIn, endpoints.MapPost(LoginPath, SignInAsync).AllowAnonymous().DenyFraming()),
+            (LoginEndpoint.SignOut, endpoints.MapPost(LogoutPath, SignOut).RequireAuthorization(Policy)),
         ];
-        foreach (var endpoint in mapped)
-            conventions?.Invoke(endpoint);
+        foreach (var (which, endpoint) in mapped)
+            conventions?.Invoke(which, endpoint);
     }
 
     private static IResult Show(

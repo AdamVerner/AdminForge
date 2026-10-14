@@ -36,11 +36,11 @@ public class LoginTests
         await using var host = await PanelHost.StartAsync(
             p =>
                 p.UseLogin<LockingLogin>(
-                    endpoints: e =>
+                    endpoints: (which, e) =>
                         e.AddEndpointFilter(
                             async (context, next) =>
                             {
-                                context.HttpContext.Response.Headers["X-Host-Filter"] = "ran";
+                                context.HttpContext.Response.Headers["X-Host-Filter"] = which.ToString();
                                 return await next(context);
                             }
                         )
@@ -49,9 +49,9 @@ public class LoginTests
         );
         var browser = host.Http(null, new CookieContainer());
 
-        Assert.Equal("ran", (await browser.GetAsync("/admin/login")).Headers.GetValues("X-Host-Filter").Single());
+        Assert.Equal("Page", (await browser.GetAsync("/admin/login")).Headers.GetValues("X-Host-Filter").Single());
         Assert.Equal(
-            "ran",
+            "SignIn",
             (await SignInAsync(browser, "admin", "nope")).Headers.GetValues("X-Host-Filter").Single()
         );
 
