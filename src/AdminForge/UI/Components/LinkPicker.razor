@@ -41,10 +41,11 @@
 
     private async Task<IEnumerable<RowView>> SearchAsync(string? text, CancellationToken ct)
     {
-        var rows = (await Panel.ListAsync(TableId, new ListRequest(PageSize: 20, Search: text), ct)).Rows;
-        return Panel.Model.Table(TableId)!.Searchable || string.IsNullOrWhiteSpace(text)
-            ? rows
-            : rows.Where(r => r.Label.Contains(text, StringComparison.CurrentCultureIgnoreCase));
+        if (Panel.Model.Table(TableId)!.Searchable || string.IsNullOrWhiteSpace(text))
+            return (await Panel.ListAsync(TableId, new ListRequest(PageSize: 20, Search: text), ct)).Rows;
+        // The source cannot search, so the labels are matched here, over as many rows as a picker can hold.
+        var rows = (await Panel.ListAsync(TableId, new ListRequest(PageSize: 500), ct)).Rows;
+        return rows.Where(r => r.Label.Contains(text, StringComparison.CurrentCultureIgnoreCase)).Take(20);
     }
 
     private Task Pick(RowView? row)

@@ -189,8 +189,9 @@ else
             Missing.Row(_table, Key);
             return;
         }
+        // The selected tab's list reports its own total; only the others are counted here.
         if (_view is not null)
-            foreach (var related in _view.Related.Where(r => r.Model.Inline))
+            foreach (var related in _view.Related.Where(r => r.Model.Inline).Skip(1))
                 try
                 {
                     _counts[related.Model.TableId] = (await Panel.ListAsync(related.Model.TableId, new ListRequest(PageSize: 1, Filters: related.Filter))).Total;
