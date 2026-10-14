@@ -26,8 +26,13 @@ internal static class MarkdownRenderer
     {
         var document = Markdown.Parse(markdown, Pipeline);
         foreach (var link in document.Descendants<LinkInline>())
+        {
             if (!IsSafe(link.Url))
                 link.Url = "";
+            // An image from elsewhere would have the admin's browser call that host on sight; it becomes a link.
+            if (link.IsImage && !IsLocal(link.Url))
+                link.IsImage = false;
+        }
         foreach (var link in document.Descendants<AutolinkInline>())
             if (!IsSafe(link.Url))
                 link.Url = "";
@@ -63,6 +68,13 @@ internal static class MarkdownRenderer
     }
 
     // Browsers drop whitespace and control characters inside a scheme, so "java\tscript:" is still javascript.
+    /// <summary>A URL on this site: relative, and not "//host", which a browser reads as another host, as it does any backslash.</summary>
+    private static bool IsLocal(string? url)
+    {
+        var compact = new string((url ?? "").Where(c => c > ' ').ToArray()).Replace('\\', '/');
+        return Uri.TryCreate(compact, UriKind.Relative, out _) && !compact.StartsWith("//", StringComparison.Ordinal);
+    }
+
     private static bool IsSafe(string? url)
     {
         var compact = new string((url ?? "").Where(c => c > ' ').ToArray());

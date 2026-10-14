@@ -339,6 +339,16 @@ public class UnitTests
         Assert.DoesNotContain(" onerror=\"", attributes);
         Assert.DoesNotContain(" style=\"", attributes);
 
+        // Only an image on this site loads; one from elsewhere is a link the admin may choose to follow.
+        var images = MarkdownRenderer.ToHtml(
+            "![a](/admin/logo.png) ![b](https://evil.test/p.png) ![c](//evil.test/p.png) ![d](\\\\\\\\evil.test/p.png)"
+        );
+        Assert.Equal(
+            ["/admin/logo.png"],
+            System.Text.RegularExpressions.Regex.Matches(images, "<img src=\"([^\"]*)\"").Select(m => m.Groups[1].Value)
+        );
+        Assert.Contains("<a href=\"https://evil.test/p.png\">b</a>", images);
+
         var links = MarkdownRenderer.ToHtml(
             "[a](javascript:alert(1)) <javascript:alert(2)> ![i](data:text/html,x) [b](JAVASCRIPT:x) [r](&#106;avascript:x) "
                 + "[ok](https://x.test/p) [rel](/admin/x?y=1:2) <mailto:a@x.test>"

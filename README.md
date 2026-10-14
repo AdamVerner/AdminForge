@@ -208,8 +208,9 @@ annotations set the rules. `Field(...)` adds what a type cannot say:
 | `Accept(...)`, `MaxBytes(...)` | Rules for an `AdminFile` property, which is an upload. |
 | `Title`, `Description`, `Validate` | Label, help text and a server-side rule. |
 
-`ctx.Success(message)` shows a toast. `ctx.Result(markdown)` shows a Markdown document. An uploaded
-file is held in memory. Its audit entry records its name, type and size, never its bytes.
+`ctx.Success(message)` shows a toast. `ctx.Result(markdown)` shows a Markdown document. Markdown
+anywhere in the panel renders without raw HTML, attributes or script links, and an image loads only
+from this site; one from elsewhere shows as a link. An uploaded file is held in memory. Its audit entry records its name, type and size, never its bytes.
 
 An action can also take its shape from the row:
 
