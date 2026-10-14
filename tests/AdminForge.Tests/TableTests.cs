@@ -37,6 +37,23 @@ public class TableTests
     }
 
     [Fact]
+    public async Task A_list_link_with_a_sort_the_table_lacks_opens_in_the_default_order()
+    {
+        await using var host = await PanelHost.StartAsync(p =>
+            p.Table<Ticket>(t => t.Computed("Shout", x => x.Title.ToUpperInvariant()))
+        );
+        using var admin = host.As();
+        await admin.Panel.CreateAsync("ticket", Args(("Title", "Printer jam"), ("Status", "Open")));
+
+        foreach (var sort in new[] { "Shout", "Credits" })
+        {
+            var page = await host.PageAsync($"/admin/entities/ticket?sort={sort}&desc=1");
+            Assert.False(page.Has("error"), sort);
+            Assert.Equal(1, page.Count("row"));
+        }
+    }
+
+    [Fact]
     public async Task An_EF_table_creates_edits_and_deletes_with_an_audit_diff()
     {
         await using var host = await PanelHost.StartAsync(Tickets);

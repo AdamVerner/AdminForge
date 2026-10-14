@@ -222,7 +222,8 @@
             Math.Max(0, (int.TryParse(Get("page"), out var p) ? p : 1) - 1),
             int.TryParse(Get("size"), out var s) && PageSizes.Contains(s) ? s : 25,
             Get("q"),
-            Get("sort"),
+            // A link may name a column that is no longer sortable; it opens in the default order instead.
+            _table!.Column(Get("sort") ?? "") is { Sortable: true } sort ? sort.Name : null,
             Get("desc") == "1",
             filters);
     }
