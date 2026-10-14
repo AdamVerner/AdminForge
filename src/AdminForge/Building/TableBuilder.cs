@@ -351,7 +351,8 @@ public sealed class TableBuilder<T>
             var s = _columns.GetValueOrDefault(p.Name) ?? new ColumnSettings();
             var isKey = keyNames.Contains(p.Name);
             var generated = shape?.Generated.Contains(p.Name) == true;
-            var writable = isScalar && rows.CanSet(p) && !s.ReadOnly && !generated;
+            var stored = shape?.Unmapped.Contains(p.Name) != true;
+            var writable = isScalar && stored && rows.CanSet(p) && !s.ReadOnly && !generated;
             var keyEditable = isKey && shape is not null && writable;
             columns.Add(
                 Column(p.Name, p.PropertyType, s) with
@@ -370,11 +371,12 @@ public sealed class TableBuilder<T>
                     // A timestamp filter matches to the tick, which nobody means.
                     Filterable =
                         isScalar
+                        && stored
                         && source.CanFilter(p.Name)
                         && !new[] { typeof(DateTime), typeof(DateTimeOffset) }.Contains(
                             Nullable.GetUnderlyingType(p.PropertyType) ?? p.PropertyType
                         ),
-                    Sortable = isScalar && source.CanSort(p.Name),
+                    Sortable = isScalar && stored && source.CanSort(p.Name),
                 }
             );
         }
@@ -416,6 +418,7 @@ public sealed class TableBuilder<T>
             Live = _live,
             Poll = _poll,
             Empty = _empty,
+            Hidden = _hidden,
             DeleteWhen = _deleteWhen is { } when ? row => when((T)row) : null,
             Authorize = _authorize is { } rule ? (user, op, row) => rule(user, op, (T?)row) : null,
             Request = (user, op, row) => new TableRequest<T>(user, id, op, (T?)row),

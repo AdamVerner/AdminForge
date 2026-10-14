@@ -81,7 +81,8 @@ public sealed class AdminQuery<T>(
     string? sortBy = null,
     bool sortDescending = false,
     IReadOnlyDictionary<string, object?>? filters = null,
-    IReadOnlySet<string>? exact = null
+    IReadOnlySet<string>? exact = null,
+    IReadOnlySet<string>? hidden = null
 )
     where T : class
 {
@@ -100,6 +101,9 @@ public sealed class AdminQuery<T>(
 
     /// <summary>Filters that match by equality even on text: a related table's pin to its parent, and link columns.</summary>
     public IReadOnlySet<string> Exact { get; } = exact ?? new HashSet<string>();
+
+    /// <summary>Properties hidden from every surface; a search must not match on them either.</summary>
+    public IReadOnlySet<string> Hidden { get; } = hidden ?? new HashSet<string>();
 
     /// <summary>Whether the list is sorted by <paramref name="column"/>, and in which direction.</summary>
     public bool SortedBy<TProp>(Expression<Func<T, TProp>> column, out bool descending)

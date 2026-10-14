@@ -39,6 +39,7 @@ public class EfSource<TDb, T>(TDb db)
                 .GetProperties(BindingFlags.Public | BindingFlags.Instance)
                 .Where(p =>
                     p.PropertyType == typeof(string)
+                    && !query.Hidden.Contains(p.Name)
                     && Db.Model.FindEntityType(typeof(T))?.FindProperty(p.Name) is not null
                 )
                 .Select(p => Like(Expression.Property(row, p), search))
@@ -50,14 +51,16 @@ public class EfSource<TDb, T>(TDb db)
                 rows = rows.Where(Expression.Lambda<Func<T, bool>>(any, row));
         }
         var total = await rows.CountAsync(ct).ConfigureAwait(false);
-        // A stable order, so paging is deterministic: the requested column, else the key.
-        var sort =
-            query.SortBy
-            ?? Db.Model.FindEntityType(typeof(T))!.FindPrimaryKey()!.Properties[0].Name;
-        rows =
-            query.SortDescending && query.SortBy is not null
-                ? rows.OrderByDescending(r => EF.Property<object>(r, sort))
-                : rows.OrderBy(r => EF.Property<object>(r, sort));
+        // A stable order, so paging is deterministic: the requested column, then every key part.
+        var keys = Db.Model.FindEntityType(typeof(T))!.FindPrimaryKey()!.Properties.Select(p => p.Name);
+        var ordered = query.SortBy is not { } sort ? null
+            : query.SortDescending ? rows.OrderByDescending(r => EF.Property<object>(r, sort))
+            : rows.OrderBy(r => EF.Property<object>(r, sort));
+        foreach (var key in keys)
+            ordered = ordered is null
+                ? rows.OrderBy(r => EF.Property<object>(r, key))
+                : ordered.ThenBy(r => EF.Property<object>(r, key));
+        rows = ordered!;
         var page = await rows.Skip(query.Page.Skip)
             .Take(query.Page.Size)
             .ToListAsync(ct)
@@ -149,6 +152,12 @@ public static class EntityFrameworkPanelExtensions
             var entity = scope.ServiceProvider.GetRequiredService<TDb>().Model.FindEntityType(type);
             if (entity is null)
                 return null;
+            var navigations = entity
+                .GetNavigations()
+                .Cast<INavigationBase>()
+                .Concat(entity.GetSkipNavigations())
+                .Select(n => n.Name)
+                .ToHashSet();
             return new EntityShape(
                 entity.FindPrimaryKey()?.Properties.Select(p => p.Name).ToList()
                     ?? throw new InvalidOperationException(
@@ -156,14 +165,17 @@ public static class EntityFrameworkPanelExtensions
                     ),
                 entity
                     .GetProperties()
-                    .Where(p => p.ValueGenerated != ValueGenerated.Never)
+                    // HasDefaultValue is only a default; a SQL default, a computed column or an identity is the store's.
+                    .Where(p =>
+                        p.ValueGenerated != ValueGenerated.Never
+                        && p.FindAnnotation("Relational:DefaultValue") is null
+                    )
                     .Select(p => p.Name)
                     .ToHashSet(),
-                entity
-                    .GetNavigations()
-                    .Cast<INavigationBase>()
-                    .Concat(entity.GetSkipNavigations())
-                    .Select(n => n.Name)
+                navigations,
+                type.GetProperties(BindingFlags.Public | BindingFlags.Instance)
+                    .Where(p => entity.FindProperty(p.Name) is null && !navigations.Contains(p.Name))
+                    .Select(p => p.Name)
                     .ToHashSet()
             );
         };

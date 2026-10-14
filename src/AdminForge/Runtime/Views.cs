@@ -8,6 +8,7 @@ internal sealed record ListRequest(
     bool Descending = false,
     IReadOnlyDictionary<string, object?>? Filters = null,
     IReadOnlySet<string>? Exact = null,
+    IReadOnlySet<string>? Hidden = null,
     IReadOnlyCollection<string>? Columns = null
 );
 

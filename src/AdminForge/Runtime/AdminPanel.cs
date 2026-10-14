@@ -638,6 +638,7 @@ internal sealed class AdminPanel(PanelModel model, OperationRunner runner)
                 Search = search,
                 Filters = filters,
                 Exact = t.Exact,
+                Hidden = t.Hidden,
             },
             op.CancellationToken
         );

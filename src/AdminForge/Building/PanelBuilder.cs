@@ -306,10 +306,12 @@ public sealed class PanelBuilder
 internal sealed record TableEntry(string Id, Type ClrType, Func<BuildContext, TableModel> Build);
 
 /// <summary>A row type as its store describes it: its key, the properties it generates, the ones that are not columns.</summary>
+/// <param name="Unmapped">Properties the store does not hold: shown, but never sorted, filtered or written.</param>
 internal sealed record EntityShape(
     IReadOnlyList<string> Keys,
     IReadOnlySet<string> Generated,
-    IReadOnlySet<string> NotColumns
+    IReadOnlySet<string> NotColumns,
+    IReadOnlySet<string> Unmapped
 );
 
 internal sealed class BuildContext(

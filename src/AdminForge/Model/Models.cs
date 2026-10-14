@@ -131,6 +131,7 @@ internal sealed record TableModel
     public TimeSpan? Poll { get; init; }
     public string? Empty { get; init; }
     public Func<object, bool>? DeleteWhen { get; init; }
+    public IReadOnlySet<string> Hidden { get; init; } = new HashSet<string>();
 
     /// <summary>Filters that match by equality even on text: a related table's pin and link columns.</summary>
     public IReadOnlySet<string> Exact { get; init; } = new HashSet<string>();

@@ -30,16 +30,29 @@ public sealed class Person
     public string Email { get; set; } = "";
 }
 
+/// <summary>An entity with what EF maps unlike a plain column: a constant default and a property it does not store.</summary>
+public sealed class Gadget
+{
+    public int Id { get; set; }
+    public string Name { get; set; } = "";
+    public string Tier { get; set; } = "";
+    public string Secret { get; set; } = "";
+
+    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+    public string Shout => Name.ToUpperInvariant();
+}
+
 public sealed class TestDb(DbContextOptions<TestDb> options) : DbContext(options)
 {
     public DbSet<Ticket> Tickets => Set<Ticket>();
     public DbSet<Person> People => Set<Person>();
+    public DbSet<Gadget> Gadgets => Set<Gadget>();
 
-    protected override void OnModelCreating(ModelBuilder model) =>
-        model
-            .Entity<Ticket>()
-            .Property(t => t.CreatedAt)
-            .HasDefaultValueSql("'2026-01-02 03:04:05'");
+    protected override void OnModelCreating(ModelBuilder model)
+    {
+        model.Entity<Ticket>().Property(t => t.CreatedAt).HasDefaultValueSql("'2026-01-02 03:04:05'");
+        model.Entity<Gadget>().Property(g => g.Tier).HasDefaultValue("basic");
+    }
 }
 
 /// <summary>A provider-backed read model, a positional record: no parameterless constructor, no setters.</summary>

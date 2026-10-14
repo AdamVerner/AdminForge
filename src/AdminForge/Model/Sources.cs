@@ -79,7 +79,7 @@ internal static class Sources
 {
     public static AdminQuery<T> Query<T>(ListRequest q)
         where T : class =>
-        new(new(q.Page, q.PageSize), q.Search, q.SortBy, q.Descending, q.Filters, q.Exact);
+        new(new(q.Page, q.PageSize), q.Search, q.SortBy, q.Descending, q.Filters, q.Exact, q.Hidden);
 
     public static SourceModel Inline<T, TService>(
         Func<TService, AdminQuery<T>, CancellationToken, Task<AdminPage<T>>> list,
@@ -133,13 +133,16 @@ internal static class Sources
                 return (page.Rows, page.Total);
             },
         };
-        source =
-            options is null && typeof(IQueriesAnything).IsAssignableFrom(typeof(TSource))
-                ? source with
-                {
-                    Search = true,
-                }
-                : Declared(options ?? new(), source);
+        // A source that queries any column keeps that with options; they turn on finding by key or narrow it.
+        source = typeof(IQueriesAnything).IsAssignableFrom(typeof(TSource))
+            ? source with
+            {
+                Search = true,
+                FindsKey = options?.FindsKey == true,
+                Filters = options is { FilterColumns.Count: > 0 } ? options.FilterColumns : null,
+                Sorts = options is { SortColumns.Count: > 0 } ? options.SortColumns : null,
+            }
+            : Declared(options ?? new(), source);
 
         var finder = typeof(TSource)
             .GetInterfaces()
