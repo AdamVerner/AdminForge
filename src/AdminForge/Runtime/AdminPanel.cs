@@ -216,12 +216,12 @@ internal sealed class AdminPanel(PanelModel model, OperationRunner runner)
                     t.Source.Delete
                     ?? throw new AdminRejection($"{t.Title} cannot be deleted from in the panel.");
                 var row = await RequireAsync(op, t, key);
-                if (t.DeleteWhen?.Invoke(row) == false)
-                    throw new AdminRejection($"Delete does not apply to {t.Label(row)}.");
                 await op.EnsureAsync(
                     op.AllowsAsync(t, AdminOp.Delete, row),
                     $"delete from {t.Title}"
                 );
+                if (t.DeleteWhen?.Invoke(row) == false)
+                    throw new AdminRejection($"Delete does not apply to {t.Label(row)}.");
                 var before = Snapshot(row);
                 await delete(op.Services, row, op.CancellationToken);
                 await op.AuditAsync(
@@ -259,23 +259,18 @@ internal sealed class AdminPanel(PanelModel model, OperationRunner runner)
                         [],
                         new Dictionary<string, IReadOnlyList<AdminOption>>()
                     );
+                Func<FieldModel, object?> value;
                 if (row is not null && action.Prefill is { } prefill)
                 {
                     var given = await prefill(op.Services, row, op.CancellationToken);
-                    return await FormAsync(
-                        op,
-                        input.Fields,
-                        f => given.GetType().GetProperty(f.Name)!.GetValue(given),
-                        row
-                    );
+                    value = f => given.GetType().GetProperty(f.Name)!.GetValue(given);
                 }
-                var defaults = input.Factory.Defaults();
-                return await FormAsync(
-                    op,
-                    input.Fields,
-                    f => defaults.GetValueOrDefault(f.Name),
-                    row
-                );
+                else
+                {
+                    var defaults = input.Factory.Defaults();
+                    value = f => defaults.GetValueOrDefault(f.Name);
+                }
+                return await FormAsync(op, input.Fields, value, row);
             },
             ct
         );
@@ -630,7 +625,7 @@ internal sealed class AdminPanel(PanelModel model, OperationRunner runner)
             && await find(op.Services, key, op.CancellationToken) is { } found
             && await op.AllowsAsync(t, AdminOp.Read, found)
         )
-            return ([found], 1);
+            return (r.Page == 0 ? [found] : [], 1);
         return await t.Source.List(
             op.Services,
             r with
@@ -765,7 +760,7 @@ internal sealed class AdminPanel(PanelModel model, OperationRunner runner)
                     var views = new List<RowView>();
                     var labels = new Dictionary<(string, string), string?>();
                     foreach (var row in rows)
-                        views.Add(await ViewAsync(op, t, row, listed: false, labels));
+                        views.Add(await ViewAsync(op, t, row, listed: true, labels, columns));
                     return new TableWidgetView(tw.Id, tw.Title, t.Id, columns, views);
                 default:
                     throw new InvalidOperationException($"Unknown widget {widget.GetType().Name}.");

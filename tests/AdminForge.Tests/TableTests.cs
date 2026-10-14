@@ -34,6 +34,48 @@ public class TableTests
         Assert.Equal("Delete does not apply to All done.", refused.Message);
         await admin.Panel.DeleteAsync("ticket", open);
         Assert.Equal(["All done"], await host.Db(db => db.Tickets.Select(t => t.Title).ToListAsync()));
+
+        // Who may not delete hears that first, not whether Delete applies to a row they may not touch.
+        host.Policy.Allows = r => r is not TableRequest<Ticket> { Op: AdminOp.Delete };
+        var forbidden = await Assert.ThrowsAnyAsync<AdminRejection>(() => admin.Panel.DeleteAsync("ticket", done));
+        Assert.Equal("You may not delete from Ticket.", forbidden.Message);
+    }
+
+    [Fact]
+    public async Task An_EF_table_edits_a_constant_default_never_queries_an_unmapped_property_and_searches_no_hidden_text()
+    {
+        await using var host = await PanelHost.StartAsync(p => p.Table<Gadget>(t => t.Hide(g => g.Secret)));
+        var table = host.Services.GetRequiredService<PanelModel>().Table("gadget")!;
+        Assert.NotNull(table.Column("Tier")!.Edit);
+        var shout = table.Column("Shout")!;
+        Assert.Equal((false, false, false), (shout.Sortable, shout.Filterable, shout.Edit is not null));
+
+        using var admin = host.As();
+        await admin.Panel.CreateAsync("gadget", Args(("Name", "Lamp"), ("Tier", "pro")));
+        await host.Db(async db =>
+        {
+            var gadget = await db.Gadgets.SingleAsync();
+            gadget.Secret = "hunter2";
+            return await db.SaveChangesAsync();
+        });
+        Assert.Equal("pro", await host.Db(db => db.Gadgets.Select(g => g.Tier).SingleAsync()));
+        Assert.Empty((await admin.Panel.ListAsync("gadget", new ListRequest(Search: "hunter"))).Rows);
+        Assert.Single((await admin.Panel.ListAsync("gadget", new ListRequest(Search: "lamp"))).Rows);
+    }
+
+    [Fact]
+    public async Task An_EF_source_given_options_still_sorts_and_filters_every_column()
+    {
+        await using var host = await PanelHost.StartAsync(p =>
+            p.Table<Ticket>(t => t.Source<EfSource<TestDb, Ticket>>(s => s.Search(findsKey: true)))
+        );
+        var title = host.Services.GetRequiredService<PanelModel>().Table("ticket")!.Column("Title")!;
+        Assert.True(title.Sortable && title.Filterable);
+
+        using var admin = host.As();
+        var key = await admin.Panel.CreateAsync("ticket", Args(("Title", "Printer jam"), ("Status", "Open")));
+        await admin.Panel.CreateAsync("ticket", Args(("Title", $"Ticket {key}0"), ("Status", "Open")));
+        Assert.Equal(key, Assert.Single((await admin.Panel.ListAsync("ticket", new ListRequest(Search: key))).Rows).Key);
     }
 
     [Fact]
@@ -51,6 +93,11 @@ public class TableTests
             Assert.False(page.Has("error"), sort);
             Assert.Equal(1, page.Count("row"));
         }
+
+        // A page past the end, from a stale link or after a delete, lands on the last one.
+        var past = await host.Http().GetAsync("/admin/entities/ticket?page=9");
+        Assert.Equal(System.Net.HttpStatusCode.Redirect, past.StatusCode);
+        Assert.Equal("/admin/entities/ticket", past.Headers.Location!.AbsolutePath + past.Headers.Location.Query);
     }
 
     [Fact]
@@ -102,6 +149,12 @@ public class TableTests
         );
         Assert.Equal("At least 3 characters.", refused.FieldErrors["Title"]);
         Assert.Equal(2, host.Audit.Count);
+
+        // A value type has no empty value: clearing one is refused, not stored as its default.
+        var cleared = await Assert.ThrowsAsync<AdminRejection>(() =>
+            admin.Panel.UpdateAsync("ticket", key, Args(("Status", null)))
+        );
+        Assert.Equal("Status is required.", cleared.FieldErrors["Status"]);
 
         // Search and filters are translated to SQL; a filter value arrives as text and is converted.
         var found = await admin.Panel.ListAsync(
