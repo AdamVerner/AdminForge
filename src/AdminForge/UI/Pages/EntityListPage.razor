@@ -1,11 +1,8 @@
 @page "/admin/entities/{TableId}"
 @inject AdminPanel Panel
+@inject Missing Missing
 
-@if (Panel.Model.Table(TableId) is not { } table)
-{
-    <NotFoundState Body="@($"There is no table '{TableId}'.")" />
-}
-else
+@if (Panel.Model.Table(TableId) is { } table)
 {
     <PageHeader Title="@table.Title" Crumbs="@Links.GroupCrumbs(table.Nav)">
         <Actions>
@@ -22,4 +19,9 @@ else
     [Parameter] public string TableId { get; set; } = "";
 
     private bool _canCreate;
+
+    protected override void OnParametersSet()
+    {
+        if (Panel.Model.Table(TableId) is null) Missing.Show($"There is no table '{TableId}'.");
+    }
 }

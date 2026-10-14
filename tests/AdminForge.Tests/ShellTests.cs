@@ -125,6 +125,24 @@ public class ShellTests
         var shell = new Page(await missing.Content.ReadAsStringAsync());
         Assert.Contains("This page doesn't exist", shell.Html.Replace("&#x27;", "'"));
         Assert.True(shell.Has("nav:ticket"));
+
+        // A page that finds nothing at its address answers 404 too, with its own message.
+        foreach (var (path, message) in new[]
+        {
+            ("/admin/entities/nope", "There is no table 'nope'."),
+            ("/admin/entities/ticket/999", "Ticket has no row with the key '999'."),
+            ("/admin/entities/ticket/999/edit", "Ticket has no row with the key '999'."),
+            ("/admin/entities/ticket/x", "'x' is not a valid key for Ticket."),
+            ("/admin/forms/nope", "There is no form 'nope'."),
+            ("/admin/dashboards/nope", "There is no dashboard 'nope'."),
+        })
+        {
+            var response = await host.Http().GetAsync(path);
+            Assert.Equal(System.Net.HttpStatusCode.NotFound, response.StatusCode);
+            var body = new Page(await response.Content.ReadAsStringAsync());
+            Assert.Contains(message, body.Text("not-found").Replace("&#x27;", "'"));
+            Assert.True(body.Has("nav:ticket"));
+        }
         Assert.Equal(
             System.Net.HttpStatusCode.OK,
             (await host.Http(null).GetAsync("/.well-known/oauth-protected-resource/mcp")).StatusCode

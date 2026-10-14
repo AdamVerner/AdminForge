@@ -1,8 +1,10 @@
 <EmptyState Page="true" Title="This page doesn't exist" Icon="@Icons.Material.Outlined.SearchOff"
-            Body="@Body">
-    <a class="af-btn" href="@PanelModel.Root">Go home</a>
+            Body="@Body" Hook="not-found">
+    <a class="af-btn" href="@(Href ?? PanelModel.Root)">@(Back ?? "Go home")</a>
 </EmptyState>
 
 @code {
     [Parameter] public string? Body { get; set; }
+    [Parameter] public string? Href { get; set; }
+    [Parameter] public string? Back { get; set; }
 }

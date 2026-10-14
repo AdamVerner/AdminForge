@@ -1,0 +1,7 @@
+@page "/admin/not-found"
+@layout AdminShell
+@inject PanelModel Panel
+@inject Missing Missing
+
+<PageTitle>Not found · @Panel.Title</PageTitle>
+<NotFoundState Body="@Missing.Note?.Body" Href="@Missing.Note?.Href" Back="@Missing.Note?.Back" />

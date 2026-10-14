@@ -1,10 +1,11 @@
 @page "/admin/forms/{FormId}"
 @inject AdminPanel Panel
 @inject ISnackbar Snackbar
+@inject Missing Missing
 
 @if (_model is null)
 {
-    <NotFoundState Body="@($"There is no form '{FormId}'.")" />
+    @* Missing.Show has the router render the not-found page instead. *@
 }
 else if (_refused is not null)
 {
@@ -67,7 +68,11 @@ else if (_form is not null)
     protected override async Task OnParametersSetAsync()
     {
         _model = Panel.Model.Form(FormId);
-        if (_model is null) return;
+        if (_model is null)
+        {
+            Missing.Show($"There is no form '{FormId}'.");
+            return;
+        }
         try
         {
             _form = await Panel.FormAsync(FormId);

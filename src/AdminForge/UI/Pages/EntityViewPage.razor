@@ -2,10 +2,11 @@
 @implements IDisposable
 @inject AdminPanel Panel
 @inject ISnackbar Snackbar
+@inject Missing Missing
 
 @if (_table is null)
 {
-    <NotFoundState Body="@($"There is no table '{TableId}'.")" />
+    @* Missing.Show has the router render the not-found page instead. *@
 }
 else if (_refused is not null)
 {
@@ -170,8 +171,22 @@ else
         _tab = null;
         _counts.Clear();
         StopPolling();
-        if (_table is null) return;
+        if (_table is null)
+        {
+            Missing.Show($"There is no table '{TableId}'.");
+            return;
+        }
+        if (_table.Key.TryDecode(Key) is null)
+        {
+            Missing.Show($"'{Key}' is not a valid key for {_table.Title}.", Links.List(_table.Id), $"Back to {_table.Title}");
+            return;
+        }
         await Refresh();
+        if (_missing)
+        {
+            Missing.Show($"{_table.Title} has no row with the key '{Key}'.", Links.List(_table.Id), $"Back to {_table.Title}");
+            return;
+        }
         if (_view is not null)
             foreach (var related in _view.Related.Where(r => r.Model.Inline))
                 try

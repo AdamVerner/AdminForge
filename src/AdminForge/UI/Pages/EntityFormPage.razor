@@ -4,12 +4,13 @@
 @inject NavigationManager Nav
 @inject ISnackbar Snackbar
 @inject IDialogService Dialogs
+@inject Missing Missing
 
 @* One page for create and edit: the same inputs, in the table's order; the server validates. *@
 
 @if (_table is null)
 {
-    <NotFoundState Body="@($"There is no table '{TableId}'.")" />
+    @* Missing.Show has the router render the not-found page instead. *@
 }
 else if (_refused is not null)
 {
@@ -81,13 +82,26 @@ else if (_form is not null)
     protected override async Task OnParametersSetAsync()
     {
         _table = Panel.Model.Table(TableId);
-        if (_table is null) return;
+        if (_table is null)
+        {
+            Missing.Show($"There is no table '{TableId}'.");
+            return;
+        }
+        if (Key is not null && _table.Key.TryDecode(Key) is null)
+        {
+            Missing.Show($"'{Key}' is not a valid key for {_table.Title}.", Links.List(_table.Id), $"Back to {_table.Title}");
+            return;
+        }
         try
         {
             _form = Key is null ? await Panel.NewAsync(TableId) : await Panel.EditAsync(TableId, RowKey);
-            if (_form is null) _refused = $"{_table.Title} has no row with the key '{RowKey}'";
-            else if (Key is not null) _label = (await Panel.GetAsync(TableId, RowKey))?.Row.Label ?? RowKey;
-            _loaded = new(_form?.Values ?? []);
+            if (_form is null)
+            {
+                Missing.Show($"{_table.Title} has no row with the key '{RowKey}'.", Links.List(_table.Id), $"Back to {_table.Title}");
+                return;
+            }
+            if (Key is not null) _label = (await Panel.GetAsync(TableId, RowKey))?.Row.Label ?? RowKey;
+            _loaded = new(_form.Values);
         }
         catch (AdminRejection ex)
         {

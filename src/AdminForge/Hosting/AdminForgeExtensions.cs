@@ -26,6 +26,7 @@ public static class AdminForgeExtensions
         services.AddSingleton(panel);
         services.AddSingleton(sp => sp.GetRequiredService<PanelBuilder>().Build(sp));
         services.AddScoped<AdminPanel>();
+        services.AddScoped<Missing>();
         services.AddScoped<OperationRunner>();
         services.AddScoped<OperationUserAccessor>();
         services.AddScoped<IUserAccessor, CurrentUserAccessor>();
