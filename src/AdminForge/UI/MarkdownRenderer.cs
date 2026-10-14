@@ -1,4 +1,5 @@
 using Markdig;
+using Markdig.Extensions.GenericAttributes;
 using Markdig.Renderers;
 using Markdig.Renderers.Html;
 using Markdig.Syntax;
@@ -10,11 +11,16 @@ namespace AdminForge.UI;
 /// <summary>Markdown → HTML for every surface the panel renders it on.</summary>
 internal static class MarkdownRenderer
 {
-    // Raw HTML is disabled: a handler may echo user-entered text into its result.
-    private static readonly MarkdownPipeline Pipeline = new MarkdownPipelineBuilder()
-        .UseAdvancedExtensions()
-        .DisableHtml()
-        .Build();
+    // Raw HTML is disabled: a handler may echo user-entered text into its result. Generic
+    // attributes go too: {onerror=...} would put any attribute, a handler included, on an element.
+    private static readonly MarkdownPipeline Pipeline = BuildPipeline();
+
+    private static MarkdownPipeline BuildPipeline()
+    {
+        var builder = new MarkdownPipelineBuilder().UseAdvancedExtensions().DisableHtml();
+        builder.Extensions.RemoveAll(e => e is GenericAttributesExtension);
+        return builder.Build();
+    }
 
     public static string ToHtml(string markdown)
     {

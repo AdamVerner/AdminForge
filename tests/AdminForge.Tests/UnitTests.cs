@@ -314,6 +314,13 @@ public class UnitTests
         Assert.Contains("<table>", html);
         Assert.DoesNotContain("<script>", html);
 
+        var attributes = MarkdownRenderer.ToHtml(
+            "# hi {onclick=alert(1)}\n\n![x](x){onerror=alert(1)} [a](https://x.test){style=\"position:fixed\"}"
+        );
+        Assert.DoesNotContain(" onclick=\"", attributes);
+        Assert.DoesNotContain(" onerror=\"", attributes);
+        Assert.DoesNotContain(" style=\"", attributes);
+
         var links = MarkdownRenderer.ToHtml(
             "[a](javascript:alert(1)) <javascript:alert(2)> ![i](data:text/html,x) [b](JAVASCRIPT:x) [r](&#106;avascript:x) "
                 + "[ok](https://x.test/p) [rel](/admin/x?y=1:2) <mailto:a@x.test>"
