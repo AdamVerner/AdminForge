@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Components;
@@ -162,8 +163,31 @@ public sealed class PanelBuilder
         Login.Register<TValidator>(this, configure, endpoints);
         RequireAuthorization(Login.Policy);
         SignOut(Login.LogoutPath);
+        UsesLogin = true;
         return this;
     }
+
+    /// <summary>Asks <paramref name="stillValid"/> again every <paramref name="every"/> while a session is open; false signs the user out of it.</summary>
+    /// <remarks>
+    /// With <c>UseLogin</c> it is also asked on every request, so the cookie and the open session agree;
+    /// there a sign-out alone ends the session's other tabs, and the principal carries <c>auth_time</c>
+    /// to cap a session by. Without this call, <c>UseLogin</c> asks every minute about sign-outs only.
+    /// </remarks>
+    public PanelBuilder Revalidate(
+        TimeSpan every,
+        Func<IServiceProvider, ClaimsPrincipal, CancellationToken, Task<bool>>? stillValid = null
+    )
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(every, TimeSpan.Zero);
+        Revalidation = new(every, stillValid);
+        return this;
+    }
+
+    internal bool UsesLogin { get; private set; }
+    internal RevalidationModel? Revalidation { get; private set; }
+
+    internal RevalidationModel? EffectiveRevalidation =>
+        Revalidation ?? (UsesLogin ? new(TimeSpan.FromMinutes(1), null) : null);
 
     /// <summary>Files the registrations in <paramref name="configure"/> under one sidebar group.</summary>
     public PanelBuilder Group(string title, Action<PanelBuilder> configure)
@@ -300,6 +324,7 @@ public sealed class PanelBuilder
         {
             Title = _title,
             MaxPageSize = _maxPageSize,
+            Revalidation = EffectiveRevalidation,
             Welcome = _welcome,
             Environment = _environment,
             Theme = _theme,

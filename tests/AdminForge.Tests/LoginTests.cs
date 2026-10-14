@@ -5,7 +5,10 @@ using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Metadata;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using static AdminForge.Tests.PanelHost;
 
 namespace AdminForge.Tests;
@@ -108,30 +111,66 @@ public class LoginTests
             HttpStatusCode.BadRequest,
             (await browser.PostAsync("/admin/logout", null)).StatusCode
         );
-        // The token the account menu renders for the signed-in admin, over the browser's cookie.
-        var menu = new DefaultHttpContext
-        {
-            RequestServices = host.Services,
-            User = new ClaimsPrincipal(
-                new ClaimsIdentity(
-                    [new Claim(ClaimTypes.Name, "admin")],
-                    Login.Scheme,
-                    ClaimTypes.Name,
-                    ClaimTypes.Role
-                )
-            ),
-        };
-        menu.Request.Headers.Cookie = cookies.GetCookieHeader(new Uri("http://localhost/admin"));
-        var tokens = host.Services.GetRequiredService<IAntiforgery>().GetAndStoreTokens(menu);
-        Assert.Equal(
-            HttpStatusCode.Redirect,
-            (
-                await browser.PostAsync(
-                    "/admin/logout",
-                    new FormUrlEncodedContent([new(tokens.FormFieldName, tokens.RequestToken)])
-                )
-            ).StatusCode
-        );
+        Assert.Equal(HttpStatusCode.Redirect, (await SignOutAsync(host, browser, cookies)).StatusCode);
         Assert.Equal(HttpStatusCode.Redirect, (await browser.GetAsync("/admin")).StatusCode);
     }
+
+    [Fact]
+    public async Task A_session_ends_when_signed_out_anywhere_or_when_the_host_says_so()
+    {
+        var allowed = true;
+        await using var host = await PanelHost.StartAsync(
+            p =>
+                p.UseLogin<LockingLogin>()
+                    .Revalidate(TimeSpan.FromMilliseconds(100), (_, _, _) => Task.FromResult(allowed)),
+            login: true
+        );
+        var cookies = new CookieContainer();
+        var browser = host.Http(null, cookies);
+        await SignInAsync(browser, "admin", "admin");
+        Assert.NotNull(SignedIn(host, cookies).FindFirst("auth_time"));
+
+        // A copy of the cookie, as another tab or a stolen one holds it, ends with the sign-out.
+        var copy = new CookieContainer();
+        foreach (Cookie cookie in cookies.GetCookies(new Uri("http://localhost/admin")))
+            copy.Add(cookie);
+        var other = host.Http(null, copy);
+        Assert.Equal(HttpStatusCode.OK, (await other.GetAsync("/admin")).StatusCode);
+        await SignOutAsync(host, browser, cookies);
+        Assert.Equal(HttpStatusCode.Redirect, (await other.GetAsync("/admin")).StatusCode);
+
+        // The host's answer is asked on every request, and every interval in an open circuit.
+        await SignInAsync(browser, "admin", "admin");
+        Assert.Equal(HttpStatusCode.OK, (await browser.GetAsync("/admin")).StatusCode);
+        await using var scope = host.Services.CreateAsyncScope();
+        var circuit = scope.ServiceProvider.GetRequiredService<AuthenticationStateProvider>();
+        ((IHostEnvironmentAuthenticationStateProvider)circuit).SetAuthenticationState(
+            Task.FromResult(new AuthenticationState(SignedIn(host, cookies)))
+        );
+        allowed = false;
+        Assert.Equal(HttpStatusCode.Redirect, (await browser.GetAsync("/admin")).StatusCode);
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        while ((await circuit.GetAuthenticationStateAsync()).User.Identity?.IsAuthenticated == true && DateTime.UtcNow < deadline)
+            await Task.Delay(50);
+        Assert.False((await circuit.GetAuthenticationStateAsync()).User.Identity?.IsAuthenticated);
+    }
+
+    /// <summary>Signs out with the token the account menu renders for the signed-in admin.</summary>
+    private static async Task<HttpResponseMessage> SignOutAsync(PanelHost host, HttpClient browser, CookieContainer cookies)
+    {
+        var menu = new DefaultHttpContext { RequestServices = host.Services, User = SignedIn(host, cookies) };
+        menu.Request.Headers.Cookie = cookies.GetCookieHeader(new Uri("http://localhost/admin"));
+        var tokens = host.Services.GetRequiredService<IAntiforgery>().GetAndStoreTokens(menu);
+        return await browser.PostAsync(
+            "/admin/logout",
+            new FormUrlEncodedContent([new(tokens.FormFieldName, tokens.RequestToken)])
+        );
+    }
+
+    /// <summary>The principal the browser's sign-in cookie carries, as the cookie scheme reads it.</summary>
+    private static ClaimsPrincipal SignedIn(PanelHost host, CookieContainer cookies) =>
+        host.Services.GetRequiredService<IOptionsMonitor<CookieAuthenticationOptions>>()
+            .Get(Login.Scheme)
+            .TicketDataFormat.Unprotect(cookies.GetCookies(new Uri("http://localhost/admin"))["adminforge"]!.Value)!
+            .Principal;
 }

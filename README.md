@@ -423,6 +423,25 @@ panel.UseLogin<Credentials>(endpoints: (which, e) =>
 
 The panel's endpoints stay out of the host's OpenAPI document.
 
+An open panel keeps its user for as long as the tab stays open, so the panel asks again while it
+runs:
+
+```csharp
+panel.Revalidate(TimeSpan.FromMinutes(1), async (services, user, ct) =>
+    await services.GetRequiredService<Admins>().IsActiveAsync(user.Identity!.Name!, ct)
+    && DateTimeOffset.FromUnixTimeSeconds(long.Parse(user.FindFirst("auth_time")!.Value)) > DateTimeOffset.UtcNow.AddHours(-24));
+```
+
+| What | When |
+|---|---|
+| Your check | Every interval in each open tab. With `UseLogin`, also on every request. |
+| Sign-out | With `UseLogin`, ends that sign-in's other tabs and any copy of its cookie. This holds per process. |
+| `auth_time` | With `UseLogin`, the claim holds the sign-in time in Unix seconds. |
+
+A tab whose check fails reloads and meets your sign-in. Without `Revalidate`, `UseLogin` checks
+for sign-outs every minute. With your own scheme, give it the same check so requests agree with
+open tabs.
+
 ## MCP
 
 `AdminForge.Mcp` serves the panel as MCP tools for AI agents:

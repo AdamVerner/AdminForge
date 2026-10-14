@@ -83,6 +83,7 @@ internal sealed record PanelModel
 
     /// <summary>The most rows any list asks a source for: the UI, the HTTP API and MCP alike.</summary>
     public int MaxPageSize { get; init; } = 500;
+    public RevalidationModel? Revalidation { get; init; }
     public string? Welcome { get; init; }
     public (string Label, AdminEnvironment Kind)? Environment { get; init; }
     public required ThemeOptions Theme { get; init; }

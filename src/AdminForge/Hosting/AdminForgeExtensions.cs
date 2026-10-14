@@ -1,10 +1,12 @@
 using AdminForge.UI;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using MudBlazor.Services;
 
 namespace AdminForge;
@@ -32,6 +34,10 @@ public static class AdminForgeExtensions
         services.AddScoped<IUserAccessor, CurrentUserAccessor>();
         services.AddHttpContextAccessor();
         services.AddRazorComponents().AddInteractiveServerComponents();
+        // Registered after the server's own, so this one serves the circuit.
+        if (panel.EffectiveRevalidation is not null)
+            services.AddScoped<AuthenticationStateProvider, RevalidatingUser>();
+        services.TryAddSingleton(TimeProvider.System);
         services.AddMudServices();
         services.AddAntiforgery();
         services.AddAuthorization();

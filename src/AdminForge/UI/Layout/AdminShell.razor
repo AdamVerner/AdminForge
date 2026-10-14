@@ -98,6 +98,14 @@
         Snackbar.Configuration.PreventDuplicates = false;
         Snackbar.Configuration.VisibleStateDuration = 4000;
         Nav.LocationChanged += Closed;
+        AuthenticationState.AuthenticationStateChanged += Revalidated;
+    }
+
+    // A session that may no longer stay reloads; the request then meets the host's sign-in.
+    private async void Revalidated(Task<AuthenticationState> state)
+    {
+        if ((await state).User.Identity?.IsAuthenticated != true)
+            await InvokeAsync(() => Nav.NavigateTo(Nav.Uri, forceLoad: true));
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -115,5 +123,9 @@
         InvokeAsync(StateHasChanged);
     }
 
-    public void Dispose() => Nav.LocationChanged -= Closed;
+    public void Dispose()
+    {
+        Nav.LocationChanged -= Closed;
+        AuthenticationState.AuthenticationStateChanged -= Revalidated;
+    }
 }

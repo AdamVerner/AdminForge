@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 
 namespace AdminForge;
 
@@ -67,6 +68,7 @@ internal static class Login
     {
         var services = panel.Services;
         services.AddScoped<IAdminCredentialValidator, TValidator>();
+        services.AddSingleton<SignedOutSessions>();
         services
             .AddAuthentication()
             .AddCookie(
@@ -78,6 +80,24 @@ internal static class Login
                     o.ExpireTimeSpan = TimeSpan.FromHours(12);
                     o.SlidingExpiration = true;
                     configure?.Invoke(o);
+                    // Every request asks what an open session asks on revalidation, after the host's own check.
+                    var host = o.Events.OnValidatePrincipal;
+                    o.Events.OnValidatePrincipal = async context =>
+                    {
+                        await host(context);
+                        if (
+                            context.Principal is { } user
+                            && !await Revalidation.StillValidAsync(
+                                context.HttpContext.RequestServices,
+                                user,
+                                context.HttpContext.RequestAborted
+                            )
+                        )
+                        {
+                            context.RejectPrincipal();
+                            await context.HttpContext.SignOutAsync(Scheme);
+                        }
+                    };
                 }
             );
         services
@@ -115,6 +135,7 @@ internal static class Login
         IAdminCredentialValidator validator,
         IAntiforgery antiforgery,
         PanelModel panel,
+        TimeProvider clock,
         HttpContext http,
         CancellationToken ct
     )
@@ -126,7 +147,16 @@ internal static class Login
             case LoginResult.Accepted ok:
                 // The scheme's own identity, so the principal counts as signed in whatever the validator built.
                 var identity = new ClaimsIdentity(
-                    ok.Principal.Claims,
+                    ok.Principal.Claims
+                        .Where(c => c.Type is not (Revalidation.SessionClaim or Revalidation.AuthTimeClaim))
+                        .Append(new Claim(Revalidation.SessionClaim, Guid.NewGuid().ToString("N")))
+                        .Append(
+                            new Claim(
+                                Revalidation.AuthTimeClaim,
+                                clock.GetUtcNow().ToUnixTimeSeconds().ToString(CultureInfo.InvariantCulture),
+                                ClaimValueTypes.Integer64
+                            )
+                        ),
                     Scheme,
                     ClaimTypes.Name,
                     ClaimTypes.Role
@@ -169,11 +199,21 @@ internal static class Login
             }
         );
 
-    // Without the token any site could sign the admin out with a cross-site POST.
-    private static async Task<IResult> SignOut(IAntiforgery antiforgery, HttpContext http) =>
-        await antiforgery.IsRequestValidAsync(http)
-            ? Results.SignOut(new AuthenticationProperties { RedirectUri = LoginPath }, [Scheme])
-            : Results.BadRequest();
+    // Without the token any site could sign the admin out with a cross-site POST. The session is
+    // remembered as ended, so its other tabs and any copy of its cookie end with it.
+    private static async Task<IResult> SignOut(
+        IAntiforgery antiforgery,
+        SignedOutSessions sessions,
+        IOptionsMonitor<CookieAuthenticationOptions> cookies,
+        HttpContext http
+    )
+    {
+        if (!await antiforgery.IsRequestValidAsync(http))
+            return Results.BadRequest();
+        if (http.User.FindFirst(Revalidation.SessionClaim)?.Value is { } session)
+            sessions.End(session, cookies.Get(Scheme).ExpireTimeSpan);
+        return Results.SignOut(new AuthenticationProperties { RedirectUri = LoginPath }, [Scheme]);
+    }
 
     /// <summary>A path on this site: one leading slash and no second one or backslash, which a browser reads as another host.</summary>
     internal static bool IsLocalUrl(string? url) =>
