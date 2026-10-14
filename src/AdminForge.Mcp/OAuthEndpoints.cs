@@ -114,15 +114,16 @@ internal static class OAuthEndpoints
     /// <summary>RFC 7591: the client id is the registration itself, sealed, so nothing is stored.</summary>
     private static IResult Register([FromBody] JsonObject body, TokenSealer sealer)
     {
-        var name = body["client_name"]?.GetValue<string>() ?? "MCP client";
-        var uris =
-            body["redirect_uris"]?.AsArray().Select(u => u!.GetValue<string>()).ToArray() ?? [];
-        if (uris.Length == 0 || !uris.All(IsAcceptableRedirect))
+        static string? Text(JsonNode? node) =>
+            node is JsonValue value && value.TryGetValue<string>(out var text) ? text : null;
+        var name = Text(body["client_name"]) ?? "MCP client";
+        var uris = (body["redirect_uris"] as JsonArray)?.Select(Text).ToArray() ?? [];
+        if (uris.Length == 0 || !uris.All(u => u is not null && IsAcceptableRedirect(u)))
             return OAuthError(
                 "invalid_redirect_uri",
                 "redirect_uris must be https or loopback http."
             );
-        var clientId = sealer.Seal(new ClientRegistration(name, uris));
+        var clientId = sealer.Seal(new ClientRegistration(name, uris!));
         return Results.Json(
             new
             {
@@ -140,7 +141,7 @@ internal static class OAuthEndpoints
 
     private static bool IsAcceptableRedirect(string uri) =>
         Uri.TryCreate(uri, UriKind.Absolute, out var u)
-        && (u.Scheme == "https" || (u.Scheme == "http" && (u.IsLoopback || u.Host == "localhost")));
+        && (u.Scheme == "https" || (u.Scheme == "http" && u.IsLoopback));
 
     private static async Task<IResult> AuthorizeAsync(
         HttpContext http,
@@ -223,6 +224,8 @@ internal static class OAuthEndpoints
             ClientName = client.Name,
             Grant = grant,
             Claims = user.Claims.Select(c => new McpClaim(c.Type, c.Value)).ToList(),
+            NameClaimType = (user.Identity as ClaimsIdentity)?.NameClaimType ?? ClaimTypes.Name,
+            RoleClaimType = (user.Identity as ClaimsIdentity)?.RoleClaimType ?? ClaimTypes.Role,
             CreatedAt = now,
             ExpiresAt = now + lifetime,
         };
@@ -260,6 +263,9 @@ internal static class OAuthEndpoints
         TimeProvider clock
     )
     {
+        // RFC 6749 5.1: a response that carries tokens is never cached.
+        http.Response.Headers.CacheControl = "no-store";
+        http.Response.Headers.Pragma = "no-cache";
         var form = await http.Request.ReadFormAsync(http.RequestAborted).ConfigureAwait(false);
         var now = clock.GetUtcNow().UtcDateTime;
         var refreshing = false;

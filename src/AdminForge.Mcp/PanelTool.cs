@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Security.Claims;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -182,12 +183,20 @@ internal readonly struct ToolArgs(IDictionary<string, JsonElement>? values, Clai
             ? (e.ValueKind == JsonValueKind.String ? e.GetString() : e.ToString())
             : null;
 
+    // Agents often send numbers and booleans as strings; either form is taken, anything else refused.
     public int? Int(string name) =>
-        TryGet(name, out var e) && e.TryGetInt32(out var i) ? i
-        : TryGet(name, out _) ? throw new ArgumentException($"'{name}' must be an integer.")
-        : null;
+        !TryGet(name, out var e) ? null
+        : e.ValueKind == JsonValueKind.Number && e.TryGetInt32(out var i) ? i
+        : e.ValueKind == JsonValueKind.String
+            && int.TryParse(e.GetString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed)
+            ? parsed
+        : throw new ArgumentException($"'{name}' must be an integer.");
 
-    public bool Bool(string name) => TryGet(name, out var e) && e.ValueKind == JsonValueKind.True;
+    public bool Bool(string name) =>
+        !TryGet(name, out var e) ? false
+        : e.ValueKind is JsonValueKind.True or JsonValueKind.False ? e.GetBoolean()
+        : e.ValueKind == JsonValueKind.String && bool.TryParse(e.GetString(), out var parsed) ? parsed
+        : throw new ArgumentException($"'{name}' must be true or false.");
 
     /// <summary>Every argument but the key, as values the panel converts and validates; one it does not know is refused there.</summary>
     public Dictionary<string, object?> Values()
@@ -197,7 +206,7 @@ internal readonly struct ToolArgs(IDictionary<string, JsonElement>? values, Clai
             values[name] =
                 e.ValueKind == JsonValueKind.Array
                     ? e.EnumerateArray()
-                        .Select(i => JsonSchema.Scalar(i)?.ToString() ?? "")
+                        .Select(i => Convert.ToString(JsonSchema.Scalar(i), CultureInfo.InvariantCulture) ?? "")
                         .ToList()
                     : JsonSchema.Scalar(e);
         return values;

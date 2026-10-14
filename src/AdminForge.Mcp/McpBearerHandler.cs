@@ -50,7 +50,12 @@ internal sealed class McpBearerHandler(
         claims.Add(new Claim(AdminForgeMcp.ConnectionClaim, connection.Id));
         claims.AddRange(connection.Grant.Select(t => new Claim(AdminForgeMcp.ToolClaim, t)));
         return new ClaimsPrincipal(
-            new ClaimsIdentity(claims, AdminForgeMcp.Scheme, ClaimTypes.Name, ClaimTypes.Role)
+            new ClaimsIdentity(
+                claims,
+                AdminForgeMcp.Scheme,
+                connection.NameClaimType,
+                connection.RoleClaimType
+            )
         );
     }
 

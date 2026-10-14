@@ -16,6 +16,12 @@ public sealed record McpConnection
     /// <summary>The admin's claims when they consented; the bearer principal is rebuilt from them.</summary>
     public required IReadOnlyList<McpClaim> Claims { get; init; }
 
+    /// <summary>The claim types the admin's identity took its name and roles from, so a role policy reads the same over MCP.</summary>
+    public string NameClaimType { get; init; } = System.Security.Claims.ClaimTypes.Name;
+
+    /// <inheritdoc cref="NameClaimType"/>
+    public string RoleClaimType { get; init; } = System.Security.Claims.ClaimTypes.Role;
+
     public required DateTime CreatedAt { get; init; }
     public required DateTime ExpiresAt { get; init; }
     public DateTime? LastCallAt { get; init; }

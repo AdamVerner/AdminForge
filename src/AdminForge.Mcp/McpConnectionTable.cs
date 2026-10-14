@@ -42,7 +42,7 @@ internal static class McpConnectionTables
                 .Columns(mine ? columns : [c => c.AdminName, .. columns])
                 .Column(c => c.AdminName, c => c.Title("Admin"))
                 .Column(c => c.Revoked, c => c.Title("Ended"))
-                .Hide(c => c.Claims, c => c.AdminId, c => c.RefreshCounter)
+                .Hide(c => c.Claims, c => c.NameClaimType, c => c.RoleClaimType, c => c.AdminId, c => c.RefreshCounter)
                 .Action(
                     "end",
                     "End connection",

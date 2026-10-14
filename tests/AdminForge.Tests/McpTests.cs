@@ -90,6 +90,12 @@ public class McpTests
         var listed = Assert.Single(page.GetProperty("rows").EnumerateArray());
         Assert.Equal(key, listed.GetProperty("key").GetString());
         Assert.False(listed.TryGetProperty("Notes", out _));
+        // Agents send numbers and booleans as strings too.
+        Assert.Single(
+            Json(await mcp.CallToolAsync("list_ticket", Args(("page_size", "5"), ("descending", "true"))))
+                .GetProperty("rows")
+                .EnumerateArray()
+        );
 
         Assert.Equal(
             "Updated.",
@@ -406,7 +412,14 @@ public class McpTests
 
         var second = Exchange(await AuthorizeAsync(host));
         var token = (await TokensAsync(host, second)).GetProperty("access_token").GetString()!;
-        Assert.Equal(HttpStatusCode.BadRequest, (await Token(host, second)).StatusCode);
+        var replayed = await Token(host, second);
+        Assert.Equal(HttpStatusCode.BadRequest, replayed.StatusCode);
+        Assert.True(replayed.Headers.CacheControl!.NoStore);
+
+        // A malformed registration is a 400 the client can read, not a server error.
+        var malformed = await host.Http(null)
+            .PostAsJsonAsync("/mcp/oauth/register", new { client_name = 1, redirect_uris = new object?[] { null } });
+        Assert.Equal(HttpStatusCode.BadRequest, malformed.StatusCode);
         Assert.False(await Authorized(host, token));
     }
 
