@@ -67,9 +67,13 @@ public static class AdminForgeExtensions
                         + "AllowAnonymous() if it is meant to be open (a demo, local tooling, tests)."
             );
 
-        // Form posts and the circuit's endpoints need it; the panel adds it once, here.
-        if (endpoints is IApplicationBuilder app)
-            app.UseAntiforgery();
+        // Form posts and the circuit's endpoints need it; the panel adds it once, here. Without the
+        // app there is no pipeline to add it to, and every sign-in and form post would fail.
+        if (endpoints is not IApplicationBuilder app)
+            throw new InvalidOperationException(
+                "Call MapAdminForge on the WebApplication itself, not inside UseEndpoints: the panel adds the antiforgery middleware its forms need."
+            );
+        app.UseAntiforgery();
 
         // The panel's own scripts are anonymous, or a host fallback policy would challenge the login page's; the host's stay under its policy.
         endpoints

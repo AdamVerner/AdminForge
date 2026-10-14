@@ -1,6 +1,7 @@
 using System.Net;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Components;
+using Microsoft.AspNetCore.Routing;
 using Microsoft.AspNetCore.TestHost;
 
 namespace AdminForge.Tests;
@@ -373,6 +374,25 @@ public class StartupTests
         });
         Assert.NotNull(failure);
         Assert.Contains(message, failure.Message);
+    }
+
+    [Fact]
+    public void A_panel_mapped_on_a_route_builder_that_is_not_the_app_is_refused_for_want_of_antiforgery()
+    {
+        var app = PanelHost.Build(p => p.AllowAnonymous().UseEntityFramework<TestDb>().Table<Person>(), null, out var db);
+        using (db)
+        {
+            var failure = Record.Exception(() => new RoutesOnly(app).MapAdminForge());
+            Assert.Contains("not inside UseEndpoints", failure?.Message);
+        }
+    }
+
+    /// <summary>The endpoints a generic host's UseEndpoints hands out: routes, but no pipeline to add middleware to.</summary>
+    private sealed class RoutesOnly(IEndpointRouteBuilder app) : IEndpointRouteBuilder
+    {
+        public IServiceProvider ServiceProvider => app.ServiceProvider;
+        public ICollection<EndpointDataSource> DataSources => app.DataSources;
+        public IApplicationBuilder CreateApplicationBuilder() => app.CreateApplicationBuilder();
     }
 
     [Fact]
