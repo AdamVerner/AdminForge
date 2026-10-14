@@ -14,6 +14,8 @@ public sealed record PickInput(int Number, Guid Ref, TicketStatus Status);
 
 public sealed record RetitleInput(string Title, string Team);
 
+public sealed record AlertInput(string Message, bool Urgent);
+
 /// <summary>Input is converted and checked on the server, whichever surface sent it; a refusal is shown once and never audited.</summary>
 public class InputTests
 {
@@ -320,6 +322,20 @@ public class InputTests
     }
 
     private const string ChosenRef = "00000000-0000-0000-0000-000000000001";
+
+    [Theory]
+    [InlineData(null, false)]
+    [InlineData("", false)]
+    [InlineData("true", true)]
+    public async Task An_unticked_box_is_false_not_missing(string? urgent, bool expected)
+    {
+        await using var host = await PanelHost.StartAsync(p =>
+            p.Form<AlertInput>("alert", f => f.Run(ctx => ctx.Success($"Urgent: {ctx.Input.Urgent}.")))
+        );
+        using var admin = host.As();
+        var outcome = await admin.Panel.SubmitFormAsync("alert", Args(("Message", "Hi"), ("Urgent", urgent)));
+        Assert.Equal($"Urgent: {expected}.", outcome.Message);
+    }
 
     [Theory]
     [InlineData("Number", "2", true)]

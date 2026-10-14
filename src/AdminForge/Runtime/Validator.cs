@@ -33,9 +33,15 @@ internal static class Validator
             }
             if (value is null or "" or ICollection { Count: 0 })
             {
-                // A value type with no null would store its default for a cleared value.
+                // A value type with no null would store its default for a cleared value. A box has no
+                // cleared state: unticked, it posts nothing, and that is false.
                 var nullable = !field.ClrType.IsValueType || Nullable.GetUnderlyingType(field.ClrType) is not null;
-                if (field.Required || given && !nullable)
+                if (field.ClrType == typeof(bool))
+                {
+                    if (given)
+                        values[field.Name] = false;
+                }
+                else if (field.Required || given && !nullable)
                     errors[field.Name] = $"{field.Title} is required.";
                 else if (given)
                     values[field.Name] = value;
