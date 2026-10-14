@@ -6,7 +6,6 @@ namespace AdminForge;
 /// <summary>The panel's one runtime surface, addressed by stable ids; its views never carry the row itself.</summary>
 internal sealed class AdminPanel(PanelModel model, OperationRunner runner)
 {
-    private const int MaxPageSize = 500;
 
     public PanelModel Model => model;
 
@@ -25,7 +24,7 @@ internal sealed class AdminPanel(PanelModel model, OperationRunner runner)
                 var t = Table(tableId);
                 await op.EnsureAsync(op.AllowsAsync(t, AdminOp.Read, null), $"read {t.Title}");
                 var page = Math.Max(0, request.Page);
-                var size = Math.Clamp(request.PageSize, 1, MaxPageSize);
+                var size = Math.Clamp(request.PageSize, 1, model.MaxPageSize);
                 var (rows, total) = await QueryAsync(
                     op,
                     t,

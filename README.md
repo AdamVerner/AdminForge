@@ -111,7 +111,7 @@ What a source receives:
 
 | `AdminQuery<T>` member | Meaning |
 |---|---|
-| `Page` | Zero-based `Index` and `Size`. `Skip` is `Index * Size`. |
+| `Page` | Zero-based `Index` and `Size`. `Skip` is `Index * Size`. `Size` never exceeds `panel.MaxPageSize(rows)`, 500 by default; set it to the most your backing service returns per call. |
 | `Search` | The trimmed search text. If the table is not searchable or the box is empty, it is null. |
 | `SortBy`, `SortDescending`, `SortedBy(x => x.Prop, out desc)` | The sorted column. Null keeps the source's own order. |
 | `Filters`, `Filter(x => x.Prop)` | Filter values, already converted to the column's type. |

@@ -22,10 +22,10 @@ internal abstract class TableTool(TableModel table) : PanelTool
     }
 }
 
-internal sealed class ListTool(TableModel table) : TableTool(table)
+internal sealed class ListTool(TableModel table, int panelMaxPageSize) : TableTool(table)
 {
     private const int DefaultPageSize = 25;
-    private const int MaxPageSize = 200;
+    private readonly int MaxPageSize = Math.Min(200, panelMaxPageSize);
 
     private IEnumerable<ColumnModel> Filters => Table.Columns.Where(c => c.Filterable);
 

@@ -79,6 +79,33 @@ public class TableTests
     }
 
     [Fact]
+    public async Task No_list_asks_a_source_for_more_than_the_panel_s_page_size()
+    {
+        await using var host = await PanelHost.StartAsync(p => p.MaxPageSize(2).Table<Ticket>());
+        using var admin = host.As();
+        foreach (var title in new[] { "One", "Two", "Three" })
+            await admin.Panel.CreateAsync("ticket", Args(("Title", title), ("Status", "Open")));
+
+        var first = await admin.Panel.ListAsync("ticket", new ListRequest(PageSize: 10));
+        Assert.Equal((2, 3), (first.Rows.Count, first.Total));
+        // The next page starts where the clamped one ended, not where the asked-for size would.
+        Assert.Equal(["Three"], (await admin.Panel.ListAsync("ticket", new ListRequest(Page: 1, PageSize: 10))).Rows.Select(r => r.Label));
+
+        var failure = Record.Exception(() =>
+        {
+            var app = PanelHost.Build(
+                p => p.AllowAnonymous().MaxPageSize(2).UseEntityFramework<TestDb>().Table<Ticket>()
+                    .Dashboard("ops", d => d.Row(r => r.Table<Ticket>("Recent", w => w.Take(5)))),
+                null,
+                out var db
+            );
+            using (db)
+                app.MapAdminForge();
+        });
+        Assert.Contains("more than the panel's MaxPageSize of 2", failure?.Message);
+    }
+
+    [Fact]
     public async Task A_list_link_with_a_sort_the_table_lacks_opens_in_the_default_order()
     {
         await using var host = await PanelHost.StartAsync(p =>

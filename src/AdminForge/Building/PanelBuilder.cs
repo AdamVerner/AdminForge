@@ -17,6 +17,7 @@ public sealed class PanelBuilder
     private readonly List<(AdminSlot, Type)> _slots = [];
     private readonly ThemeOptions _theme = new();
     private string _title = "Admin";
+    private int _maxPageSize = 500;
     private string? _welcome;
     private (string, AdminEnvironment)? _environment;
     private string? _signOut;
@@ -41,6 +42,14 @@ public sealed class PanelBuilder
     public PanelBuilder Title(string title)
     {
         _title = title;
+        return this;
+    }
+
+    /// <summary>The most rows any list asks a source for, such as the most a backing service returns per call. 500 by default.</summary>
+    public PanelBuilder MaxPageSize(int rows)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(rows, 1);
+        _maxPageSize = rows;
         return this;
     }
 
@@ -250,6 +259,8 @@ public sealed class PanelBuilder
             var who = $"Table widget '{widget.Title}' on dashboard '{dashboard.Id}'";
             if (widget.Columns?.FirstOrDefault(c => table.Column(c) is null) is { } unknown)
                 throw new InvalidOperationException($"{who} shows '{unknown}', which table '{table.Id}' does not have.");
+            if (widget.Take > _maxPageSize)
+                throw new InvalidOperationException($"{who} takes {widget.Take} rows, more than the panel's MaxPageSize of {_maxPageSize}.");
             if (widget.SortBy is { } sort && table.Column(sort) is not { Sortable: true })
                 throw new InvalidOperationException($"{who} sorts by '{sort}', which table '{table.Id}' cannot sort by.");
         }
@@ -288,6 +299,7 @@ public sealed class PanelBuilder
         return new PanelModel
         {
             Title = _title,
+            MaxPageSize = _maxPageSize,
             Welcome = _welcome,
             Environment = _environment,
             Theme = _theme,

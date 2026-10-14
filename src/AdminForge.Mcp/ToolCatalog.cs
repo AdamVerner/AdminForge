@@ -16,7 +16,7 @@ internal sealed class PanelTools(IReadOnlyList<PanelTool> all)
         var tools = new List<PanelTool> { new SearchTool() };
         foreach (var t in panel.Tables)
         {
-            tools.Add(new ListTool(t));
+            tools.Add(new ListTool(t, panel.MaxPageSize));
             if (t.HasDetail)
                 tools.Add(new GetTool(t));
             if (t.Source.Create is not null)

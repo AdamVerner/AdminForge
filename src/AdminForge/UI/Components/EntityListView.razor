@@ -154,7 +154,8 @@
 }
 
 @code {
-    private static readonly int[] PageSizes = [10, 25, 50, 100];
+    private IEnumerable<int> PageSizes =>
+        new[] { 10, 25, 50, 100 }.Where(s => s <= Panel.Model.MaxPageSize).DefaultIfEmpty(Panel.Model.MaxPageSize);
 
     [Parameter, EditorRequired] public string TableId { get; set; } = "";
 
