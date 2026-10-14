@@ -390,6 +390,10 @@ public class McpTests
         // A client that refreshed from two requests at once reuses the token within seconds: a race, not a replay.
         var raced = await TokensAsync(host, Refresh(refresh));
         Assert.True(await Authorized(host, raced.GetProperty("access_token").GetString()!));
+        var burst = await Task.WhenAll(
+            Enumerable.Range(0, 8).Select(_ => Token(host, Refresh(rotated.GetProperty("refresh_token").GetString()!)))
+        );
+        Assert.All(burst, r => Assert.Equal(HttpStatusCode.OK, r.StatusCode));
         clock.Now += TimeSpan.FromSeconds(11);
         Assert.Equal(HttpStatusCode.BadRequest, (await Token(host, Refresh(refresh))).StatusCode);
         Assert.False(await Authorized(host, access));
