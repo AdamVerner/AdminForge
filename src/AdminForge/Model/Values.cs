@@ -288,7 +288,12 @@ internal sealed class KeyCodec(IReadOnlyList<PropertyInfo> properties)
         string.Join(
             ',',
             values.Select(v =>
-                Uri.EscapeDataString(Convert.ToString(v, CultureInfo.InvariantCulture) ?? "")
+                Uri.EscapeDataString(
+                    // "O" round-trips a date or time whole; the invariant default drops its fraction and kind.
+                    v is DateTime or DateTimeOffset or DateOnly or TimeOnly
+                        ? ((IFormattable)v).ToString("O", CultureInfo.InvariantCulture)
+                        : Convert.ToString(v, CultureInfo.InvariantCulture) ?? ""
+                )
             )
         );
 

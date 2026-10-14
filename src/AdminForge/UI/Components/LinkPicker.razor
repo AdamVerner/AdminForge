@@ -31,7 +31,7 @@
         if (string.IsNullOrEmpty(Value)) return;
         try
         {
-            _row = (await Panel.GetAsync(TableId, Value))?.Row;
+            _row = (await Panel.GetAsync(TableId, Panel.Model.Table(TableId)!.Key.Encode([Value])))?.Row;
         }
         catch (AdminRejection)
         {
@@ -50,6 +50,7 @@
     private Task Pick(RowView? row)
     {
         _row = row;
-        return ValueChanged.InvokeAsync(row?.Key);
+        // A link's target has a one-part key; the field holds its value, not its URL-escaped form.
+        return ValueChanged.InvokeAsync(row is null ? null : Uri.UnescapeDataString(row.Key));
     }
 }

@@ -692,13 +692,14 @@ internal sealed class AdminPanel(PanelModel model, OperationRunner runner)
         Dictionary<(string, string), string?> seen
     )
     {
-        var key = Uri.EscapeDataString(Convert.ToString(value, CultureInfo.InvariantCulture) ?? "");
+        if (model.Table(tableId) is not { Source.Find: { } find } target)
+            return null;
+        var key = target.Key.Encode([value]);
         if (seen.TryGetValue((tableId, key), out var known))
             return known;
         string? label = null;
         if (
-            model.Table(tableId) is { Source.Find: { } find } target
-            && target.Key.TryDecode(key) is { } parts
+            target.Key.TryDecode(key) is { } parts
             && await find(op.Services, parts, op.CancellationToken) is { } row
             && await op.AllowsAsync(target, AdminOp.Read, row)
         )

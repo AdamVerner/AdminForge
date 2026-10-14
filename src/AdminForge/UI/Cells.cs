@@ -1,5 +1,4 @@
 using System.Collections;
-using System.Globalization;
 using AdminForge.UI.Components;
 using Microsoft.AspNetCore.Components;
 
@@ -77,7 +76,7 @@ internal static class Cells
             if (column.LinksTo is { } target)
             {
                 b.OpenElement(10, "a");
-                b.AddAttribute(11, "href", Links.Row(target, Key(value)));
+                b.AddAttribute(11, "href", Links.Row(target, panel.Table(target)!.Key.Encode([value])));
                 b.AddContent(12, link ?? Text(value, column, panel));
                 b.CloseElement();
                 return;
@@ -145,7 +144,4 @@ internal static class Cells
         && column.Kind == ColumnKind.Value
         && column.LinksTo is null
         && Tone(value, column) is null;
-
-    private static string Key(object value) =>
-        Convert.ToString(value, CultureInfo.InvariantCulture) ?? "";
 }

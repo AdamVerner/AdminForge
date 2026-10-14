@@ -6,6 +6,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.FileProviders;
 using MudBlazor;
+using MudBlazor.Extensions;
 using MudBlazor.Services;
 
 namespace AdminForge.UiTests;
@@ -19,6 +20,9 @@ public enum Stage
 public sealed record Item(int Id, string Title, Stage Stage);
 
 public sealed record Postpone(int Days);
+
+/// <summary>Keyed by text that URL-escapes, so a picker that hands back the escaped key is caught.</summary>
+public sealed record Mailbox([property: System.ComponentModel.DataAnnotations.Key] string Address, string Owner);
 
 public sealed class Items : IAdminSource<Item, int>, IAdminWritable<Item>
 {
@@ -65,8 +69,15 @@ public sealed class ComponentTests : BunitContext
         Services.AddSingleton<IWebHostEnvironment, TestHost>();
         Services.AddSingleton<IConfiguration>(new ConfigurationBuilder().Build());
         Services.AddSingleton<Items>();
+        Mailbox[] mailboxes = [new("ada@example.com", "Ada")];
         Services.AddAdminForge(p =>
             p.AllowAnonymous()
+                .Table<Mailbox>(t =>
+                    t.Source<Items, string>(
+                        (_, q, _) => Task.FromResult(AdminPage.From(mailboxes, q)),
+                        (_, key, _) => Task.FromResult(mailboxes.FirstOrDefault(m => m.Address == key))
+                    )
+                )
                 .Table<Item>(t =>
                     t.Source<Items>(o => o.Filters(x => x.Stage))
                         .Live<Items, Item>(
@@ -123,6 +134,21 @@ public sealed class ComponentTests : BunitContext
     {
         yield return item;
         await Task.Delay(Timeout.Infinite, ct);
+    }
+
+    [Fact]
+    public async Task A_link_picker_hands_back_a_text_key_as_it_is_stored()
+    {
+        string? picked = null;
+        var cut = Render<LinkPicker>(ps =>
+            ps.Add(p => p.TableId, "mailbox")
+                .Add(p => p.Value, "ada@example.com")
+                .Add(p => p.ValueChanged, v => picked = v)
+        );
+        var picker = cut.FindComponent<MudAutocomplete<RowView>>();
+        cut.WaitForAssertion(() => Assert.NotNull(picker.Instance.GetState(x => x.Value)));
+        await cut.InvokeAsync(() => picker.Instance.ValueChanged.InvokeAsync(picker.Instance.GetState(x => x.Value)));
+        Assert.Equal("ada@example.com", picked);
     }
 
     [Fact]

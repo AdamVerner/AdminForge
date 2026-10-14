@@ -9,6 +9,8 @@ public class UnitTests
 {
     private sealed record Pair(string Code, int N);
 
+    private sealed record Reading(DateTime At, DateTimeOffset Offset, TimeOnly Time, DateOnly Day);
+
     private sealed record Membership(int OrgId, Guid Id);
 
     [Fact]
@@ -162,6 +164,21 @@ public class UnitTests
     [InlineData("", false)]
     public void A_return_url_must_stay_on_this_site(string url, bool local) =>
         Assert.Equal(local, Login.IsLocalUrl(url));
+
+    [Fact]
+    public void A_date_or_time_key_round_trips_whole()
+    {
+        var row = new Reading(
+            new DateTime(2026, 10, 14, 13, 45, 12, 345, DateTimeKind.Utc),
+            new DateTimeOffset(2026, 10, 14, 13, 45, 12, 345, TimeSpan.FromHours(2)),
+            new TimeOnly(13, 45, 12, 345),
+            new DateOnly(2026, 10, 14)
+        );
+        var codec = new KeyCodec(typeof(Reading).GetProperties());
+        var parts = codec.TryDecode(codec.Encode(row))!;
+        Assert.Equal(codec.Values(row), parts);
+        Assert.Equal(DateTimeKind.Utc, ((DateTime)parts[0]!).Kind);
+    }
 
     [Fact]
     public void A_value_renders_by_its_column_then_the_panel_then_the_default()
