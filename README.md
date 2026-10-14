@@ -452,6 +452,8 @@ panel, so use it with `RequireAuthorization(...)` or `UseLogin<T>()`.
 - The pipeline checks every tool call against the claims captured at consent. To cut off an admin
   at once, make your umbrella policy check live state, not only claims.
 - Grants use the stable ids of tables and actions, so a renamed title keeps existing grants.
+- Tools you register yourself on the same MCP server are not part of the consent grant: every
+  connection sees and calls them under the umbrella policy alone.
 - An action with `Confirm(...)` runs over MCP without a question. The tool's description includes
   that text.
 - "My MCP connections" in the account menu and "All MCP connections" in the `NavArea.Settings`

@@ -54,16 +54,14 @@ internal abstract class PanelTool : McpServerTool
         var services =
             request.Services
             ?? throw new InvalidOperationException("MCP requests must run in a DI scope.");
-        if (!Granted(services.GetRequiredService<IUserAccessor>().GetUser(), ProtocolTool.Name))
+        var user = services.GetRequiredService<IUserAccessor>().GetUser();
+        if (!Granted(user, ProtocolTool.Name))
             return Error($"Forbidden: this connection was not granted {ProtocolTool.Name}.");
         try
         {
             return await RunAsync(
                     Panel(services),
-                    new ToolArgs(
-                        request.Params?.Arguments,
-                        services.GetRequiredService<IUserAccessor>().GetUser()
-                    ),
+                    new ToolArgs(request.Params?.Arguments, user),
                     cancellationToken
                 )
                 .ConfigureAwait(false);

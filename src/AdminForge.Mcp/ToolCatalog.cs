@@ -7,6 +7,9 @@ internal sealed class PanelTools(IReadOnlyList<PanelTool> all)
 {
     public IReadOnlyList<PanelTool> All { get; } = all;
 
+    public IReadOnlyDictionary<string, PanelTool> ByName { get; } =
+        all.ToDictionary(t => t.ProtocolTool.Name, StringComparer.Ordinal);
+
     /// <summary>Every tool the panel yields: a list per table, a get, writes and actions as its source and model offer them.</summary>
     public static PanelTools Build(PanelModel panel, ILogger logger)
     {

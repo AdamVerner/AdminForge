@@ -59,8 +59,7 @@ public static class McpPanelExtensions
                         var result = await next(ctx, ct).ConfigureAwait(false);
                         var adminPanel = PanelTool.Panel(ctx.Services!);
                         var user = ctx.Services!.GetRequiredService<IUserAccessor>().GetUser();
-                        var byName = ctx.Services!.GetRequiredService<PanelTools>()
-                            .All.ToDictionary(t => t.ProtocolTool.Name, StringComparer.Ordinal);
+                        var byName = ctx.Services!.GetRequiredService<PanelTools>().ByName;
                         var visible = new List<Tool>();
                         foreach (var tool in result.Tools)
                         {

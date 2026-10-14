@@ -20,6 +20,8 @@ public class EfSource<TDb, T>(TDb db)
 {
     protected TDb Db { get; } = db;
 
+    private IEntityType Entity => Db.Model.FindEntityType(typeof(T))!;
+
     public virtual async Task<AdminPage<T>> ListAsync(AdminQuery<T> query, CancellationToken ct)
     {
         IQueryable<T> rows = Db.Set<T>().AsNoTracking();
@@ -40,7 +42,7 @@ public class EfSource<TDb, T>(TDb db)
                 .Where(p =>
                     p.PropertyType == typeof(string)
                     && !query.Hidden.Contains(p.Name)
-                    && Db.Model.FindEntityType(typeof(T))?.FindProperty(p.Name) is not null
+                    && Entity.FindProperty(p.Name) is not null
                 )
                 .Select(p => Like(Expression.Property(row, p), search))
                 .Aggregate(
@@ -52,7 +54,7 @@ public class EfSource<TDb, T>(TDb db)
         }
         var total = await rows.CountAsync(ct).ConfigureAwait(false);
         // A stable order, so paging is deterministic: the requested column, then every key part.
-        var keys = Db.Model.FindEntityType(typeof(T))!.FindPrimaryKey()!.Properties.Select(p => p.Name);
+        var keys = Entity.FindPrimaryKey()!.Properties.Select(p => p.Name);
         var ordered = query.SortBy is not { } sort ? null
             : query.SortDescending ? rows.OrderByDescending(r => EF.Property<object>(r, sort))
             : rows.OrderBy(r => EF.Property<object>(r, sort));
@@ -86,11 +88,7 @@ public class EfSource<TDb, T>(TDb db)
         CancellationToken ct
     )
     {
-        var key = Db
-            .Model.FindEntityType(typeof(T))!
-            .FindPrimaryKey()!
-            .Properties.Select(p => p.PropertyInfo!.GetValue(row))
-            .ToArray();
+        var key = Entity.FindPrimaryKey()!.Properties.Select(p => p.PropertyInfo!.GetValue(row)).ToArray();
         var stored =
             await Db.Set<T>().FindAsync(key, ct).ConfigureAwait(false)
             ?? throw new AdminRejection("The row was deleted meanwhile.");
@@ -158,11 +156,15 @@ public static class EntityFrameworkPanelExtensions
                 .Concat(entity.GetSkipNavigations())
                 .Select(n => n.Name)
                 .ToHashSet();
+            var key =
+                entity.FindPrimaryKey()?.Properties
+                ?? throw new InvalidOperationException($"{type.Name} is keyless; a table needs a key.");
+            if (key.FirstOrDefault(p => p.PropertyInfo is null) is { } shadow)
+                throw new InvalidOperationException(
+                    $"{type.Name}'s key part {shadow.Name} is a shadow property; a table reads its key from the type."
+                );
             return new EntityShape(
-                entity.FindPrimaryKey()?.Properties.Select(p => p.Name).ToList()
-                    ?? throw new InvalidOperationException(
-                        $"{type.Name} is keyless; a table needs a key."
-                    ),
+                key.Select(p => p.Name).ToList(),
                 entity
                     .GetProperties()
                     // HasDefaultValue is only a default; a SQL default, a computed column or an identity is the store's.
