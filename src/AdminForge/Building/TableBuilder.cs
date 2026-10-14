@@ -27,6 +27,7 @@ public sealed class TableBuilder<T>
     private Func<BuildContext, SourceModel>? _source;
     private Func<T, string>? _label;
     private TimeSpan? _poll;
+    private Func<T, bool>? _deleteWhen;
     private string? _empty;
     private Func<ClaimsPrincipal, AdminOp, T?, bool>? _authorize;
 
@@ -220,6 +221,13 @@ public sealed class TableBuilder<T>
         return this;
     }
 
+    /// <summary>Offers Delete only on the rows <paramref name="when"/> holds for; deleting any other is refused.</summary>
+    public TableBuilder<T> DeleteWhen(Func<T, bool> when)
+    {
+        _deleteWhen = when;
+        return this;
+    }
+
     /// <summary>A rule asked on every operation on this table, with the stored row whenever there is one.</summary>
     /// <remarks>An action asks it as an <see cref="AdminOp.Update"/> of its row.</remarks>
     public TableBuilder<T> Authorize(Func<ClaimsPrincipal, AdminOp, T?, bool> rule)
@@ -408,6 +416,7 @@ public sealed class TableBuilder<T>
             Live = _live,
             Poll = _poll,
             Empty = _empty,
+            DeleteWhen = _deleteWhen is { } when ? row => when((T)row) : null,
             Authorize = _authorize is { } rule ? (user, op, row) => rule(user, op, (T?)row) : null,
             Request = (user, op, row) => new TableRequest<T>(user, id, op, (T?)row),
             ActionRequest = (user, action, row) => new ActionRequest<T>(user, id, action, (T?)row),

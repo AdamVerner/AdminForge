@@ -16,6 +16,27 @@ public class TableTests
         );
 
     [Fact]
+    public async Task Delete_is_offered_and_allowed_only_on_the_rows_it_applies_to()
+    {
+        await using var host = await PanelHost.StartAsync(p =>
+            p.Table<Ticket>(t => t.DeleteWhen(x => x.Status != TicketStatus.Done))
+        );
+        using var admin = host.As();
+        var open = await admin.Panel.CreateAsync("ticket", Args(("Title", "Still open"), ("Status", "Open")));
+        var done = await admin.Panel.CreateAsync("ticket", Args(("Title", "All done"), ("Status", "Done")));
+
+        var offered = (await admin.Panel.ListAsync("ticket", new ListRequest())).Rows
+            .ToDictionary(r => r.Key, r => r.Allowed.Delete);
+        Assert.Equal((true, false), (offered[open], offered[done]));
+        Assert.False((await admin.Panel.GetAsync("ticket", done))!.Row.Allowed.Delete);
+
+        var refused = await Assert.ThrowsAsync<AdminRejection>(() => admin.Panel.DeleteAsync("ticket", done));
+        Assert.Equal("Delete does not apply to All done.", refused.Message);
+        await admin.Panel.DeleteAsync("ticket", open);
+        Assert.Equal(["All done"], await host.Db(db => db.Tickets.Select(t => t.Title).ToListAsync()));
+    }
+
+    [Fact]
     public async Task An_EF_table_creates_edits_and_deletes_with_an_audit_diff()
     {
         await using var host = await PanelHost.StartAsync(Tickets);

@@ -231,6 +231,8 @@ panel.Table<Role>(t => t
 | `When(row => ...)` | The action shows only on rows that pass. A direct call on another row is refused with "does not apply". This is separate from authorization. |
 | `ctx.Open(row)` | After the action, the panel opens that row of the same table. Over MCP, the result names its key. |
 
+The built-in Delete takes the same kind of rule on the table: `t.DeleteWhen(role => !role.BuiltIn)`.
+
 ## Forms
 
 A form is a page of its own at `/admin/forms/{id}`, with an input record and a handler.

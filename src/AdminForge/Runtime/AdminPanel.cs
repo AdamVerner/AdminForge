@@ -216,6 +216,8 @@ internal sealed class AdminPanel(PanelModel model, OperationRunner runner)
                     t.Source.Delete
                     ?? throw new AdminRejection($"{t.Title} cannot be deleted from in the panel.");
                 var row = await RequireAsync(op, t, key);
+                if (t.DeleteWhen?.Invoke(row) == false)
+                    throw new AdminRejection($"Delete does not apply to {t.Label(row)}.");
                 await op.EnsureAsync(
                     op.AllowsAsync(t, AdminOp.Delete, row),
                     $"delete from {t.Title}"
@@ -666,7 +668,9 @@ internal sealed class AdminPanel(PanelModel model, OperationRunner runner)
                     actions.Add(a.Id);
         var allowed = new Allowed(
             t.Source.Update is not null && await op.AllowsAsync(t, AdminOp.Update, row),
-            t.Source.Delete is not null && await op.AllowsAsync(t, AdminOp.Delete, row),
+            t.Source.Delete is not null
+                && t.DeleteWhen?.Invoke(row) != false
+                && await op.AllowsAsync(t, AdminOp.Delete, row),
             actions
         );
         var links = new Dictionary<string, string>(StringComparer.Ordinal);
