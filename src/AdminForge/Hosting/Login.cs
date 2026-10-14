@@ -178,10 +178,8 @@ internal static class Login
     /// <summary>A path on this site: one leading slash and no second one or backslash, which a browser reads as another host.</summary>
     internal static bool IsLocalUrl(string? url) =>
         url is { Length: > 0 }
-        && (
-            url[0] == '/' && (url.Length == 1 || url[1] is not ('/' or '\\'))
-            || url.Length > 1 && url[0] == '~' && url[1] == '/'
-        )
+        && url[0] == '/'
+        && (url.Length == 1 || url[1] is not ('/' or '\\'))
         && !url.Any(char.IsControl);
 
     // Plain HTML: the Blazor shell only starts once a session exists.
