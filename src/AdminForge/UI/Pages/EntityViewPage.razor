@@ -148,7 +148,7 @@ else
     private bool _tickFailed;
     private bool _missing;
 
-    // A poll tick and an action's refresh may meet; the scoped services take one operation at a time.
+    // A poll tick and an action's refresh may meet; one at a time, so the older view never lands last.
     private readonly SemaphoreSlim _fetch = new(1, 1);
 
     private IEnumerable<(ColumnModel, object)> StatusValues(RowView row) =>
@@ -171,20 +171,22 @@ else
         _tab = null;
         _counts.Clear();
         StopPolling();
+        // Owned by this call: a navigation that overtakes it cancels it, so the loop below never starts.
+        var poll = _poll = new CancellationTokenSource();
         if (_table is null)
         {
-            Missing.Show($"There is no table '{TableId}'.");
+            Missing.Table(TableId);
             return;
         }
         if (_table.Key.TryDecode(Key) is null)
         {
-            Missing.Show($"'{Key}' is not a valid key for {_table.Title}.", Links.List(_table.Id), $"Back to {_table.Title}");
+            Missing.Key(_table, Key);
             return;
         }
         await Refresh();
         if (_missing)
         {
-            Missing.Show($"{_table.Title} has no row with the key '{Key}'.", Links.List(_table.Id), $"Back to {_table.Title}");
+            Missing.Row(_table, Key);
             return;
         }
         if (_view is not null)
@@ -194,11 +196,8 @@ else
                     _counts[related.Model.TableId] = (await Panel.ListAsync(related.Model.TableId, new ListRequest(PageSize: 1, Filters: related.Filter))).Total;
                 }
                 catch (AdminRejection) { }
-        if (_table.Poll is { } interval && _view is not null)
-        {
-            _poll = new CancellationTokenSource();
-            _ = PollAsync(interval, _poll.Token);
-        }
+        if (_table.Poll is { } interval && _view is not null && !poll.IsCancellationRequested)
+            _ = PollAsync(interval, poll.Token);
     }
 
     private async Task PollAsync(TimeSpan interval, CancellationToken ct)

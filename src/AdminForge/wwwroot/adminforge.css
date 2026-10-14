@@ -421,7 +421,7 @@ code, pre, kbd, .af-mono { font-family: var(--af-mono); }
 
 .af-panel { background: var(--af-surface); border: 1px solid var(--af-border); border-radius: var(--af-radius-md); min-width: 0; }
 .af-section { padding: var(--af-space-4); }
-.af-section > h2, .af-h2 { margin: 0 0 var(--af-space-3); font: var(--af-text-lg); }
+.af-section > h2 { margin: 0 0 var(--af-space-3); font: var(--af-text-lg); }
 .af-section-head { display: flex; align-items: center; gap: var(--af-space-2); margin-bottom: var(--af-space-3); }
 .af-section-head h2 { margin: 0; font: var(--af-text-lg); }
 .af-detail { max-width: 1280px; }
@@ -466,7 +466,6 @@ code, pre, kbd, .af-mono { font-family: var(--af-mono); }
 .af-filter-chip .af-icon { width: 14px; height: 14px; }
 .af-add-filter { height: 28px; border-style: dashed; color: var(--af-text-muted); font: var(--af-text-sm); }
 .af-filters { width: 280px; padding: var(--af-space-3) var(--af-space-4); display: grid; gap: var(--af-space-3); }
-.af-filters .af-h2 { margin: 0; font: var(--af-text-xs); font-weight: 600; color: var(--af-text-subtle); }
 /* Edge shadows appear only while there is more table to scroll to. */
 .af-table-wrap {
   overflow-x: auto; position: relative;

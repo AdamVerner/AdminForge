@@ -11,10 +11,19 @@ internal sealed class Missing(NavigationManager nav)
     /// <summary>The message for the current address, or null when the router itself found nothing.</summary>
     public (string Body, string? Href, string? Back)? Note => _uri == nav.Uri ? _note : null;
 
-    public void Show(string body, string? href = null, string? back = null)
+    public void Table(string id) => Show($"There is no table '{id}'.");
+
+    public void Key(TableModel table, string key) =>
+        Show($"'{key}' is not a valid key for {table.Title}.", table);
+
+    public void Row(TableModel table, string key) =>
+        Show($"{table.Title} has no row with the key '{key}'.", table);
+
+    /// <summary>Not found, with a way back to <paramref name="back"/>'s list when it is given.</summary>
+    public void Show(string body, TableModel? back = null)
     {
         _uri = nav.Uri;
-        _note = (body, href, back);
+        _note = (body, back is null ? null : Links.List(back.Id), back is null ? null : $"Back to {back.Title}");
         nav.NotFound();
     }
 }

@@ -255,8 +255,8 @@
             Nav.NavigateTo(ToUrl(next), replace: true);
     }
 
-    // One query at a time: the circuit's scoped services are not safe under two concurrent
-    // operations. A change that lands mid-load runs once, after the current one.
+    // One query at a time, so an older response never lands over a newer one. A change that
+    // lands mid-load runs once, after the current one.
     private async Task ReloadAsync()
     {
         if (_loading)
@@ -277,6 +277,12 @@
                 {
                     _list = await Panel.ListAsync(TableId, new ListRequest(_state.Page, _state.PageSize, _state.Search, _state.SortBy, _state.Descending, filters, Columns: Columns));
                     _error = null;
+                    // A page past the end, after a delete or from a stale link, moves to the last one.
+                    if (_list is { Rows.Count: 0, Total: > 0 } && _state.Page > 0)
+                    {
+                        await GoAsync(_state with { Page = (_list.Total - 1) / _state.PageSize });
+                        continue;
+                    }
                     await OnLoaded.InvokeAsync((_list.Total, _list.CanCreate));
                 }
                 catch (AdminRejection ex)

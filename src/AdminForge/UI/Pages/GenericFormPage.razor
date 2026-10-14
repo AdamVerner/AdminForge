@@ -68,6 +68,8 @@ else if (_form is not null)
     protected override async Task OnParametersSetAsync()
     {
         _model = Panel.Model.Form(FormId);
+        // The page is reused from one form to the next; nothing of the last one may show on this one.
+        (_form, _refused, _error, _result) = (null, null, null, null);
         if (_model is null)
         {
             Missing.Show($"There is no form '{FormId}'.");

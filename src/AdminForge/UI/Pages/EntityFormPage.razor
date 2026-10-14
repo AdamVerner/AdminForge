@@ -82,14 +82,15 @@ else if (_form is not null)
     protected override async Task OnParametersSetAsync()
     {
         _table = Panel.Model.Table(TableId);
+        (_form, _label, _error, _refused, _saved) = (null, null, null, null, false);
         if (_table is null)
         {
-            Missing.Show($"There is no table '{TableId}'.");
+            Missing.Table(TableId);
             return;
         }
         if (Key is not null && _table.Key.TryDecode(Key) is null)
         {
-            Missing.Show($"'{Key}' is not a valid key for {_table.Title}.", Links.List(_table.Id), $"Back to {_table.Title}");
+            Missing.Key(_table, Key);
             return;
         }
         try
@@ -97,7 +98,7 @@ else if (_form is not null)
             _form = Key is null ? await Panel.NewAsync(TableId) : await Panel.EditAsync(TableId, RowKey);
             if (_form is null)
             {
-                Missing.Show($"{_table.Title} has no row with the key '{RowKey}'.", Links.List(_table.Id), $"Back to {_table.Title}");
+                Missing.Row(_table, RowKey);
                 return;
             }
             if (Key is not null) _label = (await Panel.GetAsync(TableId, RowKey))?.Row.Label ?? RowKey;

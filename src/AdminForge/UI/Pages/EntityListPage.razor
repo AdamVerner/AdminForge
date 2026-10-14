@@ -22,6 +22,6 @@
 
     protected override void OnParametersSet()
     {
-        if (Panel.Model.Table(TableId) is null) Missing.Show($"There is no table '{TableId}'.");
+        if (Panel.Model.Table(TableId) is null) Missing.Table(TableId);
     }
 }
