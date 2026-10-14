@@ -242,6 +242,17 @@ public sealed class PanelBuilder
         var dashboards = _dashboards.Select(d => d(context)).ToList();
         Unique(forms.Select(f => f.Id), "form");
         Unique(dashboards.Select(d => d.Id), "dashboard");
+        // The widget lists its table's source directly, so what the list page checks per request is checked here.
+        foreach (var dashboard in dashboards)
+        foreach (var widget in dashboard.Rows.SelectMany(r => r).OfType<TableWidgetModel>())
+        {
+            var table = tables.First(t => t.Id == widget.TableId);
+            var who = $"Table widget '{widget.Title}' on dashboard '{dashboard.Id}'";
+            if (widget.Columns?.FirstOrDefault(c => table.Column(c) is null) is { } unknown)
+                throw new InvalidOperationException($"{who} shows '{unknown}', which table '{table.Id}' does not have.");
+            if (widget.SortBy is { } sort && table.Column(sort) is not { Sortable: true })
+                throw new InvalidOperationException($"{who} sorts by '{sort}', which table '{table.Id}' cannot sort by.");
+        }
         if (dashboards.Count(d => d.Home) > 1)
             throw new InvalidOperationException(
                 $"Dashboards {string.Join(", ", dashboards.Where(d => d.Home).Select(d => d.Id))} all call Home(); one home page."

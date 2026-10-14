@@ -243,6 +243,7 @@ public sealed class TableWidgetBuilder<T>
 
     public TableWidgetBuilder<T> Take(int rows)
     {
+        ArgumentOutOfRangeException.ThrowIfLessThan(rows, 1);
         _take = rows;
         return this;
     }

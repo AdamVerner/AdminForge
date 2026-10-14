@@ -50,6 +50,24 @@ public class StartupTests
                 "finds by String"
             },
             {
+                "widget column",
+                p =>
+                    p.AllowAnonymous()
+                        .UseEntityFramework<TestDb>()
+                        .Table<Ticket>(t => t.Hide(x => x.Notes))
+                        .Dashboard("ops", d => d.Row(r => r.Table<Ticket>("Recent", w => w.Columns(x => x.Notes)))),
+                "shows 'Notes', which table 'ticket' does not have"
+            },
+            {
+                "widget sort",
+                p =>
+                    p.AllowAnonymous()
+                        .UseEntityFramework<TestDb>()
+                        .Table<Ticket>(t => t.Hide(x => x.Notes))
+                        .Dashboard("ops", d => d.Row(r => r.Table<Ticket>("Recent", w => w.Sort(x => x.Notes)))),
+                "cannot sort by"
+            },
+            {
                 "related unfiltered",
                 p =>
                     p.AllowAnonymous()
