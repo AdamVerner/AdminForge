@@ -206,7 +206,12 @@ public sealed partial class PanelHost : IAsyncDisposable
             },
             Http(null)
         );
-        return await McpClient.CreateAsync(transport);
+        // The probe for the newer handshake includes the consent; on a loaded machine the default
+        // timeout cut it short and the fallback handshake asked for a second consent.
+        return await McpClient.CreateAsync(
+            transport,
+            new McpClientOptions { DiscoverProbeTimeout = TimeSpan.FromMinutes(1) }
+        );
     }
 
     /// <summary>Posts the login form as a browser does, with the antiforgery token its page carries.</summary>
