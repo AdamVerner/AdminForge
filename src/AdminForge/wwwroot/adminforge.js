@@ -89,6 +89,17 @@
     if (button) navigator.clipboard.writeText(button.parentElement.querySelector("pre").textContent);
   });
 
+  // A click anywhere on a row follows its first cell's link. Not a stretched ::after: WebKit does not make a <tr>
+  // a containing block, so every row's overlay covered the whole table and the last row won.
+  document.addEventListener("click", (e) => {
+    if (e.button !== 0 || !(e.target instanceof Element) || getSelection()?.toString()) return;
+    if (e.target.closest("a, button, input, select, textarea, label, summary, [role=button], [popover]")) return;
+    const link = e.target.closest(".af-table tbody tr")?.querySelector("a.af-rowlink");
+    if (!link) return;
+    if (e.ctrlKey || e.metaKey) window.open(link.href, "_blank");
+    else link.click();
+  });
+
   // The filter popover closes on an outside click only; a dialog handles Esc itself.
   document.addEventListener("keydown", (e) => {
     if (e.key !== "Escape" || document.querySelector(".mud-dialog")) return;
