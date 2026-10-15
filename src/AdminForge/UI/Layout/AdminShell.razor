@@ -55,6 +55,7 @@
         </nav>
         <div class="af-scrim" @onclick="@(() => _drawerOpen = false)"></div>
         <main id="af-main" class="af-main" tabindex="-1">
+            <Slots Slot="AdminSlot.AbovePage" />
             <ErrorBoundary @ref="_boundary">
                 <ChildContent>@Body</ChildContent>
                 <ErrorContent>

@@ -73,6 +73,9 @@ public enum AdminSlot
 
     /// <summary>After a detail page's related tables; the component receives <c>TableId</c> and <c>Key</c>.</summary>
     BelowDetail,
+
+    /// <summary>Above the content of every page in the shell, a failed page's included; the component receives no parameters.</summary>
+    AbovePage,
 }
 
 internal sealed record PanelModel

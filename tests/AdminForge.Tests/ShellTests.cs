@@ -20,6 +20,21 @@ public sealed class WhoAmIPage : ComponentBase
     }
 }
 
+/// <summary>A host notice that names the user the panel resolves for it.</summary>
+public sealed class CallerNotice : ComponentBase
+{
+    [Inject]
+    public IUserAccessor User { get; set; } = null!;
+
+    protected override void BuildRenderTree(RenderTreeBuilder builder)
+    {
+        builder.OpenElement(0, "p");
+        builder.AddAttribute(1, "data-af", "notice");
+        builder.AddContent(2, User.GetUserId());
+        builder.CloseElement();
+    }
+}
+
 /// <summary>Routable from the tests assembly but never registered with Page&lt;T&gt;.</summary>
 [Route("/admin/stray")]
 public sealed class StrayPage : ComponentBase
@@ -158,5 +173,35 @@ public class ShellTests
             System.Net.HttpStatusCode.OK,
             (await host.Http(null).GetAsync("/.well-known/oauth-protected-resource/mcp")).StatusCode
         );
+    }
+
+    [Fact]
+    public async Task An_above_page_component_tops_every_page_in_the_shell_once_as_the_caller()
+    {
+        await using var host = await PanelHost.StartAsync(p =>
+            p.Table<Ticket>()
+                .Dashboard("ops", d => d.Row(r => r.Stat<TestDb, int>("Open", (db, ct) => db.Tickets.CountAsync(ct))))
+                .Page<WhoAmIPage>(x => x.Title("Who am I"))
+                .Form<NoteInput>("notes", f => f.Run(_ => { }))
+                .Render<CallerNotice>(AdminSlot.AbovePage)
+        );
+        await host.Db(Seed.OpenAndDoneAsync);
+
+        foreach (var path in new[]
+        {
+            "/admin",
+            "/admin/entities/ticket",
+            "/admin/entities/ticket/1",
+            "/admin/dashboards/ops",
+            "/admin/forms/notes",
+            "/admin/whoami",
+            "/admin/no-such-page",
+        })
+        {
+            var response = await host.Http("ada").GetAsync(path);
+            var page = new Page(await response.Content.ReadAsStringAsync());
+            Assert.True(page.Count("notice") == 1, path);
+            Assert.Equal("ada", page.Text("notice"));
+        }
     }
 }
